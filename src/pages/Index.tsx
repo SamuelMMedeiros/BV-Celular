@@ -102,7 +102,7 @@ const Index = () => {
       {/* Footer */}
       <footer className="border-t bg-background/50 py-8">
         <div className="container text-center text-sm text-muted-foreground">
-          <p>© 2024 Loja Martins Tech. Todos os direitos reservados.</p>
+          <p>© 2025 Loja BV Celular. Todos os direitos reservados.</p>
         </div>
       </footer>
     </div>
