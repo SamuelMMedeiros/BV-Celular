@@ -1,5 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
+//@ets-ignore
 import cors from 'cors';
 import connectDB from './config/db';
 import productRoutes from './routes/products';
