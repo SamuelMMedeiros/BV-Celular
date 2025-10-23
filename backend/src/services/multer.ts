@@ -4,10 +4,10 @@ import cloudinary from './cloudinary';
 
 const storage = new CloudinaryStorage({
   cloudinary,
-  params: {
+  params: async (req:any, file:any) ({
     folder: 'martins-tech',
     allowed_formats: ['jpg','jpeg','png','webp'],
-    transformation: [{ width: 1200, crop: 'limit' }]
+    transformation: [{ width: 1200, crop: 'limit' })]
   }
 });
 
