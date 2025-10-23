@@ -5,7 +5,7 @@ import cloudinary from './cloudinary';
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
-    destination: 'martins-tech',
+    folder: 'martins-tech',
     allowed_formats: ['jpg','jpeg','png','webp'],
     transformation: [{ width: 1200, crop: 'limit' }]
   }
