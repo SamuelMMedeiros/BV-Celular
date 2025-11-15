@@ -13,7 +13,8 @@ import {
     ShoppingCart,
     ArrowLeft,
     Store as StoreIcon,
-} from "lucide-react";
+    User,
+} from "lucide-react"; // Importa User
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
     Drawer,
@@ -27,6 +28,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { fetchStores } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCustomerAuth } from "./CustomerAuthContext"; // 1. Importa CustomerAuth
 
 // --- 1. Definição do Tipo de Item do Carrinho ---
 export interface CartItem {
@@ -42,7 +44,10 @@ interface CartContextType {
     updateQuantity: (productId: string, quantity: number) => void;
     clearCart: () => void;
     itemCount: number;
-    generateWhatsAppMessage: (items: CartItem[]) => string;
+    generateWhatsAppMessage: (
+        items: CartItem[],
+        customerName: string
+    ) => string; // 2. Atualiza para receber nome
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -119,48 +124,50 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     }, []);
 
     // --- Função de Geração de Mensagem para WhatsApp (REESCRITA) ---
-    const generateWhatsAppMessage = useCallback((items: CartItem[]): string => {
-        if (items.length === 0) return "O carrinho está vazio.";
+    const generateWhatsAppMessage = useCallback(
+        (items: CartItem[], customerName: string): string => {
+            if (items.length === 0) return "O carrinho está vazio.";
 
-        const customerNamePlaceholder = "[NOME DO CLIENTE]"; // Placeholder
-        let totalValue = 0;
+            let totalValue = 0;
 
-        // --- Header ---
-        let message = `👋 *NOVO PEDIDO DE ORÇAMENTO!*
+            // --- Header (Substitui o placeholder) ---
+            let message = `👋 *NOVO PEDIDO DE ORÇAMENTO!*
     
-👤 Cliente: ${customerNamePlaceholder}
+👤 Cliente: ${customerName}
 📱 Origem: Website BV Celular
     
 ---
 *📋 ITENS DO CARRINHO:*\n`;
 
-        // --- Lista de Itens ---
-        items.forEach((item, index) => {
-            const price = item.product.price / 100;
-            totalValue += price * item.quantity;
+            // --- Lista de Itens ---
+            items.forEach((item, index) => {
+                const price = item.product.price / 100;
+                totalValue += price * item.quantity;
 
-            message += `\n${index + 1}. *${item.product.name}* (x${
-                item.quantity
-            })`;
-            message += `\n   💰 Preço Unid.: R$ ${price.toLocaleString(
+                message += `\n${index + 1}. *${item.product.name}* (x${
+                    item.quantity
+                })\n`;
+                message += `   💰 Preço Unid.: R$ ${price.toLocaleString(
+                    "pt-BR",
+                    { minimumFractionDigits: 2 }
+                )}`;
+                message += `\n   ${
+                    item.product.storage?.toUpperCase() || ""
+                } / ${item.product.ram?.toUpperCase() || ""} RAM`;
+            });
+
+            // --- Footer ---
+            message += `\n\n---`;
+            message += `\n*✅ TOTAL DO ORÇAMENTO:* R$ ${totalValue.toLocaleString(
                 "pt-BR",
                 { minimumFractionDigits: 2 }
             )}`;
-            message += `\n   ${item.product.storage?.toUpperCase() || ""} / ${
-                item.product.ram?.toUpperCase() || ""
-            } RAM`;
-        });
+            message += `\n\nAguardamos o contato para confirmar a disponibilidade e a forma de pagamento!`;
 
-        // --- Footer ---
-        message += `\n\n---`;
-        message += `\n*✅ TOTAL DO ORÇAMENTO:* R$ ${totalValue.toLocaleString(
-            "pt-BR",
-            { minimumFractionDigits: 2 }
-        )}`;
-        message += `\n\nAguardamos o contato para confirmar a disponibilidade e a forma de pagamento!`;
-
-        return message;
-    }, []);
+            return message;
+        },
+        []
+    );
     // --- Fim da Geração de Mensagem ---
 
     const value = {
@@ -213,14 +220,16 @@ export const CartDrawer = () => {
         clearCart,
         generateWhatsAppMessage,
     } = useCart();
+    const { isLoggedIn, profile } = useCustomerAuth(); // 3. Importa CustomerAuth
+
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [step, setStep] = useState<"cart" | "stores">("cart"); // Estado para os passos do Checkout
+    const [step, setStep] = useState<"cart" | "stores" | "auth">("cart"); // 4. Novo passo 'auth'
 
     // 1. Query para buscar todas as lojas
     const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
         queryKey: ["allStores"],
         queryFn: fetchStores,
-        enabled: isDrawerOpen && step === "stores", // Só busca se o drawer e o passo estiverem ativos
+        enabled: isDrawerOpen && step === "stores",
     });
 
     // Helper para formatar preços
@@ -232,7 +241,10 @@ export const CartDrawer = () => {
 
     // Lógica que envia o pedido para a loja selecionada
     const handleSelectStore = (store: Store) => {
-        const message = generateWhatsAppMessage(items);
+        const message = generateWhatsAppMessage(
+            items,
+            profile?.name || "Cliente Sem Cadastro"
+        ); // 5. Passa o nome
         const encodedMessage = encodeURIComponent(message);
 
         const whatsappCleaned = store.whatsapp.replace(/\D/g, "");
@@ -242,11 +254,14 @@ export const CartDrawer = () => {
             "_blank"
         );
         setIsDrawerOpen(false);
-        setStep("cart"); // Reseta o passo
+        setStep("cart");
     };
 
     const handleProceedToStores = () => {
-        if (itemCount > 0) {
+        // 6. Verifica se o usuário está logado ANTES de ir para a lista de lojas
+        if (!isLoggedIn) {
+            setStep("auth");
+        } else if (itemCount > 0) {
             setStep("stores");
         }
     };
@@ -365,7 +380,7 @@ export const CartDrawer = () => {
                         key={store.id}
                         className="w-full h-auto py-3 justify-start transition-colors duration-150"
                         variant="outline"
-                        onClick={() => handleSelectStore(store)} // Envia para a função de checkout
+                        onClick={() => handleSelectStore(store)}
                     >
                         <div className="flex flex-col items-start">
                             <span className="font-bold">{store.name}</span>
@@ -379,6 +394,39 @@ export const CartDrawer = () => {
             </div>
         );
     };
+
+    // Renderiza a tela de autenticação (se o cliente não estiver logado)
+    const renderAuthPrompt = () => (
+        <div className="p-6 text-center space-y-4">
+            <User className="h-10 w-10 mx-auto text-primary" />
+            <DrawerTitle>Quase lá!</DrawerTitle>
+            <DrawerDescription>
+                Precisamos do seu nome e telefone para enviar o pedido à loja.
+            </DrawerDescription>
+            <Button
+                size="lg"
+                className="w-full"
+                onClick={() => {
+                    // Clicar aqui abre o Popover na Navbar para o login do Cliente
+                    const loginButton = document.querySelector(
+                        'button:has(svg[data-lucide="user"])'
+                    ) as HTMLButtonElement;
+                    if (loginButton) loginButton.click();
+                    setIsDrawerOpen(false); // Fecha o Drawer
+                    setStep("cart"); // Volta ao passo 1
+                }}
+            >
+                Fazer Cadastro Rápido
+            </Button>
+            <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => setStep("stores")}
+            >
+                Continuar Sem Cadastro (Apenas Orçamento)
+            </Button>
+        </div>
+    );
 
     return (
         <Drawer
@@ -401,7 +449,7 @@ export const CartDrawer = () => {
             <DrawerContent className="max-h-[90vh]">
                 <DrawerHeader>
                     {/* Exibe o botão de voltar quando estiver no passo de escolha de loja */}
-                    {step === "stores" && (
+                    {(step === "stores" || step === "auth") && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -415,17 +463,19 @@ export const CartDrawer = () => {
                     <DrawerTitle>
                         {step === "cart"
                             ? `Seu Carrinho (${itemCount} Itens)`
-                            : "Escolher Loja"}
+                            : "Finalizar Pedido"}
                     </DrawerTitle>
                     <DrawerDescription>
                         {step === "cart"
                             ? "Lista de itens para orçamento."
-                            : "Selecione a loja para finalizar via WhatsApp."}
+                            : "Acesse/escolha a loja para finalizar via WhatsApp."}
                     </DrawerDescription>
                 </DrawerHeader>
 
                 {/* Renderização do Conteúdo por Passo */}
-                {step === "cart" ? renderCartItems() : renderStoreSelection()}
+                {step === "cart" && renderCartItems()}
+                {step === "auth" && renderAuthPrompt()}
+                {step === "stores" && renderStoreSelection()}
 
                 <DrawerFooter className="bg-background border-t flex-col">
                     {step === "cart" && itemCount > 0 && (
@@ -445,6 +495,7 @@ export const CartDrawer = () => {
                                 size="lg"
                                 className="w-full"
                                 onClick={handleProceedToStores} // Avança para o passo 2
+                                disabled={!stores && !isLoadingStores} // Desabilita se não tiver loja
                             >
                                 <StoreIcon className="mr-2 h-5 w-5" />
                                 Escolher Loja e Finalizar
@@ -452,7 +503,7 @@ export const CartDrawer = () => {
                         </>
                     )}
 
-                    {/* Botão Limpar Carrinho (Disponível em ambos os passos) */}
+                    {/* Botão Limpar Carrinho (Disponível em todos os passos) */}
                     <Button
                         variant="ghost"
                         onClick={clearCart}

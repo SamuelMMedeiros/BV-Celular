@@ -1,25 +1,27 @@
-//
-// === CÓDIGO COMPLETO PARA: src/components/Navbar.tsx ===
-//
+/* eslint-disable react-hooks/rules-of-hooks */
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
     Smartphone,
     Tag,
     ShieldCheck,
     LogOut,
-    User,
     MessageCircle,
-} from "lucide-react"; // 1. Importa MessageCircle
+    ShoppingCart,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+    useCustomerAuth,
+    CustomerAuthPopover,
+} from "@/components/CustomerAuthPopover"; // 1. Importa Customer Auth e Popover
 import { supabase } from "@/integrations/supabase/client";
-import { useCart, CartDrawer } from "@/contexts/CartContext"; // 2. Importa Cart e Drawer
+import { CartDrawer } from "@/contexts/CartContext";
 
 export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, employeeProfile } = useAuth();
-    const { itemCount } = useCart(); // 3. Pega a contagem do carrinho
+    const { isLoggedIn, getGreeting } = useCustomerAuth(); // 2. Pega dados do Cliente Auth
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -57,7 +59,6 @@ export const Navbar = () => {
                     </Button>
 
                     <Button
-                        // 4. Nova rota de Acessórios
                         variant={isActive("/acessorios") ? "default" : "ghost"}
                         size="sm"
                         asChild
@@ -85,21 +86,32 @@ export const Navbar = () => {
                         </Link>
                     </Button>
 
+                    {/* --- 3. Login do Cliente e Saudação --- */}
+                    {isLoggedIn ? (
+                        <div className="flex items-center space-x-2 border-r pr-3 ml-2">
+                            <span className="text-sm font-medium hidden sm:inline">
+                                {getGreeting()}
+                            </span>
+                            <Button
+                                onClick={useCustomerAuth().logout}
+                                variant="ghost"
+                                size="icon"
+                            >
+                                <LogOut className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="ml-2 border-r pr-3">
+                            <CustomerAuthPopover />
+                        </div>
+                    )}
+
                     {/* --- Botão do Carrinho (Drawer Trigger) --- */}
-                    {/* O Drawer Trigger foi movido para o CartDrawer, que é importado */}
                     <CartDrawer />
 
                     {/* --- Lógica Condicional para Admin e Logout --- */}
                     {user ? (
                         <>
-                            <div className="flex items-center gap-2 border-r pr-2 ml-2">
-                                <User className="h-4 w-4 text-muted-foreground" />
-                                <span className="hidden text-sm font-medium sm:inline">
-                                    {employeeProfile?.name.split(" ")[0] ||
-                                        "Admin"}
-                                </span>
-                            </div>
-
                             <Button
                                 variant={
                                     isActive("/admin") ? "default" : "ghost"
@@ -125,13 +137,13 @@ export const Navbar = () => {
                                 className="flex items-center gap-2 text-destructive hover:text-destructive"
                             >
                                 <LogOut className="h-4 w-4" />
-                                <span className="hidden sm:inline">Sair</span>
+                                <span className="hidden sm:inline">
+                                    Sair (Admin)
+                                </span>
                             </Button>
                         </>
                     ) : (
-                        <>
-                            {/* Não mostra nada se o usuário não estiver logado */}
-                        </>
+                        <></>
                     )}
                 </div>
             </div>

@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { AuthProvider } from "@/contexts/AuthContext";
-import { CartProvider } from "@/contexts/CartContext"; // 1. Importa o CartProvider
+import { CartProvider } from "@/contexts/CartContext";
+import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext"; // 1. Importa Customer Auth
+
 import Login from "./pages/Login";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
@@ -29,48 +31,58 @@ const App = () => (
             <Toaster />
             <Sonner />
             <AuthProvider>
-                {/* 3. Envolve o BrowserRouter com o CartProvider */}
                 <CartProvider>
-                    <BrowserRouter>
-                        <Routes>
-                            {/* Rotas Públicas */}
-                            <Route path="/" element={<Index />} />
-                            <Route path="/login" element={<Login />} />
-                            <Route path="/aparelhos" element={<Aparelhos />} />
-                            <Route path="/promocoes" element={<Promocoes />} />
-                            <Route
-                                path="/acessorios"
-                                element={<Acessorios />}
-                            />{" "}
-                            {/* 4. Nova Rota */}
-                            {/* Rotas Protegidas */}
-                            <Route element={<ProtectedRoute />}>
-                                <Route path="/admin" element={<Admin />} />
+                    {/* 2. Envolve a aplicação no Customer Auth Provider */}
+                    <CustomerAuthProvider>
+                        <BrowserRouter>
+                            <Routes>
+                                {/* Rotas Públicas */}
+                                <Route path="/" element={<Index />} />
+                                <Route path="/login" element={<Login />} />
                                 <Route
-                                    path="/admin/products"
-                                    element={<AdminProducts />}
+                                    path="/aparelhos"
+                                    element={<Aparelhos />}
                                 />
                                 <Route
-                                    path="/admin/products/new"
-                                    element={<AdminProductForm />}
+                                    path="/promocoes"
+                                    element={<Promocoes />}
                                 />
                                 <Route
-                                    path="/admin/products/edit/:productId"
-                                    element={<AdminProductForm />}
+                                    path="/acessorios"
+                                    element={<Acessorios />}
                                 />
-                                <Route
-                                    path="/admin/stores"
-                                    element={<AdminStores />}
-                                />
-                                <Route
-                                    path="/admin/employees"
-                                    element={<AdminEmployees />}
-                                />
-                            </Route>
-                            {/* Rota de "Não Encontrado" */}
-                            <Route path="*" element={<NotFound />} />
-                        </Routes>
-                    </BrowserRouter>
+
+                                {/* Rotas Protegidas */}
+                                <Route element={<ProtectedRoute />}>
+                                    <Route path="/admin" element={<Admin />} />
+                                    <Route
+                                        path="/admin/products"
+                                        element={<AdminProducts />}
+                                    />
+                                    <Route
+                                        path="/admin/products/new"
+                                        element={<AdminProductForm />}
+                                    />
+                                    <Route
+                                        path="/admin/products/edit/:productId"
+                                        element={<AdminProductForm />}
+                                    />
+                                    <Route
+                                        path="/admin/stores"
+                                        element={<AdminStores />}
+                                    />
+                                    <Route
+                                        path="/admin/employees"
+                                        element={<AdminEmployees />}
+                                    />
+                                </Route>
+
+                                {/* Rota de "Não Encontrado" */}
+                                <Route path="*" element={<NotFound />} />
+                            </Routes>
+                        </BrowserRouter>
+                    </CustomerAuthProvider>{" "}
+                    {/* 3. Fechamento do Provider */}
                 </CartProvider>
             </AuthProvider>
         </TooltipProvider>

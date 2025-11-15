@@ -1,4 +1,10 @@
-// Este é o tipo para a Loja
+// --- Tipos de Dados da Aplicação (Cliente) ---
+export interface CustomerProfile {
+  name: string;
+  phone: string;
+}
+
+// --- Tipos de Dados da Aplicação (DB) ---
 export interface Store {
   id: string; 
   name: string;
@@ -6,7 +12,14 @@ export interface Store {
   city?: string | null;
 }
 
-// Este é o tipo para o Produto
+export interface Employee {
+  id: string;
+  name: string;
+  email: string;
+  store_id: string | null;
+  Stores: Store | null;
+}
+
 export interface Product {
   id: string; 
   name: string;
@@ -22,10 +35,8 @@ export interface Product {
   stores: Store[]; 
 }
 
-export interface Employee {
-  id: string;
-  name: string;
-  email: string;
-  store_id: string | null; // Apenas o ID
-  Stores: Store | null; // O Supabase vai aninhar o objeto da loja aqui
+// --- Tipos de Carrinho ---
+export interface CartItem {
+  product: Product;
+  quantity: number;
 }
