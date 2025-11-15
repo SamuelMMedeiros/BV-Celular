@@ -22,7 +22,7 @@ import {
     SheetHeader,
     SheetTitle,
     SheetTrigger,
-} from "@/components/ui/sheet"; // Importa componentes do Sheet
+} from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 
 // Definição dos links de navegação para reutilização
@@ -40,10 +40,10 @@ export const Navbar = () => {
         isLoggedIn,
         getGreeting,
         logout: customerLogout,
-    } = useCustomerAuth(); // Renomeia logout do cliente
+    } = useCustomerAuth();
 
     const isActive = (path: string) => location.pathname === path;
-    const [isMenuOpen, setIsMenuOpen] = useState(false); // Estado para fechar o menu ao clicar no link
+    const [isMenuOpen, setIsMenuOpen] = useState(false); // Estado para o menu hamburguer
 
     const handleAdminLogout = async () => {
         await supabase.auth.signOut();
@@ -55,7 +55,7 @@ export const Navbar = () => {
             <div className="container flex h-16 items-center justify-between">
                 {/* --- 1. Menu Hamburguer (MOBILE) e Logo --- */}
                 <div className="flex items-center space-x-2">
-                    {/* Botão do Hamburguer (Visível apenas em telas pequenas) */}
+                    {/* Botão do Hamburguer (Sheet Trigger) */}
                     <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                         <SheetTrigger asChild className="md:hidden">
                             <Button variant="ghost" size="icon">
@@ -84,7 +84,7 @@ export const Navbar = () => {
                                         size="lg"
                                         asChild
                                         className="justify-start"
-                                        onClick={() => setIsMenuOpen(false)} // Fecha o menu ao clicar
+                                        onClick={() => setIsMenuOpen(false)}
                                     >
                                         <Link
                                             to={link.to}
@@ -121,7 +121,7 @@ export const Navbar = () => {
                                     </Button>
                                 )}
 
-                                {/* 4. Saudação e Logout do Cliente (para contexto mobile) */}
+                                {/* Saudação e Logout do Cliente (para contexto mobile) */}
                                 {isLoggedIn && (
                                     <div className="mt-4 pt-4 border-t">
                                         <p className="text-sm font-medium mb-2">
@@ -179,11 +179,11 @@ export const Navbar = () => {
                         <CustomerAuthPopover />
                     </div>
 
-                    {/* 3.2 Botão do Carrinho (Drawer - Sempre visível) */}
+                    {/* 3.2 Botão do Carrinho (Drawer Trigger) --- */}
                     <CartDrawer />
 
                     {/* 3.3 Admin (Apenas se o Admin estiver logado - Desktop) */}
-                    {user && (
+                    {user ? (
                         <div className="hidden md:flex items-center">
                             <Button
                                 variant={
@@ -207,14 +207,14 @@ export const Navbar = () => {
                                 className="flex items-center gap-2 text-destructive hover:text-destructive"
                             >
                                 <LogOut className="h-4 w-4" />
-                                <span>Sair</span>
+                                <span>Sair (Admin)</span>
                             </Button>
                         </div>
+                    ) : (
+                        <></>
                     )}
                 </div>
             </div>
-            <SheetContent />{" "}
-            {/* Adicionando o SheetContent de volta no final do Drawer para evitar o erro de React Context */}
         </nav>
     );
 };
