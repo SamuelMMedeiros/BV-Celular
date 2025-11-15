@@ -10,10 +10,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-    useCustomerAuth,
-    CustomerAuthPopover,
-} from "@/components/CustomerAuthPopover"; // 1. Importa Customer Auth e Popover
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext"; // <<--- CORREÇÃO 1: Importa o hook do Context
+import { CustomerAuthPopover } from "@/components/CustomerAuthPopover"; // <<--- CORREÇÃO 2: Importa o componente Popover
 import { supabase } from "@/integrations/supabase/client";
 import { CartDrawer } from "@/contexts/CartContext";
 
@@ -21,7 +19,7 @@ export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, employeeProfile } = useAuth();
-    const { isLoggedIn, getGreeting } = useCustomerAuth(); // 2. Pega dados do Cliente Auth
+    const { isLoggedIn, getGreeting } = useCustomerAuth();
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -86,7 +84,7 @@ export const Navbar = () => {
                         </Link>
                     </Button>
 
-                    {/* --- 3. Login do Cliente e Saudação --- */}
+                    {/* --- Login do Cliente e Saudação --- */}
                     {isLoggedIn ? (
                         <div className="flex items-center space-x-2 border-r pr-3 ml-2">
                             <span className="text-sm font-medium hidden sm:inline">
