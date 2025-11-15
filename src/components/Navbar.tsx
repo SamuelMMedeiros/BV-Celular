@@ -2,24 +2,29 @@
 // === CÓDIGO COMPLETO PARA: src/components/Navbar.tsx ===
 //
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Smartphone, Tag, ShieldCheck, LogOut, User } from "lucide-react"; // 1. Importar User
+import {
+    Smartphone,
+    Tag,
+    ShieldCheck,
+    LogOut,
+    User,
+    MessageCircle,
+} from "lucide-react"; // 1. Importa MessageCircle
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/contexts/AuthContext"; // 2. Importar useAuth
-import { supabase } from "@/integrations/supabase/client"; // 3. Importar supabase
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useCart, CartDrawer } from "@/contexts/CartContext"; // 2. Importa Cart e Drawer
 
 export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    // 4. Pegar 'user' E 'employeeProfile'
     const { user, employeeProfile } = useAuth();
+    const { itemCount } = useCart(); // 3. Pega a contagem do carrinho
 
     const isActive = (path: string) => location.pathname === path;
 
-    // 5. Adicionar função de Logout
     const handleLogout = async () => {
-        // Faz o logout no Supabase
         await supabase.auth.signOut();
-        // Redireciona para a Home
         navigate("/");
     };
 
@@ -36,7 +41,7 @@ export const Navbar = () => {
                 </Link>
 
                 <div className="flex items-center gap-2">
-                    {/* --- Botões Públicos (Sempre visíveis) --- */}
+                    {/* --- Botões Públicos --- */}
                     <Button
                         variant={isActive("/aparelhos") ? "default" : "ghost"}
                         size="sm"
@@ -52,6 +57,21 @@ export const Navbar = () => {
                     </Button>
 
                     <Button
+                        // 4. Nova rota de Acessórios
+                        variant={isActive("/acessorios") ? "default" : "ghost"}
+                        size="sm"
+                        asChild
+                    >
+                        <Link
+                            to="/acessorios"
+                            className="flex items-center gap-2"
+                        >
+                            <Tag className="h-4 w-4" />
+                            <span className="hidden sm:inline">Acessórios</span>
+                        </Link>
+                    </Button>
+
+                    <Button
                         variant={isActive("/promocoes") ? "default" : "ghost"}
                         size="sm"
                         asChild
@@ -60,25 +80,26 @@ export const Navbar = () => {
                             to="/promocoes"
                             className="flex items-center gap-2"
                         >
-                            <Tag className="h-4 w-4" />
+                            <MessageCircle className="h-4 w-4" />
                             <span className="hidden sm:inline">Promoções</span>
                         </Link>
                     </Button>
 
-                    {/* --- 6. Lógica Condicional para Admin e Logout --- */}
+                    {/* --- Botão do Carrinho (Drawer Trigger) --- */}
+                    {/* O Drawer Trigger foi movido para o CartDrawer, que é importado */}
+                    <CartDrawer />
+
+                    {/* --- Lógica Condicional para Admin e Logout --- */}
                     {user ? (
                         <>
-                            {/* 7. Adicionar o nome do usuário */}
                             <div className="flex items-center gap-2 border-r pr-2 ml-2">
                                 <User className="h-4 w-4 text-muted-foreground" />
                                 <span className="hidden text-sm font-medium sm:inline">
-                                    {/* Usa o primeiro nome do perfil, ou 'Admin' como fallback */}
                                     {employeeProfile?.name.split(" ")[0] ||
                                         "Admin"}
                                 </span>
                             </div>
 
-                            {/* Mostra "Admin" se o usuário estiver logado */}
                             <Button
                                 variant={
                                     isActive("/admin") ? "default" : "ghost"
@@ -97,7 +118,6 @@ export const Navbar = () => {
                                 </Link>
                             </Button>
 
-                            {/* Mostra "Sair" se o usuário estiver logado */}
                             <Button
                                 variant="ghost"
                                 size="sm"

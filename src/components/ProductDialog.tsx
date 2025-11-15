@@ -1,4 +1,4 @@
-// src/components/ProductDialog.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
     Dialog,
     DialogContent,
@@ -8,16 +8,72 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Palette, HardDrive, Cpu, MessageCircle } from "lucide-react";
+import {
+    MapPin,
+    Palette,
+    HardDrive,
+    Cpu,
+    MessageCircle,
+    ShoppingCart,
+} from "lucide-react"; // Importa ShoppingCart
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Product } from "@/types"; // 1. Importe o tipo unificado que criamos
+import { Product, Store } from "@/types";
+import { useCart } from "@/contexts/CartContext"; // Importa o hook do carrinho
+import { useToast } from "@/hooks/use-toast"; // Para notificações
 
 interface ProductDialogProps {
     product: Product;
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }
+
+// Helper para "limpar" dados de array que vêm do Supabase
+const formatArrayData = (data: any): any[] => {
+    if (Array.isArray(data)) {
+        return data.flatMap((item) => {
+            if (typeof item === "string" && item.startsWith("[")) {
+                try {
+                    return JSON.parse(item);
+                } catch (e) {
+                    return item;
+                }
+            }
+            return item;
+        });
+    }
+    if (typeof data === "string" && data.startsWith("[")) {
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            return [];
+        }
+    }
+    if (typeof data === "string" && data.startsWith("{")) {
+        return data.replace(/[{}]/g, "").split(",");
+    }
+    return []; // Retorna vazio se for null ou outro tipo
+};
+
+// Helper para formatar preços (R$)
+const formatPrice = (priceInCents: number) => {
+    return (priceInCents / 100).toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+    });
+};
+
+// Função CORRIGIDA: Aceita o objeto Store e usa o número real
+const handleWhatsAppClick = (productName: string, store: Store) => {
+    const message = encodeURIComponent(
+        `Olá! Tenho interesse no ${productName} disponível na ${store.name}.`
+    );
+    // Remove tudo que não for dígito e usa o número SALVO
+    const whatsappNumber = store.whatsapp.replace(/\D/g, "");
+    window.open(
+        `https://wa.me/55${whatsappNumber}?text=${encodedMessage}`,
+        "_blank"
+    );
+};
 
 export const ProductDialog = ({
     product,
@@ -26,26 +82,31 @@ export const ProductDialog = ({
 }: ProductDialogProps) => {
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [showStoreSelection, setShowStoreSelection] = useState(false);
+    const { addItem } = useCart();
+    const { toast } = useToast();
 
-    const handleWhatsAppClick = (storeName: string) => {
-        const message = encodeURIComponent(
-            `Olá! Tenho interesse no ${product.name} disponível na ${storeName}.`
-        );
-        // Número de exemplo - será substituído pelos números reais das lojas
-        const whatsappNumber = "5511999999999";
-        window.open(
-            `https://wa.me/${whatsappNumber}?text=${message}`,
-            "_blank"
-        );
+    // Otimizado para só calcular se originalPrice existir e for maior
+    const discount =
+        product.originalPrice && product.originalPrice > product.price
+            ? Math.round(
+                  ((product.originalPrice - product.price) /
+                      product.originalPrice) *
+                      100
+              )
+            : 0;
+
+    const images = formatArrayData(product.images);
+    const colors = formatArrayData(product.colors).join(", ") || "Cor única";
+
+    // Lógica de adicionar ao carrinho
+    const handleAddToCart = () => {
+        addItem(product);
+        toast({
+            title: "Adicionado ao Carrinho",
+            description: `${product.name} adicionado com sucesso.`,
+            variant: "default",
+        });
     };
-
-    const discount = product.originalPrice
-        ? Math.round(
-              ((product.originalPrice - product.price) /
-                  product.originalPrice) *
-                  100
-          )
-        : 0;
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -53,7 +114,8 @@ export const ProductDialog = ({
                 <DialogHeader>
                     <DialogTitle className="flex items-center justify-between">
                         <span>{product.name}</span>
-                        {product.isPromotion && (
+                        {/* (Resolve 4) Adicionado "discount > 0" */}
+                        {discount > 0 && product.isPromotion && (
                             <Badge className="bg-destructive text-destructive-foreground">
                                 -{discount}% OFF
                             </Badge>
@@ -71,9 +133,8 @@ export const ProductDialog = ({
                             <AnimatePresence mode="wait">
                                 <motion.img
                                     key={currentImageIndex}
-                                    // 2. MUDANÇA AQUI: Checagem de nulo
                                     src={
-                                        product.images?.[currentImageIndex] ||
+                                        images[currentImageIndex] ||
                                         "/placeholder.svg"
                                     }
                                     alt={`${product.name} - Imagem ${
@@ -88,10 +149,9 @@ export const ProductDialog = ({
                             </AnimatePresence>
                         </div>
 
-                        {/* 3. MUDANÇA AQUI: Checagem de nulo */}
-                        {(product.images?.length || 0) > 1 && (
+                        {images.length > 1 && (
                             <div className="mt-2 flex gap-2">
-                                {product.images?.map((image, index) => (
+                                {images.map((image, index) => (
                                     <button
                                         key={index}
                                         onClick={() =>
@@ -116,18 +176,15 @@ export const ProductDialog = ({
 
                     {/* Details */}
                     <div className="space-y-4">
-                        {/* Price (Não muda) */}
+                        {/* Price */}
                         <div>
-                            {product.originalPrice && (
+                            {discount > 0 && product.originalPrice && (
                                 <p className="text-sm text-muted-foreground line-through">
-                                    De R${" "}
-                                    {product.originalPrice.toLocaleString(
-                                        "pt-BR"
-                                    )}
+                                    De R$ {formatPrice(product.originalPrice)}
                                 </p>
                             )}
                             <p className="text-3xl font-bold text-primary">
-                                R$ {product.price.toLocaleString("pt-BR")}
+                                R$ {formatPrice(product.price)}
                             </p>
                         </div>
 
@@ -135,25 +192,27 @@ export const ProductDialog = ({
                         <div className="space-y-2 text-sm">
                             <div className="flex items-center gap-2 text-muted-foreground">
                                 <HardDrive className="h-4 w-4" />
+                                {/* (Correção UX) Armazenamento em maiúscula */}
                                 <span>
-                                    Armazenamento: {product.storage || "N/A"}
+                                    Armazenamento:{" "}
+                                    {product.storage?.toUpperCase() || "N/A"}
                                 </span>
                             </div>
                             <div className="flex items-center gap-2 text-muted-foreground">
                                 <Cpu className="h-4 w-4" />
-                                <span>Memória RAM: {product.ram || "N/A"}</span>
+                                {/* (Correção UX) RAM em maiúscula */}
+                                <span>
+                                    Memória RAM:{" "}
+                                    {product.ram?.toUpperCase() || "N/A"}
+                                </span>
                             </div>
                             <div className="flex items-center gap-2 text-muted-foreground">
                                 <Palette className="h-4 w-4" />
-                                {/* 4. MUDANÇA AQUI: Checagem de nulo */}
-                                <span>
-                                    Cores:{" "}
-                                    {product.colors?.join(", ") || "Cor única"}
-                                </span>
+                                <span>Cores: {colors}</span>
                             </div>
                         </div>
 
-                        {/* Description (Não muda) */}
+                        {/* Description */}
                         <div>
                             <h4 className="mb-2 font-semibold">Descrição</h4>
                             <p className="text-sm text-muted-foreground">
@@ -168,7 +227,6 @@ export const ProductDialog = ({
                                 Disponível em:
                             </h4>
                             <div className="flex flex-wrap gap-2">
-                                {/* 5. MUDANÇA AQUI: Iterar sobre objetos 'stores' */}
                                 {product.stores.map((store) => (
                                     <Badge key={store.id} variant="secondary">
                                         {store.name}
@@ -177,15 +235,26 @@ export const ProductDialog = ({
                             </div>
                         </div>
 
-                        {/* Actions */}
+                        {/* Novo botão de Adicionar ao Carrinho */}
+                        <Button
+                            size="lg"
+                            className="w-full"
+                            onClick={handleAddToCart}
+                        >
+                            <ShoppingCart className="mr-2 h-5 w-5" />
+                            Adicionar ao Carrinho
+                        </Button>
+
+                        {/* Actions (Comprar via WhatsApp) */}
                         {!showStoreSelection ? (
                             <Button
                                 className="w-full"
+                                variant="outline"
                                 size="lg"
                                 onClick={() => setShowStoreSelection(true)}
                             >
                                 <MessageCircle className="mr-2 h-5 w-5" />
-                                Comprar via WhatsApp
+                                Comprar via WhatsApp (Loja Única)
                             </Button>
                         ) : (
                             <motion.div
@@ -196,14 +265,17 @@ export const ProductDialog = ({
                                 <p className="text-sm font-medium">
                                     Escolha uma loja:
                                 </p>
-                                {/* 6. MUDANÇA AQUI: Iterar sobre objetos 'stores' */}
                                 {product.stores.map((store) => (
                                     <Button
                                         key={store.id}
                                         variant="outline"
                                         className="w-full justify-start"
+                                        // 4. CORREÇÃO: Passa o objeto 'store' inteiro
                                         onClick={() =>
-                                            handleWhatsAppClick(store.name)
+                                            handleWhatsAppClick(
+                                                product.name,
+                                                store
+                                            )
                                         }
                                     >
                                         <MessageCircle className="mr-2 h-4 w-4" />

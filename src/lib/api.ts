@@ -1,20 +1,23 @@
+/* eslint-disable prefer-const */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 //
-// === CÓDIGO COMPLETO PARA: src/lib/api.ts ===
+// === CÓDIGO COMPLETO FINAL PARA: src/lib/api.ts ===
 //
 import { supabase } from "@/integrations/supabase/client";
-import { Product, Store, Employee } from "@/types"; // 1. Importar Employee
+import { Product, Store, Employee } from "@/types";
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid';
 
 // --- Tipos de Payload (Produtos) ---
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
   store_ids: string[];
-  image_files: FileList;
+  image_files: File[];
 };
+
 export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
   id: string;
-  current_images: string[] | null | undefined;
-  image_files?: FileList;
+  image_files?: File[];
+  images_to_delete?: string[];
 };
 
 // --- Tipos de Payload (Lojas) ---
@@ -34,7 +37,26 @@ export type EmployeeUpdatePayload = Database['public']['Tables']['Employees']['U
 // FUNÇÕES DE API (PRODUTOS)
 // ==================================================================
 
-export const fetchProducts = async (params: { q?: string } = {}): Promise<Product[]> => {
+// Helper para "limpar" dados de array que vêm do Supabase
+const parseArrayData = (data: any): any[] => {
+  if (Array.isArray(data)) {
+    return data.flatMap(item => {
+      if (typeof item === 'string' && item.startsWith('[')) {
+        try { return JSON.parse(item); } catch (e) { return item; }
+      }
+      return item;
+    });
+  }
+  if (typeof data === 'string' && data.startsWith('[')) {
+    try { return JSON.parse(data); } catch (e) { return []; }
+  }
+  if (typeof data === 'string' && data.startsWith('{')) {
+    return data.replace(/[{}]/g, '').split(',');
+  }
+  return []; // Retorna vazio se for null ou outro tipo
+}
+
+export const fetchProducts = async (params: { q?: string; category?: 'aparelho' | 'acessorio', isPromotion?: boolean } = {}): Promise<Product[]> => {
   let query = supabase
     .from('Products')
     .select(`
@@ -44,36 +66,31 @@ export const fetchProducts = async (params: { q?: string } = {}): Promise<Produc
           id, name, whatsapp, city
         )
       )
-    `)
-    .eq('category', 'aparelho')
-    .eq('isPromotion', false);
+    `);
 
-  if (params.q && params.q.length > 0) {
-    query = query.ilike('name', `%${params.q}%`);
-  }
-
+  if (params.category) query = query.eq('category', params.category);
+  if (params.isPromotion !== undefined) query = query.eq('isPromotion', params.isPromotion);
+  if (params.q) query = query.ilike('name', `%${params.q}%`);
+  
   const { data: rawProducts, error } = await query;
-
-  if (error) {
-    console.error("Erro ao buscar produtos no Supabase:", error);
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 
   const products = rawProducts.map(product => {
-    const stores: Store[] = product.ProductStores
+    const stores: Store[] = (product.ProductStores || [])
       .map((ps: any) => ps.Stores)
       .filter((store: any): store is Store => store !== null); 
     
     return {
       ...product,
       stores: stores,
-    } as Product;
+      colors: parseArrayData(product.colors),
+      images: parseArrayData(product.images),
+    } as unknown as Product;
   });
-
   return products;
 };
 
-export const fetchPromotions = async (): Promise<Product[]> => {
+export const fetchPromotions = async (params: { q?: string } = {}): Promise<Product[]> => {
   let query = supabase
     .from('Products')
     .select(`
@@ -86,24 +103,22 @@ export const fetchPromotions = async (): Promise<Product[]> => {
     `)
     .eq('isPromotion', true);
 
-  const { data: rawProducts, error } = await query;
+  if (params.q) query = query.ilike('name', `%${params.q}%`);
 
-  if (error) {
-    console.error("Erro ao buscar promoções no Supabase:", error);
-    throw new Error(error.message);
-  }
+  const { data: rawProducts, error } = await query;
+  if (error) throw new Error(error.message);
 
   const products = rawProducts.map(product => {
-    const stores: Store[] = product.ProductStores
+    const stores: Store[] = (product.ProductStores || [])
       .map((ps: any) => ps.Stores)
       .filter((store: any): store is Store => store !== null); 
-    
     return {
       ...product,
       stores: stores,
-    } as Product;
+      colors: parseArrayData(product.colors),
+      images: parseArrayData(product.images),
+    } as unknown as Product;
   });
-
   return products;
 };
 
@@ -118,31 +133,25 @@ export const fetchAllProducts = async (): Promise<Product[]> => {
         )
       )
     `)
-    .order('created_at', { ascending: false });
-
+    .order('created_at', { ascending: false }); 
   const { data: rawProducts, error } = await query;
-
-  if (error) {
-    console.error("Erro ao buscar TODOS os produtos no Supabase:", error);
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 
   const products = rawProducts.map(product => {
-    const stores: Store[] = product.ProductStores
+    const stores: Store[] = (product.ProductStores || [])
       .map((ps: any) => ps.Stores)
       .filter((store: any): store is Store => store !== null); 
-    
     return {
       ...product,
       stores: stores,
-    } as Product;
+      colors: parseArrayData(product.colors),
+      images: parseArrayData(product.images),
+    } as unknown as Product;
   });
-
   return products;
 };
 
 export const fetchProductById = async (productId: string): Promise<Product> => {
-  
   let { data: rawProduct, error } = await supabase
     .from('Products')
     .select(`
@@ -153,59 +162,58 @@ export const fetchProductById = async (productId: string): Promise<Product> => {
         )
       )
     `)
-    .eq('id', productId) // Filtro: Pelo ID
-    .single(); // Espera um resultado único
+    .eq('id', productId)
+    .single();
 
-  if (error) {
-    console.error("Erro ao buscar produto por ID:", error);
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
+  if (!rawProduct) throw new Error("Produto não encontrado");
   
-  if (!rawProduct) {
-    throw new Error("Produto não encontrado");
-  }
-
-  // Mesma lógica de transformação
-  const stores: Store[] = rawProduct.ProductStores
+  const stores: Store[] = (rawProduct.ProductStores || [])
     .map((ps: any) => ps.Stores)
     .filter((store: any): store is Store => store !== null); 
   
   const product = {
     ...rawProduct,
     stores: stores,
-  } as Product;
-
+    colors: parseArrayData(rawProduct.colors),
+    images: parseArrayData(rawProduct.images),
+  } as unknown as Product;
   return product;
 };
 
+// Helper para extrair nome do arquivo da URL do Supabase
+const getFileNameFromUrl = (url: string): string => {
+  try {
+    const newUrl = new URL(url);
+    const parts = newUrl.pathname.split('/');
+    const bucketName = 'product-images';
+    const bucketIndex = parts.indexOf(bucketName);
+    if (bucketIndex > -1 && parts.length > bucketIndex + 1) {
+      return parts.slice(bucketIndex + 1).join('/');
+    }
+    return parts[parts.length - 1];
+  } catch (e) {
+    return '';
+  }
+}
+
 export const createProduct = async (payload: ProductInsertPayload): Promise<void> => {
-  
-  // ----- 1. Upload de Imagens -----
   const imageUrls: string[] = [];
   if (payload.image_files && payload.image_files.length > 0) {
-    for (const file of Array.from(payload.image_files)) {
+    for (const file of payload.image_files) {
       const fileName = `${uuidv4()}-${file.name}`;
-      
       const { data: uploadData, error: uploadError } = await supabase
         .storage
-        .from('product-images') // Nome do seu Bucket de Storage
+        .from('product-images')
         .upload(fileName, file);
-
-      if (uploadError) {
-        console.error("Erro no upload da imagem:", uploadError);
-        throw new Error(uploadError.message);
-      }
-
+      if (uploadError) throw new Error(uploadError.message);
       const { data: publicUrlData } = supabase
         .storage
         .from('product-images')
         .getPublicUrl(uploadData.path);
-      
       imageUrls.push(publicUrlData.publicUrl);
     }
   }
-
-  // ----- 2. Preparar Dados do Produto -----
   const productData: Database['public']['Tables']['Products']['Insert'] = {
     name: payload.name,
     description: payload.description,
@@ -213,88 +221,76 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
     originalPrice: payload.originalPrice,
     storage: payload.storage,
     ram: payload.ram,
-    colors: payload.colors,
+    colors: payload.colors || [],
     isPromotion: payload.isPromotion,
     category: payload.category,
-    images: imageUrls, // Salva o array de URLs
+    images: imageUrls,
   };
-
-  // ----- 3. Inserir o Produto no Banco -----
   const { data: newProduct, error: productError } = await supabase
     .from('Products')
     .insert(productData)
-    .select('id') // Pega o ID do produto recém-criado
-    .single(); // Espera apenas um resultado
-
-  if (productError) {
-    console.error("Erro ao criar produto:", productError);
-    throw new Error(productError.message);
-  }
-
+    .select('id')
+    .single();
+  if (productError) throw new Error(productError.message);
   const newProductId = newProduct.id;
-
-  // ----- 4. Ligar Produto às Lojas (Tabela de Junção) -----
   if (payload.store_ids && payload.store_ids.length > 0) {
     const productStoreRelations = payload.store_ids.map(storeId => ({
       product_id: newProductId,
       store_id: storeId,
     }));
-
     const { error: relationError } = await supabase
       .from('ProductStores')
       .insert(productStoreRelations);
-
-    if (relationError) {
-      console.error("Erro ao ligar produto às lojas:", relationError);
-      throw new Error(relationError.message);
-    }
+    if (relationError) throw new Error(relationError.message);
   }
 };
 
 export const updateProduct = async (payload: ProductUpdatePayload): Promise<void> => {
   
-  let newImageUrls: string[] | undefined = undefined;
+  // ----- 1. Deletar imagens marcadas para exclusão -----
+  if (payload.images_to_delete && payload.images_to_delete.length > 0) {
+    const fileNames = payload.images_to_delete.map(getFileNameFromUrl).filter(Boolean);
+    if (fileNames.length > 0) {
+      const { error: removeError } = await supabase
+        .storage
+        .from('product-images')
+        .remove(fileNames);
+      if (removeError) console.error("Erro ao deletar imagens antigas:", removeError);
+    }
+  }
 
-  // ----- 1. Lidar com Imagens (Se novas imagens foram enviadas) -----
+  // ----- 2. Fazer upload de novas imagens (se houver) -----
+  const newImageUrls: string[] = [];
   if (payload.image_files && payload.image_files.length > 0) {
-    newImageUrls = []; // Inicializa o array
-
-    // A. Fazer upload das novas imagens
-    for (const file of Array.from(payload.image_files)) {
+    for (const file of payload.image_files) {
       const fileName = `${uuidv4()}-${file.name}`;
       const { data: uploadData, error: uploadError } = await supabase
         .storage
         .from('product-images')
         .upload(fileName, file);
-
-      if (uploadError) {
-        console.error("Erro no upload de novas imagens:", uploadError);
-        throw new Error(uploadError.message);
-      }
-      
+      if (uploadError) throw new Error(uploadError.message);
       const { data: publicUrlData } = supabase
         .storage
         .from('product-images')
         .getPublicUrl(uploadData.path);
       newImageUrls.push(publicUrlData.publicUrl);
     }
-
-    // B. Deletar as imagens antigas do Storage
-    if (payload.current_images && payload.current_images.length > 0) {
-      const oldFileNames = payload.current_images.map(url => {
-        const parts = url.split('product-images/');
-        return parts[parts.length - 1];
-      });
-      
-      await supabase
-        .storage
-        .from('product-images')
-        .remove(oldFileNames);
-      // Não tratamos o erro aqui para não interromper o fluxo
-    }
   }
   
-  // ----- 2. Preparar Dados do Produto para Update -----
+  // ----- 3. Preparar Dados do Produto para Update -----
+  const { data: currentProduct, error: fetchError } = await supabase
+    .from('Products')
+    .select('images')
+    .eq('id', payload.id)
+    .single();
+  if (fetchError) throw new Error(fetchError.message);
+
+  const currentImages = parseArrayData(currentProduct?.images);
+  const remainingImages = currentImages.filter(
+    url => !payload.images_to_delete?.includes(url)
+  );
+  const finalImageUrls = [...remainingImages, ...newImageUrls];
+  
   const productData: Database['public']['Tables']['Products']['Update'] = {
     name: payload.name,
     description: payload.description,
@@ -302,93 +298,59 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     originalPrice: payload.originalPrice,
     storage: payload.storage,
     ram: payload.ram,
-    colors: payload.colors,
+    colors: payload.colors || [],
     isPromotion: payload.isPromotion,
     category: payload.category,
-    images: newImageUrls,
+    images: finalImageUrls,
   };
 
-  // ----- 3. Atualizar o Produto no Banco -----
+  // ----- 4. Atualizar o Produto no Banco -----
   const { error: productError } = await supabase
     .from('Products')
     .update(productData)
     .eq('id', payload.id);
-
-  if (productError) {
-    console.error("Erro ao atualizar produto:", productError);
-    throw new Error(productError.message);
-  }
-
-  // ----- 4. Atualizar Relações Produto-Lojas (Modo Simples: Deleta todas e Recria) -----
+  if (productError) throw new Error(productError.message);
   
-  // A. Deleta todas as relações existentes para este produto
+  // ----- 5. Atualizar Relações Produto-Lojas -----
   const { error: deleteRelationError } = await supabase
     .from('ProductStores')
     .delete()
     .eq('product_id', payload.id);
-
-  if (deleteRelationError) {
-    console.error("Erro ao limpar relações antigas:", deleteRelationError);
-    throw new Error(deleteRelationError.message);
-  }
-
-  // B. Recria as relações com base no formulário
+  if (deleteRelationError) throw new Error(deleteRelationError.message);
+  
   if (payload.store_ids && payload.store_ids.length > 0) {
     const productStoreRelations = payload.store_ids.map(storeId => ({
       product_id: payload.id,
       store_id: storeId,
     }));
-
     const { error: insertRelationError } = await supabase
       .from('ProductStores')
       .insert(productStoreRelations);
-
-    if (insertRelationError) {
-      console.error("Erro ao recriar relações do produto:", insertRelationError);
-      throw new Error(insertRelationError.message);
-    }
+    if (insertRelationError) throw new Error(insertRelationError.message);
   }
 };
 
 export const deleteProduct = async (product: Product): Promise<void> => {
   if (!product.id) throw new Error("ID do produto não encontrado.");
-
-  // 1. Deletar relações da tabela de junção 'ProductStores'
   const { error: relationError } = await supabase
     .from('ProductStores')
     .delete()
     .eq('product_id', product.id);
-
-  if (relationError) {
-    console.error("Erro ao deletar relações do produto:", relationError);
-    throw new Error(relationError.message);
-  }
-
-  // 2. Deletar o produto da tabela 'Products'
+  if (relationError) throw new Error(relationError.message);
   const { error: productError } = await supabase
     .from('Products')
     .delete()
     .eq('id', product.id);
+  if (productError) throw new Error(productError.message);
 
-  if (productError) {
-    console.error("Erro ao deletar produto:", productError);
-    throw new Error(productError.message);
-  }
-
-  // 3. Deletar imagens do Storage (se houver)
   if (product.images && product.images.length > 0) {
-    const fileNames = product.images.map(url => {
-      const parts = url.split('product-images/');
-      return parts[parts.length - 1];
-    });
-    
-    const { error: storageError } = await supabase
-      .storage
-      .from('product-images')
-      .remove(fileNames);
-
-    if (storageError) {
-      console.warn("Produto deletado, mas falha ao limpar imagens do Storage:", storageError);
+    const fileNames = product.images.map(getFileNameFromUrl).filter(Boolean);
+    if (fileNames.length > 0) {
+      const { error: storageError } = await supabase
+        .storage
+        .from('product-images')
+        .remove(fileNames);
+      if (storageError) console.warn("Produto deletado, mas falha ao limpar imagens do Storage:", storageError);
     }
   }
 };
@@ -401,69 +363,41 @@ export const fetchStores = async (): Promise<Store[]> => {
     .from('Stores')
     .select('*')
     .order('name');
-  if (error) {
-    console.error("Erro ao buscar lojas:", error);
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
   return data as Store[];
 };
-
 export const createStore = async (payload: StoreInsertPayload) => {
   const { error } = await supabase
     .from('Stores')
     .insert(payload);
-  
-  if (error) {
-    console.error("Erro ao criar loja:", error);
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 };
-
 export const updateStore = async (payload: StoreUpdatePayload) => {
   const { id, ...updateData } = payload;
   if (!id) throw new Error("ID da loja é obrigatório para atualizar.");
-
   const { error } = await supabase
     .from('Stores')
     .update(updateData)
     .eq('id', id);
-
-  if (error) {
-    console.error("Erro ao atualizar loja:", error);
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 };
-
 export const deleteStore = async (storeId: string) => {
   if (!storeId) throw new Error("ID da loja não encontrado.");
-
-  // 1. Deletar relações na tabela de junção 'ProductStores'
   const { error: relationError } = await supabase
     .from('ProductStores')
     .delete()
     .eq('store_id', storeId);
-  
-  if (relationError) {
-    console.error("Erro ao deletar relações da loja:", relationError);
-    throw new Error(relationError.message);
-  }
-  
-  // 2. Deletar a loja
+  if (relationError) throw new Error(relationError.message);
   const { error: storeError } = await supabase
     .from('Stores')
     .delete()
     .eq('id', storeId);
-
-  if (storeError) {
-    console.error("Erro ao deletar loja:", storeError);
-    throw new Error(storeError.message);
-  }
+  if (storeError) throw new Error(storeError.message);
 };
 
 // ==================================================================
 // FUNÇÕES DE API (FUNCIONÁRIOS)
 // ==================================================================
-
 export const fetchEmployees = async (): Promise<Employee[]> => {
   const { data, error } = await supabase
     .from('Employees')
@@ -475,20 +409,11 @@ export const fetchEmployees = async (): Promise<Employee[]> => {
       Stores ( id, name )
     `)
     .order('name');
-  
-  if (error) {
-    console.error("Erro ao buscar funcionários:", error);
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
   return data as Employee[];
 };
 
-// ==================================================================
-// ESTA É A NOVA FUNÇÃO
-// ==================================================================
-/**
- * [AUTH] Busca o perfil de um funcionário pelo seu ID de autenticação.
- */
+// CORRIGIDO (Resolve o erro de importação)
 export const fetchEmployeeProfile = async (userId: string): Promise<Employee | null> => {
   const { data, error } = await supabase
     .from('Employees')
@@ -499,63 +424,37 @@ export const fetchEmployeeProfile = async (userId: string): Promise<Employee | n
       store_id,
       Stores ( id, name )
     `)
-    .eq('id', userId) // Busca pelo ID (que deve ser o mesmo do auth.users)
+    .eq('id', userId)
     .single();
-
   if (error) {
-    // Se 'single()' não encontrar nada, ele dá um erro 'PGRST116'
     if (error.code === 'PGRST116') {
-      return null; // Usuário autenticado, mas sem perfil na tabela Employees
+      return null; 
     }
-    console.error("Erro ao buscar perfil do funcionário:", error);
     throw new Error(error.message);
   }
   return data as Employee;
 };
-// ==================================================================
 
 export const createEmployee = async (payload: EmployeeInsertPayload) => {
   const { error } = await supabase
     .from('Employees')
     .insert(payload);
-  
-  if (error) {
-    console.error("Erro ao criar funcionário:", error);
-    if (error.code === '23505') { 
-      throw new Error("Este e-mail já está em uso.");
-    }
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 };
-
 export const updateEmployee = async (payload: EmployeeUpdatePayload) => {
   const { id, ...updateData } = payload;
-  if (!id) throw new Error("ID do funcionário é obrigatório para atualizar.");
-
+  if (!id) throw new Error("ID da loja é obrigatório para atualizar.");
   const { error } = await supabase
     .from('Employees')
     .update(updateData)
     .eq('id', id);
-
-  if (error) {
-    console.error("Erro ao atualizar funcionário:", error);
-    if (error.code === '23505') {
-      throw new Error("Este e-mail já está em uso.");
-    }
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 };
-
 export const deleteEmployee = async (employeeId: string) => {
   if (!employeeId) throw new Error("ID do funcionário não encontrado.");
-  
   const { error } = await supabase
     .from('Employees')
     .delete()
     .eq('id', employeeId);
-
-  if (error) {
-    console.error("Erro ao deletar funcionário:", error);
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 };

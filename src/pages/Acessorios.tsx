@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchProducts } from "@/lib/api";
 import { Product } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Smartphone } from "lucide-react";
+import { Headset } from "lucide-react"; // Usando Headset para acessórios
 
 // Componente para o estado de Loading
 const ProductGridSkeleton = () => (
@@ -25,7 +25,7 @@ const ProductGridSkeleton = () => (
     </div>
 );
 
-const Aparelhos = () => {
+const Acessorios = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
@@ -37,18 +37,18 @@ const Aparelhos = () => {
         return () => clearTimeout(timerId);
     }, [searchTerm]);
 
-    // Busca os dados usando React Query (Filtrando por 'aparelho')
+    // Busca os dados usando React Query (Filtrando por 'acessorio')
     const {
         data: products,
         isLoading,
         isError,
     } = useQuery<Product[]>({
-        queryKey: ["products", "aparelhos", debouncedSearchTerm],
-        // fetchProducts busca produtos que NÃO são promoção E a categoria é 'aparelho'
+        queryKey: ["products", "acessorios", debouncedSearchTerm],
+        // ALTERAÇÃO AQUI: categoria é 'acessorio'
         queryFn: () =>
             fetchProducts({
                 q: debouncedSearchTerm,
-                category: "aparelho",
+                category: "acessorio",
                 isPromotion: false,
             }),
     });
@@ -61,14 +61,15 @@ const Aparelhos = () => {
                 {/* Header */}
                 <div className="mb-8 flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent">
-                        <Smartphone className="h-6 w-6 text-accent-foreground" />
+                        <Headset className="h-6 w-6 text-accent-foreground" />
                     </div>
                     <div>
                         <h1 className="text-3xl font-bold text-foreground">
-                            Aparelhos
+                            Acessórios
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Veja os últimos lançamentos e modelos disponíveis.
+                            Tudo o que você precisa para complementar seu
+                            aparelho.
                         </p>
                     </div>
                 </div>
@@ -78,7 +79,7 @@ const Aparelhos = () => {
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                         type="text"
-                        placeholder="Buscar por nome ou modelo..."
+                        placeholder="Buscar por cabo, película ou fone..."
                         className="pl-10"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -91,7 +92,7 @@ const Aparelhos = () => {
                 {isError && (
                     <div className="py-20 text-center">
                         <p className="text-destructive">
-                            Erro ao carregar os produtos.
+                            Erro ao carregar os acessórios.
                         </p>
                     </div>
                 )}
@@ -117,7 +118,7 @@ const Aparelhos = () => {
                         ) : (
                             <div className="py-20 text-center">
                                 <p className="text-muted-foreground">
-                                    Nenhum aparelho encontrado.
+                                    Nenhum acessório encontrado.
                                 </p>
                             </div>
                         )}
@@ -128,4 +129,4 @@ const Aparelhos = () => {
     );
 };
 
-export default Aparelhos;
+export default Acessorios;
