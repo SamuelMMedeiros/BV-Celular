@@ -15,12 +15,12 @@ import {
     Cpu,
     MessageCircle,
     ShoppingCart,
-} from "lucide-react"; // Importa ShoppingCart
+} from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Product, Store } from "@/types";
-import { useCart } from "@/contexts/CartContext"; // Importa o hook do carrinho
-import { useToast } from "@/hooks/use-toast"; // Para notificações
+import { useCart } from "@/contexts/CartContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProductDialogProps {
     product: Product;
@@ -62,17 +62,20 @@ const formatPrice = (priceInCents: number) => {
     });
 };
 
-// Função CORRIGIDA: Aceita o objeto Store e usa o número real
+// 1. FUNÇÃO CORRIGIDA: Garante o formato correto para o wa.me API
 const handleWhatsAppClick = (productName: string, store: Store) => {
     const message = encodeURIComponent(
         `Olá! Tenho interesse no ${productName} disponível na ${store.name}.`
     );
-    // Remove tudo que não for dígito e usa o número SALVO
-    const whatsappNumber = store.whatsapp.replace(/\D/g, "");
-    window.open(
-        `https://wa.me/55${whatsappNumber}?text=${encodedMessage}`,
-        "_blank"
-    );
+
+    // 2. CORREÇÃO PRINCIPAL: Limpa e garante o prefixo '55'
+    const cleanedNumber = store.whatsapp.replace(/\D/g, "");
+    const finalNumber = cleanedNumber.startsWith("55")
+        ? cleanedNumber
+        : "55" + cleanedNumber;
+
+    // 3. Abre o link com o número final limpo e formatado
+    window.open(`https://wa.me/${finalNumber}?text=${message}`, "_blank");
 };
 
 export const ProductDialog = ({
@@ -114,7 +117,6 @@ export const ProductDialog = ({
                 <DialogHeader>
                     <DialogTitle className="flex items-center justify-between">
                         <span>{product.name}</span>
-                        {/* (Resolve 4) Adicionado "discount > 0" */}
                         {discount > 0 && product.isPromotion && (
                             <Badge className="bg-destructive text-destructive-foreground">
                                 -{discount}% OFF
@@ -192,7 +194,6 @@ export const ProductDialog = ({
                         <div className="space-y-2 text-sm">
                             <div className="flex items-center gap-2 text-muted-foreground">
                                 <HardDrive className="h-4 w-4" />
-                                {/* (Correção UX) Armazenamento em maiúscula */}
                                 <span>
                                     Armazenamento:{" "}
                                     {product.storage?.toUpperCase() || "N/A"}
@@ -200,7 +201,6 @@ export const ProductDialog = ({
                             </div>
                             <div className="flex items-center gap-2 text-muted-foreground">
                                 <Cpu className="h-4 w-4" />
-                                {/* (Correção UX) RAM em maiúscula */}
                                 <span>
                                     Memória RAM:{" "}
                                     {product.ram?.toUpperCase() || "N/A"}
@@ -270,7 +270,7 @@ export const ProductDialog = ({
                                         key={store.id}
                                         variant="outline"
                                         className="w-full justify-start"
-                                        // 4. CORREÇÃO: Passa o objeto 'store' inteiro
+                                        // 4. CHAMA A FUNÇÃO CORRIGIDA
                                         onClick={() =>
                                             handleWhatsAppClick(
                                                 product.name,

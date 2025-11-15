@@ -7,8 +7,14 @@ import {
     useMemo,
 } from "react";
 import { Product, Store } from "@/types";
-import { MessageCircle, Trash2, ShoppingCart } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button"; // Importa buttonVariants
+import {
+    MessageCircle,
+    Trash2,
+    ShoppingCart,
+    ArrowLeft,
+    Store as StoreIcon,
+} from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
     Drawer,
     DrawerContent,
@@ -17,8 +23,10 @@ import {
     DrawerDescription,
     DrawerTrigger,
     DrawerFooter,
-    DrawerClose,
-} from "@/components/ui/drawer"; // IMPORTAÇÃO CORRETA DO DRAWER
+} from "@/components/ui/drawer";
+import { useQuery } from "@tanstack/react-query";
+import { fetchStores } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // --- 1. Definição do Tipo de Item do Carrinho ---
 export interface CartItem {
@@ -34,7 +42,7 @@ interface CartContextType {
     updateQuantity: (productId: string, quantity: number) => void;
     clearCart: () => void;
     itemCount: number;
-    generateWhatsAppMessage: (stores: Store[]) => string;
+    generateWhatsAppMessage: (items: CartItem[]) => string;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -110,58 +118,49 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         setItems([]);
     }, []);
 
-    // --- Função de Geração de Mensagem para WhatsApp ---
-    const generateWhatsAppMessage = useCallback(
-        (stores: Store[]): string => {
-            if (items.length === 0) return "O carrinho está vazio.";
+    // --- Função de Geração de Mensagem para WhatsApp (REESCRITA) ---
+    const generateWhatsAppMessage = useCallback((items: CartItem[]): string => {
+        if (items.length === 0) return "O carrinho está vazio.";
 
-            let message = "*🛒 Pedido BV Celular*\n\n";
-            let totalValue = 0;
+        const customerNamePlaceholder = "[NOME DO CLIENTE]"; // Placeholder
+        let totalValue = 0;
 
-            items.forEach((item, index) => {
-                const price = item.product.price / 100;
-                totalValue += price * item.quantity;
+        // --- Header ---
+        let message = `👋 *NOVO PEDIDO DE ORÇAMENTO!*
+    
+👤 Cliente: ${customerNamePlaceholder}
+📱 Origem: Website BV Celular
+    
+---
+*📋 ITENS DO CARRINHO:*\n`;
 
-                message += `${index + 1}. *${item.product.name}* (x${
-                    item.quantity
-                })\n`;
-                message += `   Preço Unid.: R$ ${price.toLocaleString("pt-BR", {
-                    minimumFractionDigits: 2,
-                })}\n`;
-            });
+        // --- Lista de Itens ---
+        items.forEach((item, index) => {
+            const price = item.product.price / 100;
+            totalValue += price * item.quantity;
 
-            message +=
-                "\n*Total do Pedido:* R$ " +
-                totalValue.toLocaleString("pt-BR", {
-                    minimumFractionDigits: 2,
-                });
-            message += "\n\n---";
+            message += `\n${index + 1}. *${item.product.name}* (x${
+                item.quantity
+            })`;
+            message += `\n   💰 Preço Unid.: R$ ${price.toLocaleString(
+                "pt-BR",
+                { minimumFractionDigits: 2 }
+            )}`;
+            message += `\n   ${item.product.storage?.toUpperCase() || ""} / ${
+                item.product.ram?.toUpperCase() || ""
+            } RAM`;
+        });
 
-            // Adiciona a seção de Lojas para "Comprar via WhatsApp"
-            const uniqueStores = Array.from(
-                new Map(stores.map((s) => [s.id, s])).values()
-            );
+        // --- Footer ---
+        message += `\n\n---`;
+        message += `\n*✅ TOTAL DO ORÇAMENTO:* R$ ${totalValue.toLocaleString(
+            "pt-BR",
+            { minimumFractionDigits: 2 }
+        )}`;
+        message += `\n\nAguardamos o contato para confirmar a disponibilidade e a forma de pagamento!`;
 
-            if (uniqueStores.length > 0) {
-                message += "\n\n*Opções de Loja para Compra (WhatsApp):*\n";
-                uniqueStores.forEach((store) => {
-                    message += `\n*${store.name} (${
-                        store.city || "Online"
-                    })*:\n`;
-                    const whatsappCleaned = store.whatsapp.replace(/\D/g, "");
-                    message += `  Contato: +55 ${whatsappCleaned.replace(
-                        /^(\d{2})(\d{5})(\d{4})$/,
-                        "($1) $2-$3"
-                    )}\n`;
-                });
-                message +=
-                    "\n_Entre em contato com uma loja para finalizar seu pedido!_";
-            }
-
-            return message;
-        },
-        [items]
-    );
+        return message;
+    }, []);
     // --- Fim da Geração de Mensagem ---
 
     const value = {
@@ -188,7 +187,23 @@ export const useCart = () => {
     return context;
 };
 
-// --- Componente UI para o Drawer/Lista (Opcional, mas útil para a Navbar) ---
+// Helper para formatação de WhatsApp (Igual ao AdminStores)
+const formatWhatsapp = (number: string): string => {
+    const cleaned = number.replace(/\D/g, "");
+    if (cleaned.length === 11)
+        return `(${cleaned.substring(0, 2)}) ${cleaned.substring(
+            2,
+            7
+        )}-${cleaned.substring(7, 11)}`;
+    if (cleaned.length === 10)
+        return `(${cleaned.substring(0, 2)}) ${cleaned.substring(
+            2,
+            6
+        )}-${cleaned.substring(6, 10)}`;
+    return number;
+};
+
+// --- Componente UI para o Drawer/Lista (Escolha da Loja) ---
 export const CartDrawer = () => {
     const {
         items,
@@ -199,28 +214,14 @@ export const CartDrawer = () => {
         generateWhatsAppMessage,
     } = useCart();
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [step, setStep] = useState<"cart" | "stores">("cart"); // Estado para os passos do Checkout
 
-    // Lógica para enviar o pedido via WhatsApp
-    const handleCheckout = () => {
-        // Encontra todas as lojas referenciadas pelos produtos no carrinho
-        const allStoresInCart = items.flatMap((item) => item.product.stores);
-        const uniqueStores = Array.from(
-            new Map(allStoresInCart.map((s) => [s.id, s])).values()
-        );
-
-        const message = generateWhatsAppMessage(uniqueStores);
-        const encodedMessage = encodeURIComponent(message);
-
-        // Usamos o número da primeira loja para o checkout
-        const centralWhatsapp =
-            uniqueStores[0]?.whatsapp.replace(/\D/g, "") || "34999990000";
-
-        window.open(
-            `https://wa.me/55${centralWhatsapp}?text=${encodedMessage}`,
-            "_blank"
-        );
-        setIsDrawerOpen(false);
-    };
+    // 1. Query para buscar todas as lojas
+    const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
+        queryKey: ["allStores"],
+        queryFn: fetchStores,
+        enabled: isDrawerOpen && step === "stores", // Só busca se o drawer e o passo estiverem ativos
+    });
 
     // Helper para formatar preços
     const formatPrice = (priceInCents: number) => {
@@ -229,14 +230,164 @@ export const CartDrawer = () => {
         });
     };
 
+    // Lógica que envia o pedido para a loja selecionada
+    const handleSelectStore = (store: Store) => {
+        const message = generateWhatsAppMessage(items);
+        const encodedMessage = encodeURIComponent(message);
+
+        const whatsappCleaned = store.whatsapp.replace(/\D/g, "");
+
+        window.open(
+            `https://wa.me/55${whatsappCleaned}?text=${encodedMessage}`,
+            "_blank"
+        );
+        setIsDrawerOpen(false);
+        setStep("cart"); // Reseta o passo
+    };
+
+    const handleProceedToStores = () => {
+        if (itemCount > 0) {
+            setStep("stores");
+        }
+    };
+
     const totalOrderValue =
         items.reduce(
             (total, item) => total + item.product.price * item.quantity,
             0
         ) / 100;
 
+    // Renderiza a lista de itens do carrinho
+    const renderCartItems = () => (
+        <div className="p-4 overflow-y-auto">
+            {itemCount === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                    O carrinho está vazio.
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    {items.map((item) => (
+                        <div
+                            key={item.product.id}
+                            className="flex items-center space-x-4 border-b pb-4"
+                        >
+                            <img
+                                src={
+                                    item.product.images?.[0] ||
+                                    "/placeholder.svg"
+                                }
+                                alt={item.product.name}
+                                className="h-16 w-16 object-cover rounded-md"
+                            />
+                            <div className="flex-1 min-w-0">
+                                <p className="font-semibold truncate">
+                                    {item.product.name}
+                                </p>
+                                <p className="text-sm text-primary">
+                                    R${" "}
+                                    {formatPrice(
+                                        item.product.price * item.quantity
+                                    )}
+                                </p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8"
+                                    onClick={() =>
+                                        updateQuantity(
+                                            item.product.id,
+                                            item.quantity - 1
+                                        )
+                                    }
+                                >
+                                    -
+                                </Button>
+                                <span className="w-6 text-center">
+                                    {item.quantity}
+                                </span>
+                                <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8"
+                                    onClick={() =>
+                                        updateQuantity(
+                                            item.product.id,
+                                            item.quantity + 1
+                                        )
+                                    }
+                                >
+                                    +
+                                </Button>
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-destructive"
+                                    onClick={() => removeItem(item.product.id)}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+
+    // Renderiza a lista de lojas para escolha
+    const renderStoreSelection = () => {
+        if (isLoadingStores) {
+            return (
+                <div className="p-4 text-center text-muted-foreground">
+                    <Skeleton className="h-6 w-1/2 mx-auto mb-4" />
+                    Carregando lojas...
+                </div>
+            );
+        }
+
+        if (!stores || stores.length === 0) {
+            return (
+                <div className="p-4 text-center text-destructive">
+                    Nenhuma loja cadastrada para finalizar o pedido.
+                </div>
+            );
+        }
+
+        return (
+            <div className="p-4 space-y-3 overflow-y-auto">
+                <p className="text-sm font-semibold">
+                    Selecione a loja para enviar o pedido:
+                </p>
+                {stores.map((store) => (
+                    <Button
+                        key={store.id}
+                        className="w-full h-auto py-3 justify-start transition-colors duration-150"
+                        variant="outline"
+                        onClick={() => handleSelectStore(store)} // Envia para a função de checkout
+                    >
+                        <div className="flex flex-col items-start">
+                            <span className="font-bold">{store.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                                {formatWhatsapp(store.whatsapp)} -{" "}
+                                {store.city || "Online"}
+                            </span>
+                        </div>
+                    </Button>
+                ))}
+            </div>
+        );
+    };
+
     return (
-        <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
+        <Drawer
+            open={isDrawerOpen}
+            onOpenChange={(open) => {
+                setIsDrawerOpen(open);
+                if (!open) setStep("cart");
+            }}
+        >
             <DrawerTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative ml-2">
                     <ShoppingCart className="h-5 w-5" />
@@ -249,116 +400,64 @@ export const CartDrawer = () => {
             </DrawerTrigger>
             <DrawerContent className="max-h-[90vh]">
                 <DrawerHeader>
+                    {/* Exibe o botão de voltar quando estiver no passo de escolha de loja */}
+                    {step === "stores" && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setStep("cart")}
+                            className="absolute top-4 left-4"
+                        >
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Voltar
+                        </Button>
+                    )}
                     <DrawerTitle>
-                        Seu Carrinho ({itemCount}{" "}
-                        {itemCount === 1 ? "Item" : "Itens"})
+                        {step === "cart"
+                            ? `Seu Carrinho (${itemCount} Itens)`
+                            : "Escolher Loja"}
                     </DrawerTitle>
                     <DrawerDescription>
-                        Lista de itens para orçamento via WhatsApp.
+                        {step === "cart"
+                            ? "Lista de itens para orçamento."
+                            : "Selecione a loja para finalizar via WhatsApp."}
                     </DrawerDescription>
                 </DrawerHeader>
-                <div className="p-4 overflow-y-auto">
-                    {itemCount === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                            O carrinho está vazio.
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            {items.map((item) => (
-                                <div
-                                    key={item.product.id}
-                                    className="flex items-center space-x-4 border-b pb-4"
-                                >
-                                    <img
-                                        src={
-                                            item.product.images?.[0] ||
-                                            "/placeholder.svg"
-                                        }
-                                        alt={item.product.name}
-                                        className="h-16 w-16 object-cover rounded-md"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-semibold truncate">
-                                            {item.product.name}
-                                        </p>
-                                        <p className="text-sm text-primary">
-                                            R${" "}
-                                            {formatPrice(
-                                                item.product.price *
-                                                    item.quantity
-                                            )}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <Button
-                                            size="icon"
-                                            variant="outline"
-                                            className="h-8 w-8"
-                                            onClick={() =>
-                                                updateQuantity(
-                                                    item.product.id,
-                                                    item.quantity - 1
-                                                )
-                                            }
-                                        >
-                                            -
-                                        </Button>
-                                        <span className="w-6 text-center">
-                                            {item.quantity}
-                                        </span>
-                                        <Button
-                                            size="icon"
-                                            variant="outline"
-                                            className="h-8 w-8"
-                                            onClick={() =>
-                                                updateQuantity(
-                                                    item.product.id,
-                                                    item.quantity + 1
-                                                )
-                                            }
-                                        >
-                                            +
-                                        </Button>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            className="h-8 w-8 text-destructive"
-                                            onClick={() =>
-                                                removeItem(item.product.id)
-                                            }
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+
+                {/* Renderização do Conteúdo por Passo */}
+                {step === "cart" ? renderCartItems() : renderStoreSelection()}
+
+                <DrawerFooter className="bg-background border-t flex-col">
+                    {step === "cart" && itemCount > 0 && (
+                        <>
+                            <div className="flex justify-between items-center">
+                                <span className="text-lg font-bold">
+                                    Total:
+                                </span>
+                                <span className="text-xl font-bold text-primary">
+                                    R${" "}
+                                    {totalOrderValue.toLocaleString("pt-BR", {
+                                        minimumFractionDigits: 2,
+                                    })}
+                                </span>
+                            </div>
+                            <Button
+                                size="lg"
+                                className="w-full"
+                                onClick={handleProceedToStores} // Avança para o passo 2
+                            >
+                                <StoreIcon className="mr-2 h-5 w-5" />
+                                Escolher Loja e Finalizar
+                            </Button>
+                        </>
                     )}
-                </div>
-                <DrawerFooter className="bg-background border-t">
-                    <div className="flex justify-between items-center mb-4">
-                        <span className="text-lg font-bold">Total:</span>
-                        <span className="text-xl font-bold text-primary">
-                            R${" "}
-                            {totalOrderValue.toLocaleString("pt-BR", {
-                                minimumFractionDigits: 2,
-                            })}
-                        </span>
-                    </div>
-                    <Button
-                        size="lg"
-                        className="w-full"
-                        disabled={itemCount === 0}
-                        onClick={handleCheckout}
-                    >
-                        <MessageCircle className="mr-2 h-5 w-5" />
-                        Finalizar Pedido via WhatsApp
-                    </Button>
+
+                    {/* Botão Limpar Carrinho (Disponível em ambos os passos) */}
                     <Button
                         variant="ghost"
                         onClick={clearCart}
-                        disabled={itemCount === 0}
-                        className="w-full"
+                        disabled={itemCount === 0 || isLoadingStores}
+                        className="w-full text-sm text-muted-foreground hover:text-destructive"
                     >
                         Limpar Carrinho
                     </Button>
