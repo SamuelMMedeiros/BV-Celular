@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/rules-of-hooks */
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
     Smartphone,
@@ -6,24 +5,46 @@ import {
     ShieldCheck,
     LogOut,
     MessageCircle,
+    Menu,
     ShoppingCart,
+    User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCustomerAuth } from "@/contexts/CustomerAuthContext"; // <<--- CORREÇÃO 1: Importa o hook do Context
-import { CustomerAuthPopover } from "@/components/CustomerAuthPopover"; // <<--- CORREÇÃO 2: Importa o componente Popover
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
 import { supabase } from "@/integrations/supabase/client";
 import { CartDrawer } from "@/contexts/CartContext";
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+} from "@/components/ui/sheet"; // Importa componentes do Sheet
+import { Separator } from "@/components/ui/separator";
+
+// Definição dos links de navegação para reutilização
+const navLinks = [
+    { to: "/aparelhos", label: "Aparelhos", icon: Smartphone },
+    { to: "/acessorios", label: "Acessórios", icon: Tag },
+    { to: "/promocoes", label: "Promoções", icon: MessageCircle },
+];
 
 export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, employeeProfile } = useAuth();
-    const { isLoggedIn, getGreeting } = useCustomerAuth();
+    const {
+        isLoggedIn,
+        getGreeting,
+        logout: customerLogout,
+    } = useCustomerAuth(); // Renomeia logout do cliente
 
     const isActive = (path: string) => location.pathname === path;
+    const [isMenuOpen, setIsMenuOpen] = useState(false); // Estado para fechar o menu ao clicar no link
 
-    const handleLogout = async () => {
+    const handleAdminLogout = async () => {
         await supabase.auth.signOut();
         navigate("/");
     };
@@ -31,85 +52,138 @@ export const Navbar = () => {
     return (
         <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container flex h-16 items-center justify-between">
-                <Link to="/" className="flex items-center space-x-2">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-primary">
-                        <Smartphone className="h-6 w-6 text-primary-foreground" />
-                    </div>
-                    <span className="text-xl font-bold text-foreground">
-                        BV Celular
-                    </span>
-                </Link>
-
-                <div className="flex items-center gap-2">
-                    {/* --- Botões Públicos --- */}
-                    <Button
-                        variant={isActive("/aparelhos") ? "default" : "ghost"}
-                        size="sm"
-                        asChild
-                    >
-                        <Link
-                            to="/aparelhos"
-                            className="flex items-center gap-2"
-                        >
-                            <Smartphone className="h-4 w-4" />
-                            <span className="hidden sm:inline">Aparelhos</span>
-                        </Link>
-                    </Button>
-
-                    <Button
-                        variant={isActive("/acessorios") ? "default" : "ghost"}
-                        size="sm"
-                        asChild
-                    >
-                        <Link
-                            to="/acessorios"
-                            className="flex items-center gap-2"
-                        >
-                            <Tag className="h-4 w-4" />
-                            <span className="hidden sm:inline">Acessórios</span>
-                        </Link>
-                    </Button>
-
-                    <Button
-                        variant={isActive("/promocoes") ? "default" : "ghost"}
-                        size="sm"
-                        asChild
-                    >
-                        <Link
-                            to="/promocoes"
-                            className="flex items-center gap-2"
-                        >
-                            <MessageCircle className="h-4 w-4" />
-                            <span className="hidden sm:inline">Promoções</span>
-                        </Link>
-                    </Button>
-
-                    {/* --- Login do Cliente e Saudação --- */}
-                    {isLoggedIn ? (
-                        <div className="flex items-center space-x-2 border-r pr-3 ml-2">
-                            <span className="text-sm font-medium hidden sm:inline">
-                                {getGreeting()}
-                            </span>
-                            <Button
-                                onClick={useCustomerAuth().logout}
-                                variant="ghost"
-                                size="icon"
-                            >
-                                <LogOut className="h-4 w-4" />
+                {/* --- 1. Menu Hamburguer (MOBILE) e Logo --- */}
+                <div className="flex items-center space-x-2">
+                    {/* Botão do Hamburguer (Visível apenas em telas pequenas) */}
+                    <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                        <SheetTrigger asChild className="md:hidden">
+                            <Button variant="ghost" size="icon">
+                                <Menu className="h-5 w-5" />
                             </Button>
-                        </div>
-                    ) : (
-                        <div className="ml-2 border-r pr-3">
-                            <CustomerAuthPopover />
-                        </div>
-                    )}
+                        </SheetTrigger>
 
-                    {/* --- Botão do Carrinho (Drawer Trigger) --- */}
+                        {/* Conteúdo do Menu Lateral */}
+                        <SheetContent side="left" className="w-64 sm:w-80">
+                            <SheetHeader>
+                                <SheetTitle className="flex items-center space-x-2">
+                                    <Smartphone className="h-5 w-5 text-primary" />
+                                    <span>BV Celular</span>
+                                </SheetTitle>
+                            </SheetHeader>
+
+                            <div className="flex flex-col mt-6 space-y-2">
+                                {navLinks.map((link) => (
+                                    <Button
+                                        key={link.to}
+                                        variant={
+                                            isActive(link.to)
+                                                ? "default"
+                                                : "ghost"
+                                        }
+                                        size="lg"
+                                        asChild
+                                        className="justify-start"
+                                        onClick={() => setIsMenuOpen(false)} // Fecha o menu ao clicar
+                                    >
+                                        <Link
+                                            to={link.to}
+                                            className="flex items-center gap-3"
+                                        >
+                                            <link.icon className="h-5 w-5" />
+                                            <span>{link.label}</span>
+                                        </Link>
+                                    </Button>
+                                ))}
+
+                                <Separator className="my-4" />
+
+                                {/* Se o Admin estiver logado, mostra o link do Painel no menu */}
+                                {user && (
+                                    <Button
+                                        variant={
+                                            isActive("/admin")
+                                                ? "default"
+                                                : "ghost"
+                                        }
+                                        size="lg"
+                                        asChild
+                                        className="justify-start"
+                                        onClick={() => setIsMenuOpen(false)}
+                                    >
+                                        <Link
+                                            to="/admin"
+                                            className="flex items-center gap-3 text-sm"
+                                        >
+                                            <ShieldCheck className="h-5 w-5" />
+                                            <span>Painel Administrativo</span>
+                                        </Link>
+                                    </Button>
+                                )}
+
+                                {/* 4. Saudação e Logout do Cliente (para contexto mobile) */}
+                                {isLoggedIn && (
+                                    <div className="mt-4 pt-4 border-t">
+                                        <p className="text-sm font-medium mb-2">
+                                            {getGreeting()}!
+                                        </p>
+                                        <Button
+                                            onClick={customerLogout}
+                                            variant="outline"
+                                            className="w-full justify-start text-destructive"
+                                        >
+                                            <LogOut className="h-4 w-4 mr-2" />
+                                            Sair (Cliente)
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        </SheetContent>
+                    </Sheet>
+
+                    {/* Título (Sempre visível no Mobile) */}
+                    <Link to="/" className="flex items-center space-x-2">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-primary md:h-8 md:w-8">
+                            <Smartphone className="h-6 w-6 text-primary-foreground md:h-5 md:w-5" />
+                        </div>
+                        <span className="text-xl font-bold text-foreground">
+                            BV Celular
+                        </span>
+                    </Link>
+                </div>
+
+                {/* --- 2. Links de Navegação (DESKTOP) --- */}
+                <div className="hidden md:flex items-center gap-2">
+                    {navLinks.map((link) => (
+                        <Button
+                            key={link.to}
+                            variant={isActive(link.to) ? "default" : "ghost"}
+                            size="sm"
+                            asChild
+                        >
+                            <Link
+                                to={link.to}
+                                className="flex items-center gap-2"
+                            >
+                                <link.icon className="h-4 w-4" />
+                                <span>{link.label}</span>
+                            </Link>
+                        </Button>
+                    ))}
+                </div>
+
+                {/* --- 3. Ícones de Ação (Login/Carrinho/Admin) --- */}
+                <div className="flex items-center space-x-1">
+                    {/* 3.1 Login do Cliente (Popover - Sempre visível) */}
+                    <div className="border-r pr-2">
+                        <CustomerAuthPopover />
+                    </div>
+
+                    {/* 3.2 Botão do Carrinho (Drawer - Sempre visível) */}
                     <CartDrawer />
 
-                    {/* --- Lógica Condicional para Admin e Logout --- */}
-                    {user ? (
-                        <>
+                    {/* 3.3 Admin (Apenas se o Admin estiver logado - Desktop) */}
+                    {user && (
+                        <div className="hidden md:flex items-center">
                             <Button
                                 variant={
                                     isActive("/admin") ? "default" : "ghost"
@@ -122,29 +196,24 @@ export const Navbar = () => {
                                     className="flex items-center gap-2"
                                 >
                                     <ShieldCheck className="h-4 w-4" />
-                                    <span className="hidden sm:inline">
-                                        Painel
-                                    </span>
+                                    <span>Painel</span>
                                 </Link>
                             </Button>
-
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={handleLogout}
+                                onClick={handleAdminLogout}
                                 className="flex items-center gap-2 text-destructive hover:text-destructive"
                             >
                                 <LogOut className="h-4 w-4" />
-                                <span className="hidden sm:inline">
-                                    Sair (Admin)
-                                </span>
+                                <span>Sair</span>
                             </Button>
-                        </>
-                    ) : (
-                        <></>
+                        </div>
                     )}
                 </div>
             </div>
+            <SheetContent />{" "}
+            {/* Adicionando o SheetContent de volta no final do Drawer para evitar o erro de React Context */}
         </nav>
     );
 };
