@@ -1,12 +1,12 @@
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Package, Store, Users, Contact } from "lucide-react"; // 1. Adiciona Contact
-import { useAuth } from "@/contexts/AuthContext";
+import { Package, Store, Users, Contact } from "lucide-react";
+import { useAuth } from "@/hooks/useAuthAdmin"; // <-- CORREÇÃO DA IMPORTAÇÃO
 import { Link } from "react-router-dom";
 
 const Admin = () => {
-    const { employeeProfile } = useAuth(); // (Mudança de 'user' para 'employeeProfile')
+    const { employeeProfile } = useAuth();
 
     return (
         <div className="min-h-screen bg-background">
@@ -22,7 +22,6 @@ const Admin = () => {
                     </p>
                 </div>
 
-                {/* 2. Grid atualizado para 4 colunas (ou wrap) */}
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                     <Card className="p-6 transition-all hover:shadow-hover">
                         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-accent">
@@ -67,7 +66,6 @@ const Admin = () => {
                         </Button>
                     </Card>
 
-                    {/* 3. Novo Card de Clientes */}
                     <Card className="p-6 transition-all hover:shadow-hover">
                         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-accent">
                             <Contact className="h-6 w-6 text-accent-foreground" />

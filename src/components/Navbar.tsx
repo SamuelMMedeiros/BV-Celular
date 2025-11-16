@@ -8,10 +8,9 @@ import {
     MessageCircle,
     Menu,
     ShoppingCart,
-    User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuthAdmin"; // <-- CORREÇÃO DA IMPORTAÇÃO
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,19 +34,19 @@ const navLinks = [
 export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    // Pega os dois perfis separadamente
+
     const { employeeProfile, logout: adminLogout } = useAuth(); // Autenticação do Admin
     const {
         isLoggedIn: isCustomerLoggedIn,
         getGreeting,
         logout: customerLogout,
-    } = useCustomerAuth(); // Autenticação do Cliente
+    } = useCustomerAuth();
 
     const isActive = (path: string) => location.pathname === path;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const handleAdminLogout = async () => {
-        await adminLogout(); // Usa a função de logout do AuthContext
+        await adminLogout();
         navigate("/");
     };
 
@@ -97,33 +96,51 @@ export const Navbar = () => {
 
                                 <Separator className="my-4" />
 
-                                {/* CORREÇÃO DE SEGURANÇA: 
-                          Só mostra o link do Admin se 'employeeProfile' existir
-                        */}
                                 {employeeProfile && (
-                                    <Button
-                                        variant={
-                                            isActive("/admin")
-                                                ? "default"
-                                                : "ghost"
-                                        }
-                                        size="lg"
-                                        asChild
-                                        className="justify-start"
-                                        onClick={() => setIsMenuOpen(false)}
-                                    >
-                                        <Link
-                                            to="/admin"
-                                            className="flex items-center gap-3 text-sm"
+                                    <>
+                                        <Button
+                                            variant={
+                                                isActive("/admin")
+                                                    ? "default"
+                                                    : "ghost"
+                                            }
+                                            size="lg"
+                                            asChild
+                                            className="justify-start"
+                                            onClick={() => setIsMenuOpen(false)}
                                         >
-                                            <ShieldCheck className="h-5 w-5" />
-                                            <span>Painel Administrativo</span>
-                                        </Link>
-                                    </Button>
+                                            <Link
+                                                to="/admin"
+                                                className="flex items-center gap-3 text-sm"
+                                            >
+                                                <ShieldCheck className="h-5 w-5" />
+                                                <span>
+                                                    Painel Administrativo
+                                                </span>
+                                            </Link>
+                                        </Button>
+                                        <div className="mt-4 pt-4 border-t">
+                                            <p className="text-sm font-medium mb-2">
+                                                Olá,{" "}
+                                                {
+                                                    employeeProfile.name.split(
+                                                        " "
+                                                    )[0]
+                                                }
+                                            </p>
+                                            <Button
+                                                onClick={handleAdminLogout}
+                                                variant="outline"
+                                                className="w-full justify-start text-destructive"
+                                            >
+                                                <LogOut className="h-4 w-4 mr-2" />
+                                                Sair (Admin)
+                                            </Button>
+                                        </div>
+                                    </>
                                 )}
 
-                                {/* Saudação e Logout do Cliente (para contexto mobile) */}
-                                {isCustomerLoggedIn && (
+                                {isCustomerLoggedIn && !employeeProfile && (
                                     <div className="mt-4 pt-4 border-t">
                                         <p className="text-sm font-medium mb-2">
                                             {getGreeting()}!
@@ -142,7 +159,6 @@ export const Navbar = () => {
                         </SheetContent>
                     </Sheet>
 
-                    {/* Título (Sempre visível no Mobile) */}
                     <Link to="/" className="flex items-center space-x-2">
                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-primary md:h-8 md:w-8">
                             <Smartphone className="h-6 w-6 text-primary-foreground md:h-5 md:w-5" />
@@ -175,19 +191,22 @@ export const Navbar = () => {
 
                 {/* --- 3. Ícones de Ação (Login/Carrinho/Admin) --- */}
                 <div className="flex items-center space-x-1">
-                    {/* 3.1 Login do Cliente (Popover - Sempre visível) */}
-                    <div className="border-r pr-2">
-                        <CustomerAuthPopover />
-                    </div>
+                    {!employeeProfile && (
+                        <div className="border-r pr-2">
+                            <CustomerAuthPopover />
+                        </div>
+                    )}
 
-                    {/* 3.2 Botão do Carrinho (Drawer Trigger) --- */}
                     <CartDrawer />
 
-                    {/* 3.3 CORREÇÃO CRÍTICA DE SEGURANÇA:
-              Verifica 'employeeProfile' (Admin) em vez de 'user' (Qualquer um)
-            */}
                     {employeeProfile ? (
                         <div className="hidden md:flex items-center">
+                            <div className="flex items-center gap-2 border-r pr-2 ml-2">
+                                <span className="text-sm font-medium hidden sm:inline">
+                                    Olá, {employeeProfile.name.split(" ")[0]}
+                                </span>
+                            </div>
+
                             <Button
                                 variant={
                                     isActive("/admin") ? "default" : "ghost"
@@ -214,7 +233,7 @@ export const Navbar = () => {
                             </Button>
                         </div>
                     ) : (
-                        <></> // Não mostra nada se não for um funcionário
+                        <></>
                     )}
                 </div>
             </div>
