@@ -14,7 +14,7 @@ import {
     ArrowLeft,
     Store as StoreIcon,
     User,
-} from "lucide-react"; // Importa User
+} from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
     Drawer,
@@ -28,7 +28,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { fetchStores } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCustomerAuth } from "./CustomerAuthContext"; // 1. Importa CustomerAuth
+import { useCustomerAuth } from "./CustomerAuthContext";
 
 // --- 1. Definição do Tipo de Item do Carrinho ---
 export interface CartItem {
@@ -47,7 +47,7 @@ interface CartContextType {
     generateWhatsAppMessage: (
         items: CartItem[],
         customerName: string
-    ) => string; // 2. Atualiza para receber nome
+    ) => string;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -123,14 +123,14 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         setItems([]);
     }, []);
 
-    // --- Função de Geração de Mensagem para WhatsApp (REESCRITA) ---
+    // --- Função de Geração de Mensagem para WhatsApp ---
     const generateWhatsAppMessage = useCallback(
         (items: CartItem[], customerName: string): string => {
             if (items.length === 0) return "O carrinho está vazio.";
 
             let totalValue = 0;
 
-            // --- Header (Substitui o placeholder) ---
+            // --- Header (Substitui o placeholder pelo nome real) ---
             let message = `👋 *NOVO PEDIDO DE ORÇAMENTO!*
     
 👤 Cliente: ${customerName}
@@ -220,12 +220,12 @@ export const CartDrawer = () => {
         clearCart,
         generateWhatsAppMessage,
     } = useCart();
-    const { isLoggedIn, profile } = useCustomerAuth(); // 3. Importa CustomerAuth
+    const { isLoggedIn, profile } = useCustomerAuth();
 
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [step, setStep] = useState<"cart" | "stores" | "auth">("cart"); // 4. Novo passo 'auth'
+    const [step, setStep] = useState<"cart" | "stores" | "auth">("cart"); // 3 Passos
 
-    // 1. Query para buscar todas as lojas
+    // Query para buscar todas as lojas
     const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
         queryKey: ["allStores"],
         queryFn: fetchStores,
@@ -244,7 +244,7 @@ export const CartDrawer = () => {
         const message = generateWhatsAppMessage(
             items,
             profile?.name || "Cliente Sem Cadastro"
-        ); // 5. Passa o nome
+        );
         const encodedMessage = encodeURIComponent(message);
 
         const whatsappCleaned = store.whatsapp.replace(/\D/g, "");
@@ -257,11 +257,16 @@ export const CartDrawer = () => {
         setStep("cart");
     };
 
+    // CORREÇÃO UX (Fluxo do Botão "Escolher Loja")
     const handleProceedToStores = () => {
-        // 6. Verifica se o usuário está logado ANTES de ir para a lista de lojas
+        if (itemCount === 0) return;
+
+        // 1. Verifica se o usuário precisa se identificar
         if (!isLoggedIn) {
-            setStep("auth");
-        } else if (itemCount > 0) {
+            setStep("auth"); // Vai para a tela de prompt de login
+        }
+        // 2. Se ESTIVER logado, vai para a lista de lojas
+        else {
             setStep("stores");
         }
     };
@@ -380,7 +385,7 @@ export const CartDrawer = () => {
                         key={store.id}
                         className="w-full h-auto py-3 justify-start transition-colors duration-150"
                         variant="outline"
-                        onClick={() => handleSelectStore(store)}
+                        onClick={() => handleSelectStore(store)} // Envia para a função de checkout
                     >
                         <div className="flex flex-col items-start">
                             <span className="font-bold">{store.name}</span>
@@ -407,7 +412,7 @@ export const CartDrawer = () => {
                 size="lg"
                 className="w-full"
                 onClick={() => {
-                    // Clicar aqui abre o Popover na Navbar para o login do Cliente
+                    // 4. CHAMA O COMPONENTE POPOVER (o que faz o botão de login aparecer)
                     const loginButton = document.querySelector(
                         'button:has(svg[data-lucide="user"])'
                     ) as HTMLButtonElement;
@@ -417,13 +422,6 @@ export const CartDrawer = () => {
                 }}
             >
                 Fazer Cadastro Rápido
-            </Button>
-            <Button
-                variant="ghost"
-                className="w-full"
-                onClick={() => setStep("stores")}
-            >
-                Continuar Sem Cadastro (Apenas Orçamento)
             </Button>
         </div>
     );
@@ -495,7 +493,7 @@ export const CartDrawer = () => {
                                 size="lg"
                                 className="w-full"
                                 onClick={handleProceedToStores} // Avança para o passo 2
-                                disabled={!stores && !isLoadingStores} // Desabilita se não tiver loja
+                                disabled={itemCount === 0}
                             >
                                 <StoreIcon className="mr-2 h-5 w-5" />
                                 Escolher Loja e Finalizar
@@ -503,7 +501,7 @@ export const CartDrawer = () => {
                         </>
                     )}
 
-                    {/* Botão Limpar Carrinho (Disponível em todos os passos) */}
+                    {/* Botão Limpar Carrinho (Disponível em ambos os passos) */}
                     <Button
                         variant="ghost"
                         onClick={clearCart}

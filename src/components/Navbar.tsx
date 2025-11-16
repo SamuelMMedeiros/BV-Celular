@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+// CORREÇÃO: Importa o hook do Contexto, não do Popover
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,12 +36,12 @@ const navLinks = [
 export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { user, employeeProfile } = useAuth();
+    const { user, employeeProfile } = useAuth(); // Autenticação do Admin
     const {
         isLoggedIn,
         getGreeting,
         logout: customerLogout,
-    } = useCustomerAuth();
+    } = useCustomerAuth(); // Autenticação do Cliente
 
     const isActive = (path: string) => location.pathname === path;
     const [isMenuOpen, setIsMenuOpen] = useState(false); // Estado para o menu hamburguer
@@ -215,6 +216,7 @@ export const Navbar = () => {
                     )}
                 </div>
             </div>
+            {/* <SheetContent/> A linha que causava o erro anterior foi removida */}
         </nav>
     );
 };

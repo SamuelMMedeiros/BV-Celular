@@ -1,5 +1,6 @@
 // --- Tipos de Dados da Aplicação (Cliente) ---
 export interface CustomerProfile {
+  id?: string; // O ID virá do Supabase Auth
   name: string;
   phone: string;
 }

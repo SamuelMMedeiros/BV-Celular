@@ -1,3 +1,6 @@
+//
+// === CÓDIGO COMPLETO PARA: src/contexts/CustomerAuthContext.tsx ===
+//
 import {
     createContext,
     useContext,
@@ -7,15 +10,22 @@ import {
     useMemo,
 } from "react";
 import { CustomerProfile } from "@/types";
-
-// Nome da chave no localStorage
-const STORAGE_KEY = "bv_celular_customer_profile";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { Session } from "@supabase/supabase-js";
 
 // Definição do Tipo de Contexto
 interface CustomerAuthContextType {
+    session: Session | null;
     profile: CustomerProfile | null;
     isLoggedIn: boolean;
-    login: (name: string, phone: string) => void;
+    signUp: (
+        email: string,
+        password: string,
+        name: string,
+        phone: string
+    ) => Promise<void>;
+    signIn: (email: string, password: string) => Promise<void>;
     logout: () => void;
     getGreeting: () => string;
 }
@@ -24,53 +34,136 @@ const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(
     undefined
 );
 
+// Helper para extrair o perfil do objeto User
+const extractProfile = (session: Session | null): CustomerProfile | null => {
+    if (!session?.user) return null;
+
+    // Assegura que os metadados existam e tenham os campos que precisamos
+    const metadata = session.user.user_metadata;
+    if (metadata && metadata.full_name && metadata.phone) {
+        return {
+            id: session.user.id,
+            name: metadata.full_name as string,
+            phone: metadata.phone as string,
+        };
+    }
+    return null;
+};
+
 // --- Provider ---
 export const CustomerAuthProvider = ({
     children,
 }: {
     children: React.ReactNode;
 }) => {
+    const { toast } = useToast();
+    const [session, setSession] = useState<Session | null>(null);
     const [profile, setProfile] = useState<CustomerProfile | null>(null);
+    const [isLoadingSession, setIsLoadingSession] = useState(true);
 
-    // 1. Carrega o perfil do LocalStorage na montagem
+    // 1. Lógica para buscar sessão e perfil na inicialização e em mudanças de Auth
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                setProfile(JSON.parse(stored));
+        const fetchSessionAndProfile = (currentSession: Session | null) => {
+            setSession(currentSession);
+            setProfile(extractProfile(currentSession));
+            setIsLoadingSession(false);
+        };
+
+        // 1a. Tenta buscar a sessão no Local Storage
+        supabase.auth
+            .getSession()
+            .then(({ data: { session: currentSession } }) => {
+                fetchSessionAndProfile(currentSession);
+            });
+
+        // 1b. Ouve mudanças em tempo real (login/logout/refresh)
+        const { data: authListener } = supabase.auth.onAuthStateChange(
+            (_event, newSession) => {
+                fetchSessionAndProfile(newSession);
             }
-        } catch (e) {
-            console.error(
-                "Failed to load customer profile from localStorage",
-                e
-            );
-        }
+        );
+
+        return () => {
+            authListener?.subscription.unsubscribe();
+        };
     }, []);
 
-    // 2. Persistência de Sessão no LocalStorage
-    const persistProfile = useCallback((newProfile: CustomerProfile | null) => {
-        if (newProfile) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile));
-        } else {
-            localStorage.removeItem(STORAGE_KEY);
-        }
-        setProfile(newProfile);
-    }, []);
+    // 2. Funções de Ação (Nova Lógica Email/Senha)
 
-    // 3. Funções de Ação
-    const login = useCallback(
-        (name: string, phone: string) => {
-            const newProfile: CustomerProfile = { name, phone };
-            persistProfile(newProfile);
+    // A. Registro
+    const signUp = useCallback(
+        async (
+            email: string,
+            password: string,
+            name: string,
+            phone: string
+        ) => {
+            const { error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    // Salva nome e telefone no metadata (user_metadata)
+                    data: {
+                        full_name: name,
+                        phone: phone.replace(/\D/g, ""), // Limpa o telefone para salvar apenas dígitos
+                    },
+                },
+            });
+
+            if (error) {
+                toast({
+                    title: "Erro no Cadastro",
+                    description: error.message,
+                    variant: "destructive",
+                });
+                throw error;
+            }
+
+            // Supabase envia um email de confirmação por padrão.
+            toast({
+                title: "Sucesso!",
+                description:
+                    "Verifique seu email para confirmar sua conta e fazer o login.",
+                variant: "default",
+            });
         },
-        [persistProfile]
+        [toast]
     );
 
-    const logout = useCallback(() => {
-        persistProfile(null);
-    }, [persistProfile]);
+    // B. Login
+    const signIn = useCallback(
+        async (email: string, password: string) => {
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
 
-    // 4. Lógica de Saudação (Resolve 5)
+            if (error) {
+                toast({
+                    title: "Login Falhou",
+                    description: error.message,
+                    variant: "destructive",
+                });
+                throw error;
+            }
+
+            // O useEffect do listener acima cuidará de atualizar o estado (session/profile)
+            toast({
+                title: "Bem-vindo!",
+                description: "Login concluído com sucesso.",
+            });
+        },
+        [toast]
+    );
+
+    // C. Logout
+    const logout = useCallback(async () => {
+        await supabase.auth.signOut();
+        setProfile(null);
+        setSession(null);
+    }, []);
+
+    // 3. Lógica de Saudação
     const getGreeting = useCallback((): string => {
         if (!profile) return "Entrar";
 
@@ -85,17 +178,21 @@ export const CustomerAuthProvider = ({
             greeting = "Boa noite";
         }
 
-        // Usa apenas o primeiro nome
         const firstName = profile.name.split(" ")[0];
         return `${greeting}, ${firstName}`;
     }, [profile]);
 
-    const isLoggedIn = useMemo(() => !!profile, [profile]);
+    const isLoggedIn = useMemo(
+        () => !!session && !isLoadingSession,
+        [session, isLoadingSession]
+    );
 
     const value = {
         profile,
         isLoggedIn,
-        login,
+        session,
+        signUp,
+        signIn,
         logout,
         getGreeting,
     };
