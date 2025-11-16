@@ -1,11 +1,12 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext"; // Importa nosso hook do Passo 2
-import { Skeleton } from "@/components/ui/skeleton"; // Para o estado de loading
+import { useAuth } from "@/contexts/AuthContext"; // Continua usando o Auth (Admin)
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const ProtectedRoute = () => {
-    const { user, loading } = useAuth();
+    // 1. CORREÇÃO: Pega o 'employeeProfile' além do 'loading'
+    const { employeeProfile, loading } = useAuth();
 
-    // 1. Mostra um 'loading' enquanto o Supabase verifica a sessão
+    // 2. Estado de carregamento (enquanto o Supabase busca a sessão E o perfil)
     if (loading) {
         return (
             <div className="flex min-h-screen items-center justify-center p-4">
@@ -18,12 +19,14 @@ export const ProtectedRoute = () => {
         );
     }
 
-    // 2. Se não estiver carregando e NÃO houver usuário, redireciona para /login
-    if (!user) {
-        return <Navigate to="/login" replace />;
+    // 3. A LÓGICA CORRIGIDA:
+    // Se NÃO estiver carregando E (não houver perfil DE FUNCIONÁRIO),
+    // redireciona para o login do Admin.
+    // Se um Cliente logar, 'employeeProfile' será 'null' e o acesso será bloqueado.
+    if (!loading && !employeeProfile) {
+        return <Navigate to="/admin-login" replace />;
     }
 
-    // 3. Se estiver tudo certo (logado), mostra o conteúdo da rota (a página Admin)
-    // <Outlet /> é o marcador do React Router para "onde o filho deve ir"
+    // 4. Se 'employeeProfile' existir, o usuário é um Admin.
     return <Outlet />;
 };

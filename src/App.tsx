@@ -6,9 +6,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
-import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext"; // 1. Importa Customer Auth
+import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
 
-import Login from "./pages/Login";
+import AdminLoginPage from "./pages/Login";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 import Index from "./pages/Index";
@@ -21,7 +21,9 @@ import AdminProducts from "./pages/admin/Products";
 import AdminProductForm from "./pages/admin/ProductForm";
 import AdminStores from "./pages/admin/Stores";
 import AdminEmployees from "./pages/admin/Employees";
+import AdminClients from "./pages/admin/Clients"; // 1. Importa a nova página
 import Acessorios from "./pages/Acessorios";
+import CustomerLogin from "./pages/CustomerLogin";
 
 const queryClient = new QueryClient();
 
@@ -32,13 +34,19 @@ const App = () => (
             <Sonner />
             <AuthProvider>
                 <CartProvider>
-                    {/* 2. Envolve a aplicação no Customer Auth Provider */}
                     <CustomerAuthProvider>
                         <BrowserRouter>
                             <Routes>
                                 {/* Rotas Públicas */}
                                 <Route path="/" element={<Index />} />
-                                <Route path="/login" element={<Login />} />
+                                <Route
+                                    path="/login"
+                                    element={<CustomerLogin />}
+                                />
+                                <Route
+                                    path="/admin-login"
+                                    element={<AdminLoginPage />}
+                                />
                                 <Route
                                     path="/aparelhos"
                                     element={<Aparelhos />}
@@ -52,7 +60,7 @@ const App = () => (
                                     element={<Acessorios />}
                                 />
 
-                                {/* Rotas Protegidas */}
+                                {/* Rotas Protegidas (Admin) */}
                                 <Route element={<ProtectedRoute />}>
                                     <Route path="/admin" element={<Admin />} />
                                     <Route
@@ -75,14 +83,18 @@ const App = () => (
                                         path="/admin/employees"
                                         element={<AdminEmployees />}
                                     />
+                                    <Route
+                                        path="/admin/clients"
+                                        element={<AdminClients />}
+                                    />{" "}
+                                    {/* 2. Rota de Clientes */}
                                 </Route>
 
                                 {/* Rota de "Não Encontrado" */}
                                 <Route path="*" element={<NotFound />} />
                             </Routes>
                         </BrowserRouter>
-                    </CustomerAuthProvider>{" "}
-                    {/* 3. Fechamento do Provider */}
+                    </CustomerAuthProvider>
                 </CartProvider>
             </AuthProvider>
         </TooltipProvider>

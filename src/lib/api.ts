@@ -1,16 +1,16 @@
+//
+// === CÓDIGO COMPLETO PARA: src/lib/api.ts ===
+//
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-//
-// === CÓDIGO COMPLETO FINAL PARA: src/lib/api.ts ===
-//
 import { supabase } from "@/integrations/supabase/client";
-import { Product, Store, Employee } from "@/types";
+import { Product, Store, Employee, CustomerProfile } from "@/types";
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid';
 
 // --- Tipos de Payload (Produtos) ---
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
-  store_ids: string[];
+  store_ids?: string[]; // CORREÇÃO: Tornou-se opcional
   image_files: File[];
 };
 
@@ -247,7 +247,6 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
 
 export const updateProduct = async (payload: ProductUpdatePayload): Promise<void> => {
   
-  // ----- 1. Deletar imagens marcadas para exclusão -----
   if (payload.images_to_delete && payload.images_to_delete.length > 0) {
     const fileNames = payload.images_to_delete.map(getFileNameFromUrl).filter(Boolean);
     if (fileNames.length > 0) {
@@ -259,7 +258,6 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     }
   }
 
-  // ----- 2. Fazer upload de novas imagens (se houver) -----
   const newImageUrls: string[] = [];
   if (payload.image_files && payload.image_files.length > 0) {
     for (const file of payload.image_files) {
@@ -277,7 +275,6 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     }
   }
   
-  // ----- 3. Preparar Dados do Produto para Update -----
   const { data: currentProduct, error: fetchError } = await supabase
     .from('Products')
     .select('images')
@@ -304,14 +301,12 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     images: finalImageUrls,
   };
 
-  // ----- 4. Atualizar o Produto no Banco -----
   const { error: productError } = await supabase
     .from('Products')
     .update(productData)
     .eq('id', payload.id);
   if (productError) throw new Error(productError.message);
   
-  // ----- 5. Atualizar Relações Produto-Lojas -----
   const { error: deleteRelationError } = await supabase
     .from('ProductStores')
     .delete()
@@ -396,7 +391,7 @@ export const deleteStore = async (storeId: string) => {
 };
 
 // ==================================================================
-// FUNÇÕES DE API (FUNCIONÁRIOS)
+// FUNÇÕES DE API (FUNCIONÁRIOS/ADMIN)
 // ==================================================================
 export const fetchEmployees = async (): Promise<Employee[]> => {
   const { data, error } = await supabase
@@ -413,7 +408,7 @@ export const fetchEmployees = async (): Promise<Employee[]> => {
   return data as Employee[];
 };
 
-// CORRIGIDO (Resolve o erro de importação)
+
 export const fetchEmployeeProfile = async (userId: string): Promise<Employee | null> => {
   const { data, error } = await supabase
     .from('Employees')
@@ -427,7 +422,7 @@ export const fetchEmployeeProfile = async (userId: string): Promise<Employee | n
     .eq('id', userId)
     .single();
   if (error) {
-    if (error.code === 'PGRST116') {
+    if (error.code === 'PGRST116') { // Nenhum funcionário encontrado
       return null; 
     }
     throw new Error(error.message);
@@ -439,7 +434,12 @@ export const createEmployee = async (payload: EmployeeInsertPayload) => {
   const { error } = await supabase
     .from('Employees')
     .insert(payload);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === '23505') { 
+      throw new Error("Este e-mail já está em uso.");
+    }
+    throw new Error(error.message);
+  }
 };
 export const updateEmployee = async (payload: EmployeeUpdatePayload) => {
   const { id, ...updateData } = payload;
@@ -448,7 +448,12 @@ export const updateEmployee = async (payload: EmployeeUpdatePayload) => {
     .from('Employees')
     .update(updateData)
     .eq('id', id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error("Este e-mail já está em uso.");
+    }
+    throw new Error(error.message);
+  }
 };
 export const deleteEmployee = async (employeeId: string) => {
   if (!employeeId) throw new Error("ID do funcionário não encontrado.");
@@ -457,4 +462,68 @@ export const deleteEmployee = async (employeeId: string) => {
     .delete()
     .eq('id', employeeId);
   if (error) throw new Error(error.message);
+};
+
+// ==================================================================
+// FUNÇÕES DE API (CLIENTES)
+// ==================================================================
+
+// (Admin) Busca TODOS os clientes
+export const fetchClients = async (): Promise<CustomerProfile[]> => {
+  const { data, error } = await supabase
+    .from('Clients')
+    .select(`
+      id,
+      name,
+      phone,
+      email
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error("Erro ao buscar clientes (Admin):", error);
+    throw new Error(error.message);
+  }
+  return data as CustomerProfile[];
+};
+
+// (Cliente) Busca o PRÓPRIO perfil
+export const fetchCustomerProfile = async (userId: string): Promise<CustomerProfile | null> => {
+  const { data, error } = await supabase
+    .from('Clients') // Busca na nova tabela "Clients"
+    .select(`
+      id,
+      name,
+      phone,
+      email
+    `)
+    .eq('id', userId) // Pelo ID do usuário logado
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') { // Nenhum cliente encontrado
+      return null; 
+    }
+    console.error("Erro ao buscar perfil do cliente:", error);
+    throw new Error(error.message);
+  }
+  return data as CustomerProfile;
+};
+
+// (Admin) Deleta um cliente
+export const deleteClient = async (clientId: string) => {
+  if (!clientId) throw new Error("ID do cliente não encontrado.");
+  
+  // NOTE: A exclusão de usuário (auth.users) SÓ PODE ser feita no backend (Supabase Functions)
+  // Vamos deletar apenas o perfil 'Clients'
+  
+  const { error } = await supabase
+    .from('Clients')
+    .delete()
+    .eq('id', clientId);
+
+  if (error) {
+    console.error("Erro ao deletar cliente:", error);
+    throw new Error(error.message);
+  }
 };

@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-// CORREÇÃO: Importa o hook do Contexto, não do Popover
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
 import { supabase } from "@/integrations/supabase/client";
@@ -36,18 +35,19 @@ const navLinks = [
 export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { user, employeeProfile } = useAuth(); // Autenticação do Admin
+    // Pega os dois perfis separadamente
+    const { employeeProfile, logout: adminLogout } = useAuth(); // Autenticação do Admin
     const {
-        isLoggedIn,
+        isLoggedIn: isCustomerLoggedIn,
         getGreeting,
         logout: customerLogout,
     } = useCustomerAuth(); // Autenticação do Cliente
 
     const isActive = (path: string) => location.pathname === path;
-    const [isMenuOpen, setIsMenuOpen] = useState(false); // Estado para o menu hamburguer
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const handleAdminLogout = async () => {
-        await supabase.auth.signOut();
+        await adminLogout(); // Usa a função de logout do AuthContext
         navigate("/");
     };
 
@@ -56,7 +56,6 @@ export const Navbar = () => {
             <div className="container flex h-16 items-center justify-between">
                 {/* --- 1. Menu Hamburguer (MOBILE) e Logo --- */}
                 <div className="flex items-center space-x-2">
-                    {/* Botão do Hamburguer (Sheet Trigger) */}
                     <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                         <SheetTrigger asChild className="md:hidden">
                             <Button variant="ghost" size="icon">
@@ -64,7 +63,6 @@ export const Navbar = () => {
                             </Button>
                         </SheetTrigger>
 
-                        {/* Conteúdo do Menu Lateral */}
                         <SheetContent side="left" className="w-64 sm:w-80">
                             <SheetHeader>
                                 <SheetTitle className="flex items-center space-x-2">
@@ -99,8 +97,10 @@ export const Navbar = () => {
 
                                 <Separator className="my-4" />
 
-                                {/* Se o Admin estiver logado, mostra o link do Painel no menu */}
-                                {user && (
+                                {/* CORREÇÃO DE SEGURANÇA: 
+                          Só mostra o link do Admin se 'employeeProfile' existir
+                        */}
+                                {employeeProfile && (
                                     <Button
                                         variant={
                                             isActive("/admin")
@@ -123,7 +123,7 @@ export const Navbar = () => {
                                 )}
 
                                 {/* Saudação e Logout do Cliente (para contexto mobile) */}
-                                {isLoggedIn && (
+                                {isCustomerLoggedIn && (
                                     <div className="mt-4 pt-4 border-t">
                                         <p className="text-sm font-medium mb-2">
                                             {getGreeting()}!
@@ -183,8 +183,10 @@ export const Navbar = () => {
                     {/* 3.2 Botão do Carrinho (Drawer Trigger) --- */}
                     <CartDrawer />
 
-                    {/* 3.3 Admin (Apenas se o Admin estiver logado - Desktop) */}
-                    {user ? (
+                    {/* 3.3 CORREÇÃO CRÍTICA DE SEGURANÇA:
+              Verifica 'employeeProfile' (Admin) em vez de 'user' (Qualquer um)
+            */}
+                    {employeeProfile ? (
                         <div className="hidden md:flex items-center">
                             <Button
                                 variant={
@@ -212,11 +214,10 @@ export const Navbar = () => {
                             </Button>
                         </div>
                     ) : (
-                        <></>
+                        <></> // Não mostra nada se não for um funcionário
                     )}
                 </div>
             </div>
-            {/* <SheetContent/> A linha que causava o erro anterior foi removida */}
         </nav>
     );
 };

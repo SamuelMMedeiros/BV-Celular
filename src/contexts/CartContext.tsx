@@ -29,6 +29,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchStores } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCustomerAuth } from "./CustomerAuthContext";
+import { useNavigate, useLocation } from "react-router-dom"; // 1. Importar hooks de navegação
 
 // --- 1. Definição do Tipo de Item do Carrinho ---
 export interface CartItem {
@@ -225,6 +226,10 @@ export const CartDrawer = () => {
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [step, setStep] = useState<"cart" | "stores" | "auth">("cart"); // 3 Passos
 
+    // 2. Hooks de navegação
+    const navigate = useNavigate();
+    const location = useLocation();
+
     // Query para buscar todas as lojas
     const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
         queryKey: ["allStores"],
@@ -257,16 +262,12 @@ export const CartDrawer = () => {
         setStep("cart");
     };
 
-    // CORREÇÃO UX (Fluxo do Botão "Escolher Loja")
     const handleProceedToStores = () => {
         if (itemCount === 0) return;
 
-        // 1. Verifica se o usuário precisa se identificar
         if (!isLoggedIn) {
-            setStep("auth"); // Vai para a tela de prompt de login
-        }
-        // 2. Se ESTIVER logado, vai para a lista de lojas
-        else {
+            setStep("auth");
+        } else {
             setStep("stores");
         }
     };
@@ -385,7 +386,7 @@ export const CartDrawer = () => {
                         key={store.id}
                         className="w-full h-auto py-3 justify-start transition-colors duration-150"
                         variant="outline"
-                        onClick={() => handleSelectStore(store)} // Envia para a função de checkout
+                        onClick={() => handleSelectStore(store)}
                     >
                         <div className="flex flex-col items-start">
                             <span className="font-bold">{store.name}</span>
@@ -412,16 +413,13 @@ export const CartDrawer = () => {
                 size="lg"
                 className="w-full"
                 onClick={() => {
-                    // 4. CHAMA O COMPONENTE POPOVER (o que faz o botão de login aparecer)
-                    const loginButton = document.querySelector(
-                        'button:has(svg[data-lucide="user"])'
-                    ) as HTMLButtonElement;
-                    if (loginButton) loginButton.click();
+                    // 3. CORREÇÃO: Navega para a página /login e passa a rota atual
+                    navigate("/login", { state: { from: location } });
                     setIsDrawerOpen(false); // Fecha o Drawer
                     setStep("cart"); // Volta ao passo 1
                 }}
             >
-                Fazer Cadastro Rápido
+                Fazer Login ou Cadastro
             </Button>
         </div>
     );
@@ -492,7 +490,7 @@ export const CartDrawer = () => {
                             <Button
                                 size="lg"
                                 className="w-full"
-                                onClick={handleProceedToStores} // Avança para o passo 2
+                                onClick={handleProceedToStores}
                                 disabled={itemCount === 0}
                             >
                                 <StoreIcon className="mr-2 h-5 w-5" />
