@@ -10,11 +10,14 @@ interface AuthContextType {
     user: User | null;
     employeeProfile: Employee | null; // O perfil do Admin/Funcionário
     loading: boolean;
-    logout: () => Promise<void>; // Adiciona a função de logout
+    logout: () => Promise<void>;
 }
 
 // Cria o Context
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// CORREÇÃO: Exportamos o Context para o hook poder usá-lo
+export const AuthContext = createContext<AuthContextType | undefined>(
+    undefined
+);
 
 // Cria o "Provedor" (o componente que vai envolver nosso App)
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -30,17 +33,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const getSessionAndProfile = async (currentSession: Session | null) => {
             setSession(currentSession);
             setUser(currentSession?.user ?? null);
+            setLoading(true);
 
             if (currentSession?.user) {
                 try {
-                    // Se há uma sessão, verifica se é um funcionário
                     const profile = await fetchEmployeeProfile(
                         currentSession.user.id
                     );
-                    setEmployeeProfile(profile); // Será 'null' se não for funcionário
+                    setEmployeeProfile(profile);
                 } catch (error) {
                     console.error(
-                        "Erro ao buscar perfil de funcionário:",
+                        "Erro ao buscar perfil de funcionário (AuthContext):",
                         error
                     );
                     setEmployeeProfile(null);
@@ -61,7 +64,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // 3. Ouve mudanças no estado de autenticação (Login, Logout)
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (_event, newSession) => {
-                // Se um Cliente logar, newSession vai existir, mas o profile será 'null'
                 await getSessionAndProfile(newSession);
             }
         );
@@ -73,7 +75,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const logout = async () => {
         await supabase.auth.signOut();
-        // O listener acima vai cuidar de limpar o estado
     };
 
     const value = {
@@ -85,20 +86,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={value}>
-            {!loading && children}
-        </AuthContext.Provider>
+        <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
     );
 };
 
-// Cria um hook customizado para facilitar o uso do contexto
-//
-// CORREÇÃO AQUI: Adicionamos 'export'
-//
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (context === undefined) {
-        throw new Error("useAuth deve ser usado dentro de um AuthProvider");
-    }
-    return context;
-};
+
