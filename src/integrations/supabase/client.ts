@@ -2,8 +2,16 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+// const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+// !!! TESTE TEMPORÁRIO !!!
+// Vamos usar as strings diretamente do seu .env.local
+// (Isto não é seguro para produção, mas vai nos dizer se o problema é o Vite)
+
+const SUPABASE_URL = "https://jphprbjcmhpeqwolzntq.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwaHByYmpjbWhwZXF3b2x6bnRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3MDg0MjAsImV4cCI6MjA3ODI4NDQyMH0.IFOPB-uI30kHrmqohTG0ilMlYfS175k48rcdiogX5Vo";
+
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";

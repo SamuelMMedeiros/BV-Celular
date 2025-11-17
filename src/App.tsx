@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom"; // Importe o Outlet
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
@@ -21,82 +21,107 @@ import AdminProducts from "./pages/admin/Products";
 import AdminProductForm from "./pages/admin/ProductForm";
 import AdminStores from "./pages/admin/Stores";
 import AdminEmployees from "./pages/admin/Employees";
-import AdminClients from "./pages/admin/Clients"; // 1. Importa a nova página
+import AdminClients from "./pages/admin/Clients";
 import Acessorios from "./pages/Acessorios";
 import CustomerLogin from "./pages/CustomerLogin";
 
 const queryClient = new QueryClient();
+
+/*
+  Layout Público
+  - Carrega a autenticação de Cliente e o Carrinho.
+  - NÃO carrega o AuthProvider (Admin), evitando o conflito no reload.
+*/
+const PublicLayout = () => (
+    <CustomerAuthProvider>
+        <CartProvider>
+            <Outlet />{" "}
+            {/* Renderiza as rotas filhas (Index, Aparelhos, etc.) */}
+        </CartProvider>
+    </CustomerAuthProvider>
+);
+
+/*
+  Layout de Admin
+  - Carrega TODOS os contextos (Admin, Cliente e Carrinho).
+  - O AuthProvider (Admin) é necessário aqui para o ProtectedRoute funcionar.
+*/
+const AdminLayout = () => (
+    <AuthProvider>
+        <CustomerAuthProvider>
+            <CartProvider>
+                <Outlet />{" "}
+                {/* Renderiza as rotas filhas (Admin, AdminProducts, etc.) */}
+            </CartProvider>
+        </CustomerAuthProvider>
+    </AuthProvider>
+);
 
 const App = () => (
     <QueryClientProvider client={queryClient}>
         <TooltipProvider>
             <Toaster />
             <Sonner />
-            <AuthProvider>
-                <CartProvider>
-                    <CustomerAuthProvider>
-                        <BrowserRouter>
-                            <Routes>
-                                {/* Rotas Públicas */}
-                                <Route path="/" element={<Index />} />
-                                <Route
-                                    path="/login"
-                                    element={<CustomerLogin />}
-                                />
-                                <Route
-                                    path="/admin-login"
-                                    element={<AdminLoginPage />}
-                                />
-                                <Route
-                                    path="/aparelhos"
-                                    element={<Aparelhos />}
-                                />
-                                <Route
-                                    path="/promocoes"
-                                    element={<Promocoes />}
-                                />
-                                <Route
-                                    path="/acessorios"
-                                    element={<Acessorios />}
-                                />
+            <BrowserRouter>
+                <Routes>
+                    {/* Rotas Públicas usam o PublicLayout */}
+                    <Route element={<PublicLayout />}>
+                        <Route path="/" element={<Index />} />
+                        <Route path="/login" element={<CustomerLogin />} />
+                        <Route
+                            path="/admin-login"
+                            element={<AdminLoginPage />}
+                        />
+                        <Route path="/aparelhos" element={<Aparelhos />} />
+                        <Route path="/promocoes" element={<Promocoes />} />
+                        <Route path="/acessorios" element={<Acessorios />} />
+                        {/* A Rota NotFound agora fica aqui para pegar erros 404 públicos */}
+                        <Route path="*" element={<NotFound />} />
+                    </Route>
 
-                                {/* Rotas Protegidas (Admin) */}
-                                <Route element={<ProtectedRoute />}>
-                                    <Route path="/admin" element={<Admin />} />
-                                    <Route
-                                        path="/admin/products"
-                                        element={<AdminProducts />}
-                                    />
-                                    <Route
-                                        path="/admin/products/new"
-                                        element={<AdminProductForm />}
-                                    />
-                                    <Route
-                                        path="/admin/products/edit/:productId"
-                                        element={<AdminProductForm />}
-                                    />
-                                    <Route
-                                        path="/admin/stores"
-                                        element={<AdminStores />}
-                                    />
-                                    <Route
-                                        path="/admin/employees"
-                                        element={<AdminEmployees />}
-                                    />
-                                    <Route
-                                        path="/admin/clients"
-                                        element={<AdminClients />}
-                                    />{" "}
-                                    {/* 2. Rota de Clientes */}
-                                </Route>
+                    {/* Rotas de Admin usam o AdminLayout (que inclui o AuthProvider) */}
+                    <Route path="/admin" element={<AdminLayout />}>
+                        <Route element={<ProtectedRoute />}>
+                            {/* /admin agora é a rota "index" deste grupo */}
+                            <Route index element={<Admin />} />
 
-                                {/* Rota de "Não Encontrado" */}
-                                <Route path="*" element={<NotFound />} />
-                            </Routes>
-                        </BrowserRouter>
-                    </CustomerAuthProvider>
-                </CartProvider>
-            </AuthProvider>
+                            {/* /admin/products */}
+                            <Route
+                                path="products"
+                                element={<AdminProducts />}
+                            />
+
+                            {/* /admin/products/new */}
+                            <Route
+                                path="products/new"
+                                element={<AdminProductForm />}
+                            />
+
+                            {/* /admin/products/edit/:productId */}
+                            <Route
+                                path="products/edit/:productId"
+                                element={<AdminProductForm />}
+                            />
+
+                            {/* /admin/stores */}
+                            <Route path="stores" element={<AdminStores />} />
+
+                            {/* /admin/employees */}
+                            <Route
+                                path="employees"
+                                element={<AdminEmployees />}
+                            />
+
+                            {/* /admin/clients */}
+                            <Route path="clients" element={<AdminClients />} />
+                        </Route>
+                    </Route>
+
+                    {/* Nota: A rota "NotFound" foi movida para dentro do PublicLayout 
+                      para garantir que qualquer rota não-admin seja tratada por ele.
+                    */}
+                </Routes>
+            </BrowserRouter>
         </TooltipProvider>
     </QueryClientProvider>
 );

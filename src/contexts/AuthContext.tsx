@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,24 +34,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const getSessionAndProfile = async (currentSession: Session | null) => {
             setSession(currentSession);
             setUser(currentSession?.user ?? null);
-            setLoading(true);
+            setLoading(true); // <-- Mantém true aqui até o fim
 
             if (currentSession?.user) {
+                // !!! ESTA É A CORREÇÃO CRÍTICA !!!
+                // Envolvemos a busca de perfil em um try...catch.
+                // Se um cliente estiver logado, fetchEmployeeProfile VAI falhar.
+                // Não podemos deixar esse erro quebrar o React.
                 try {
                     const profile = await fetchEmployeeProfile(
                         currentSession.user.id
                     );
-                    setEmployeeProfile(profile);
-                } catch (error) {
+                    setEmployeeProfile(profile); // Será null se for cliente, o que está correto.
+                } catch (error: any) {
                     console.error(
-                        "Erro ao buscar perfil de funcionário (AuthContext):",
-                        error
+                        "Falha ao buscar perfil de funcionário (AuthContext):",
+                        error.message
                     );
+                    // Garante que o perfil de funcionário é nulo em caso de erro
                     setEmployeeProfile(null);
                 }
             } else {
                 setEmployeeProfile(null);
             }
+            // Define o loading como false APÓS tudo ter sido processado
             setLoading(false);
         };
 
@@ -89,5 +96,3 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
     );
 };
-
-

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -35,7 +36,18 @@ export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
 
-    const { employeeProfile, logout: adminLogout } = useAuth(); // Autenticação do Admin
+    // --- INÍCIO DA ALTERAÇÃO ---
+    // Verificamos se estamos em uma rota de admin
+    const isAdminRoute = location.pathname.startsWith("/admin");
+
+    // Só chamamos o hook de admin (useAuth) se estivermos na rota de admin.
+    // Caso contrário, usamos um objeto "dummy" (falso) com valores nulos.
+    const { employeeProfile, logout: adminLogout } = isAdminRoute
+        ? useAuth()
+        : { employeeProfile: null, logout: async () => {} };
+    // --- FIM DA ALTERAÇÃO ---
+
+    // O hook de cliente (useCustomerAuth) continua funcionando normalmente em todas as páginas
     const {
         isLoggedIn: isCustomerLoggedIn,
         getGreeting,

@@ -1,6 +1,3 @@
-//
-// === CÓDIGO COMPLETO PARA: src/lib/api.ts ===
-//
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +27,13 @@ export type StoreUpdatePayload = Database['public']['Tables']['Stores']['Update'
 export type EmployeeInsertPayload = Database['public']['Tables']['Employees']['Insert'];
 export type EmployeeUpdatePayload = Database['public']['Tables']['Employees']['Update'] & {
   id: string;
+};
+
+// --- NOVO TIPO DE PAYLOAD (Clientes) ---
+export type CustomerUpdatePayload = {
+  id: string;
+  name: string;
+  phone: string;
 };
 
 
@@ -525,5 +529,40 @@ export const deleteClient = async (clientId: string) => {
   if (error) {
     console.error("Erro ao deletar cliente:", error);
     throw new Error(error.message);
+  }
+};
+
+// --- NOVA FUNÇÃO ---
+// (Cliente) Atualiza o PRÓPRIO perfil
+export const updateCustomerProfile = async (payload: CustomerUpdatePayload): Promise<void> => {
+  const { id, ...updateData } = payload;
+  
+  // 1. Atualiza a tabela 'Clients'
+  const { error } = await supabase
+    .from('Clients')
+    .update({ 
+      name: updateData.name, 
+      phone: updateData.phone 
+    })
+    .eq('id', id);
+
+  if (error) {
+    console.error("Erro ao atualizar perfil (tabela Clients):", error);
+    throw new Error(error.message);
+  }
+  
+  // 2. Atualiza o user_metadata no Supabase Auth
+  // Isso garante que o nome/telefone persistam se o usuário recarregar
+  const { error: authError } = await supabase.auth.updateUser({
+    data: { 
+      full_name: updateData.name, 
+      phone: updateData.phone 
+    }
+  });
+
+  if (authError) {
+     console.error("Erro ao atualizar user_metadata (Auth):", authError);
+    // Não lançamos um erro aqui, pois a tabela principal foi atualizada
+    // Mas é bom registrar o log.
   }
 };
