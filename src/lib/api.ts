@@ -1,16 +1,15 @@
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
-import { Product, Store, Employee, CustomerProfile } from "@/types";
+import { Product, Store, Employee, CustomerProfile, OrderCartItem } from "@/types"; // Importar OrderCartItem
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid';
 
 // --- Tipos de Payload (Produtos) ---
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
-  store_ids?: string[]; // CORREÇÃO: Tornou-se opcional
+  store_ids?: string[]; 
   image_files: File[];
 };
-
 export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
   id: string;
   image_files?: File[];
@@ -29,11 +28,20 @@ export type EmployeeUpdatePayload = Database['public']['Tables']['Employees']['U
   id: string;
 };
 
-// --- NOVO TIPO DE PAYLOAD (Clientes) ---
+// --- Tipos de Payload (Clientes) ---
 export type CustomerUpdatePayload = {
   id: string;
   name: string;
   phone: string;
+};
+
+// --- NOVO TIPO DE PAYLOAD (Pedidos/Orçamentos) ---
+export type OrderInsertPayload = {
+  client_id: string;
+  store_id: string;
+  total_price: number;
+  items: OrderCartItem[];
+  status?: string;
 };
 
 
@@ -532,7 +540,6 @@ export const deleteClient = async (clientId: string) => {
   }
 };
 
-// --- NOVA FUNÇÃO ---
 // (Cliente) Atualiza o PRÓPRIO perfil
 export const updateCustomerProfile = async (payload: CustomerUpdatePayload): Promise<void> => {
   const { id, ...updateData } = payload;
@@ -552,7 +559,6 @@ export const updateCustomerProfile = async (payload: CustomerUpdatePayload): Pro
   }
   
   // 2. Atualiza o user_metadata no Supabase Auth
-  // Isso garante que o nome/telefone persistam se o usuário recarregar
   const { error: authError } = await supabase.auth.updateUser({
     data: { 
       full_name: updateData.name, 
@@ -562,7 +568,38 @@ export const updateCustomerProfile = async (payload: CustomerUpdatePayload): Pro
 
   if (authError) {
      console.error("Erro ao atualizar user_metadata (Auth):", authError);
-    // Não lançamos um erro aqui, pois a tabela principal foi atualizada
-    // Mas é bom registrar o log.
   }
+};
+
+// ==================================================================
+// --- NOVA SEÇÃO: FUNÇÕES DE API (PEDIDOS/ORÇAMENTOS) ---
+// ==================================================================
+
+/**
+ * Cria um novo Pedido/Orçamento no banco de dados.
+ * Associado a um cliente e a uma loja.
+ */
+export const createOrder = async (payload: OrderInsertPayload): Promise<Database['public']['Tables']['Orders']['Row']> => {
+  
+  // Mapeia os dados para o formato exato da tabela
+  const orderData: Database['public']['Tables']['Orders']['Insert'] = {
+    client_id: payload.client_id,
+    store_id: payload.store_id,
+    total_price: payload.total_price,
+    items: payload.items, // O Supabase (com RLS) aceitará o JSONB
+    status: payload.status || 'pending'
+  };
+
+  const { data, error } = await supabase
+    .from('Orders')
+    .insert(orderData)
+    .select() // Retorna o registro recém-criado
+    .single();
+
+  if (error) {
+    console.error("Erro ao criar pedido (createOrder):", error);
+    throw new Error(error.message);
+  }
+
+  return data;
 };

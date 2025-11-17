@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Palette, HardDrive, Cpu, ShoppingCart } from "lucide-react";
 import { useState } from "react";
 import { ProductDialog } from "./ProductDialog";
-import { Product } from "@/types";
-import { useCart } from "@/contexts/CartContext"; // Importa o hook do carrinho
-import { useToast } from "@/hooks/use-toast"; // Para notificações
+import { CartItem, Product } from "@/types";
+import { useCart } from "@/contexts/CartContext";
+import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/lib/utils"; // <-- 1. IMPORTAR O FORMATADOR CORRETO
+import { CheckCircle } from "lucide-react";
 
 interface ProductCardProps {
     product: Product;
@@ -41,19 +43,12 @@ const formatArrayData = (data: any): string => {
     return data || "";
 };
 
-// Helper para formatar preços (R$)
-const formatPrice = (priceInCents: number) => {
-    return (priceInCents / 100).toLocaleString("pt-BR", {
-        minimumFractionDigits: 2,
-    });
-};
-
 export const ProductCard = ({ product }: ProductCardProps) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const { addItem } = useCart(); // Usa o carrinho
-    const { toast } = useToast(); // Usa o toast
 
-    // Otimizado para só calcular se originalPrice existir e for maior
+    const { addToCart } = useCart();
+    const { toast } = useToast();
+
     const discount =
         product.originalPrice && product.originalPrice > product.price
             ? Math.round(
@@ -71,11 +66,29 @@ export const ProductCard = ({ product }: ProductCardProps) => {
 
     // Lógica de adicionar ao carrinho
     const handleAddToCart = (e: React.MouseEvent) => {
-        e.stopPropagation(); // Impede que o clique abra o diálogo
-        addItem(product);
+        e.stopPropagation();
+
+        const cartItem: CartItem = {
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            images: product.images,
+            quantity: 1,
+            category: product.category,
+        };
+
+        addToCart(cartItem);
+
         toast({
-            title: "Adicionado ao Carrinho",
-            description: `${product.name} adicionado com sucesso.`,
+            title: "Adicionado ao Carrinho", // <-- 2. TEXTO CORRIGIDO
+            description: (
+                <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <span>
+                        "{product.name}" foi adicionado ao seu carrinho.
+                    </span>
+                </div>
+            ),
             variant: "default",
         });
     };
@@ -92,7 +105,6 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                         alt={product.name}
                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
-                    {/* (Resolve 4) Adicionado "discount > 0" */}
                     {product.isPromotion && discount > 0 && (
                         <Badge className="absolute right-2 top-2 bg-destructive text-destructive-foreground">
                             -{discount}%
@@ -100,7 +112,6 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                     )}
                 </div>
 
-                {/* Content */}
                 <div className="p-4">
                     <h3 className="mb-2 text-lg font-semibold text-card-foreground line-clamp-1">
                         {product.name}
@@ -109,13 +120,11 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                     <div className="mb-3 space-y-1 text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
                             <HardDrive className="h-3 w-3" />
-                            {/* (Correção UX) Armazenamento em maiúscula */}
                             <span>
                                 {product.storage?.toUpperCase() || "N/A"}
                             </span>
                             <span className="mx-1">•</span>
                             <Cpu className="h-3 w-3" />
-                            {/* (Correção UX) RAM em maiúscula */}
                             <span>
                                 {product.ram?.toUpperCase() || "N/A"} RAM
                             </span>
@@ -127,14 +136,15 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                     </div>
 
                     <div className="mb-3">
-                        {/* (Resolve 4) Só mostra o "de" se o desconto for real */}
                         {discount > 0 && product.originalPrice && (
                             <p className="text-xs text-muted-foreground line-through">
-                                R$ {formatPrice(product.originalPrice)}
+                                {/* --- 3. PREÇO FORMATADO --- */}
+                                {formatCurrency(product.originalPrice)}
                             </p>
                         )}
                         <p className="text-2xl font-bold text-primary">
-                            R$ {formatPrice(product.price)}
+                            {/* --- 4. PREÇO FORMATADO --- */}
+                            {formatCurrency(product.price)}
                         </p>
                     </div>
 
@@ -145,7 +155,6 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                         </span>
                     </div>
 
-                    {/* Área de Ações: Comprar e Carrinho */}
                     <div className="flex space-x-2">
                         <Button
                             className="flex-1"
@@ -158,7 +167,7 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                             variant="outline"
                             size="icon"
                             className="w-10 h-10"
-                            onClick={handleAddToCart} // Novo botão de adicionar ao carrinho
+                            onClick={handleAddToCart}
                         >
                             <ShoppingCart className="h-4 w-4" />
                         </Button>
@@ -170,7 +179,9 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                 product={product}
                 open={isDialogOpen}
                 onOpenChange={setIsDialogOpen}
-            />
+            >
+                <></>
+            </ProductDialog>
         </>
     );
 };

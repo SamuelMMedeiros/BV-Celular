@@ -24,6 +24,7 @@ import AdminEmployees from "./pages/admin/Employees";
 import AdminClients from "./pages/admin/Clients";
 import Acessorios from "./pages/Acessorios";
 import CustomerLogin from "./pages/CustomerLogin";
+import MinhaConta from "./pages/MinhaConta"; // <-- IMPORTAR A NOVA PÁGINA
 
 const queryClient = new QueryClient();
 
@@ -75,6 +76,10 @@ const App = () => (
                         <Route path="/aparelhos" element={<Aparelhos />} />
                         <Route path="/promocoes" element={<Promocoes />} />
                         <Route path="/acessorios" element={<Acessorios />} />
+
+                        {/* --- NOVA ROTA ADICIONADA --- */}
+                        <Route path="/minha-conta" element={<MinhaConta />} />
+
                         {/* A Rota NotFound agora fica aqui para pegar erros 404 públicos */}
                         <Route path="*" element={<NotFound />} />
                     </Route>

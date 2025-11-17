@@ -1,6 +1,4 @@
-//
-// === CÓDIGO COMPLETO PARA: src/contexts/CustomerAuthContext.tsx ===
-//
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
     createContext,
     useContext,
@@ -28,6 +26,8 @@ interface CustomerAuthContextType {
     signIn: (email: string, password: string) => Promise<void>;
     logout: () => void;
     getGreeting: () => string;
+    refetchProfile: () => Promise<void>;
+    isLoadingSession: boolean; // <-- ESTA LINHA FOI ADICIONADA
 }
 
 const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(
@@ -43,10 +43,22 @@ const extractProfile = (session: Session | null): CustomerProfile | null => {
     if (metadata && metadata.full_name && metadata.phone) {
         return {
             id: session.user.id,
+            // (O email vem do nível superior do user, não do metadata)
+            email: session.user.email || "",
             name: metadata.full_name as string,
             phone: metadata.phone as string,
         };
     }
+    // Fallback caso o metadata não exista, mas o usuário sim
+    if (session.user.email) {
+        return {
+            id: session.user.id,
+            email: session.user.email,
+            name: "Cliente", // Nome padrão
+            phone: "", // Telefone padrão
+        };
+    }
+
     return null;
 };
 
@@ -61,14 +73,62 @@ export const CustomerAuthProvider = ({
     const [profile, setProfile] = useState<CustomerProfile | null>(null);
     const [isLoadingSession, setIsLoadingSession] = useState(true);
 
+    // Função para buscar o perfil e a sessão (usada na inicialização e no refetch)
+    const fetchSessionAndProfile = useCallback(
+        async (currentSession: Session | null) => {
+            setIsLoadingSession(true); // <-- GARANTE QUE O LOADING É TRUE NO INÍCIO
+            setSession(currentSession);
+
+            if (currentSession?.user) {
+                // Se o usuário está logado, tentamos buscar o perfil na tabela 'Clients'
+                try {
+                    // Usamos a função da API para buscar o perfil no DB
+                    const { data, error } = await supabase
+                        .from("Clients")
+                        .select("id, name, phone, email")
+                        .eq("id", currentSession.user.id)
+                        .single();
+
+                    if (error && error.code !== "PGRST116") {
+                        // Ignora erro "não encontrado"
+                        throw error;
+                    }
+
+                    if (data) {
+                        setProfile(data as CustomerProfile);
+                    } else {
+                        // Se não achou na tabela Clients (ex: só se cadastrou no Auth),
+                        // extrai do metadata
+                        setProfile(extractProfile(currentSession));
+                    }
+                } catch (error: any) {
+                    console.error(
+                        "Erro ao buscar perfil do cliente (Context):",
+                        error.message
+                    );
+                    setProfile(null); // Falha na busca
+                }
+            } else {
+                // Se não há sessão, não há perfil
+                setProfile(null);
+            }
+
+            setIsLoadingSession(false); // <-- FINALIZA O LOADING
+        },
+        []
+    );
+
+    // Função para forçar a re-busca dos dados da sessão e do perfil
+    const refetchProfile = useCallback(async () => {
+        setIsLoadingSession(true);
+        const {
+            data: { session: currentSession },
+        } = await supabase.auth.getSession();
+        await fetchSessionAndProfile(currentSession);
+    }, [fetchSessionAndProfile]);
+
     // 1. Lógica para buscar sessão e perfil na inicialização e em mudanças de Auth
     useEffect(() => {
-        const fetchSessionAndProfile = (currentSession: Session | null) => {
-            setSession(currentSession);
-            setProfile(extractProfile(currentSession));
-            setIsLoadingSession(false);
-        };
-
         // 1a. Tenta buscar a sessão no Local Storage
         supabase.auth
             .getSession()
@@ -86,7 +146,7 @@ export const CustomerAuthProvider = ({
         return () => {
             authListener?.subscription.unsubscribe();
         };
-    }, []);
+    }, [fetchSessionAndProfile]);
 
     // 2. Funções de Ação (Nova Lógica Email/Senha)
 
@@ -173,7 +233,7 @@ export const CustomerAuthProvider = ({
         if (hour >= 5 && hour < 12) {
             greeting = "Bom dia";
         } else if (hour >= 12 && hour < 18) {
-            greeting = "Boa tarde";
+            greeting = "Boa noite";
         } else {
             greeting = "Boa noite";
         }
@@ -183,8 +243,8 @@ export const CustomerAuthProvider = ({
     }, [profile]);
 
     const isLoggedIn = useMemo(
-        () => !!session && !isLoadingSession,
-        [session, isLoadingSession]
+        () => !!session && !!profile && !isLoadingSession,
+        [session, profile, isLoadingSession]
     );
 
     const value = {
@@ -195,6 +255,8 @@ export const CustomerAuthProvider = ({
         signIn,
         logout,
         getGreeting,
+        refetchProfile,
+        isLoadingSession, // <-- ESTA LINHA FOI ADICIONADA
     };
 
     return (

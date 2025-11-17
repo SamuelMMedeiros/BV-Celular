@@ -1,7 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-//
-// === CÓDIGO COMPLETO CORRIGIDO PARA: src/pages/admin/ProductForm.tsx ===
-//
 import { z } from "zod";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -43,38 +40,10 @@ import {
     ProductUpdatePayload,
 } from "@/lib/api";
 import { Store, Product } from "@/types";
+// --- 1. IMPORTAR AS NOVAS FUNÇÕES ---
+import { formatCurrency, parseCurrency } from "@/lib/utils";
 
-// --- Helpers de Formatação (Formato Moeda) ---
-const formatPriceForDisplay = (
-    value: string | number | undefined | null
-): string => {
-    if (value === null || value === undefined) return "";
-    let numberValue: number;
-    if (typeof value === "number") {
-        numberValue = value;
-    } else {
-        const cleanedValue = String(value).replace(/[^\d,.]/g, "");
-        numberValue = parseFloat(
-            cleanedValue.replace(/\./g, "").replace(",", ".")
-        );
-    }
-
-    if (isNaN(numberValue)) return "";
-    return numberValue.toLocaleString("pt-BR", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    });
-};
-
-const parsePriceForDatabase = (
-    value: string | undefined
-): number | undefined => {
-    if (!value) return undefined;
-    const numberValue = parseFloat(value.replace(/\./g, "").replace(",", "."));
-    if (isNaN(numberValue)) return undefined;
-    return Math.round(numberValue * 100);
-};
-// --- Fim dos Helpers ---
+// --- 2. REMOVER OS HELPERS ANTIGOS (formatPriceForDisplay, parsePriceForDatabase) ---
 
 // --- Schemas de Validação (Zod) ---
 const MAX_FILE_SIZE_MB = 5;
@@ -86,7 +55,7 @@ const ACCEPTED_IMAGE_TYPES = [
     "image/webp",
 ];
 
-// Schema base para campos comuns
+// --- 3. ATUALIZAR O SCHEMA PARA USAR O NOVO PARSER ---
 const commonSchema = z.object({
     name: z
         .string()
@@ -96,13 +65,17 @@ const commonSchema = z.object({
     price: z
         .string()
         .min(1, { message: "Preço é obrigatório." })
-        .transform((val) => parsePriceForDatabase(val) as number),
+        // Usamos o parseCurrency. Se falhar (undefined), o 'refine' abaixo vai pegar.
+        .transform((val) => parseCurrency(val))
+        .refine((val) => val !== undefined && val > 0, {
+            message: "Preço inválido.",
+        }),
 
     originalPrice: z
         .string()
         .optional()
         .nullable()
-        .transform((val) => (val ? parsePriceForDatabase(val) : undefined)),
+        .transform((val) => (val ? parseCurrency(val) : undefined)),
 
     storage: z.string().optional().nullable(),
     ram: z.string().optional().nullable(),
@@ -124,10 +97,9 @@ const commonSchema = z.object({
         required_error: "Categoria é obrigatória.",
     }),
     isPromotion: z.boolean().default(false),
-    store_ids: z.array(z.string()).optional(), // CORREÇÃO: Mantido opcional
+    store_ids: z.array(z.string()).optional(),
 });
 
-// Schema para o campo de imagens
 const imageFileSchema = z
     .array(z.instanceof(File))
     .optional()
@@ -143,9 +115,6 @@ const imageFileSchema = z
         "Apenas .jpg, .jpeg, .png e .webp."
     );
 
-//
-// CORREÇÃO (Erros 1 e 2): Combinando os schemas da forma correta (usando .extend)
-//
 const createSchema = commonSchema.extend({
     image_files: imageFileSchema.refine(
         (files) => files && files.length > 0,
@@ -159,7 +128,6 @@ const editSchema = commonSchema.extend({
 // --- Fim dos Schemas ---
 
 // Tipo do formulário (antes da transformação do Zod)
-// (Este é o tipo que o 'useForm' usa)
 type FormValues = Omit<
     z.input<typeof createSchema>,
     "price" | "originalPrice" | "colors"
@@ -173,9 +141,13 @@ type FormValues = Omit<
 const productToForm = (product: Product): FormValues => ({
     name: product.name,
     description: product.description ?? "",
-    price: formatPriceForDisplay(product.price / 100),
+    // --- 4. FORMATAR PARA EXIBIÇÃO ---
+    // A API nos dá centavos (75900), formatCurrency transforma em R$ 759,00
+    price: product.price
+        ? formatCurrency(product.price).replace("R$", "").trim()
+        : "",
     originalPrice: product.originalPrice
-        ? formatPriceForDisplay(product.originalPrice / 100)
+        ? formatCurrency(product.originalPrice).replace("R$", "").trim()
         : "",
     storage: product.storage ?? "",
     ram: product.ram ?? "",
@@ -209,7 +181,6 @@ const FormSkeleton = () => (
 );
 
 // Tipo do formulário (após transformação do Zod)
-// (Este é o tipo que o 'onSubmit' recebe)
 type FormSchemaOutput =
     | z.infer<typeof createSchema>
     | z.infer<typeof editSchema>;
@@ -239,7 +210,6 @@ const AdminProductForm = () => {
         });
 
     const form = useForm<FormValues>({
-        // Usa o tipo de INPUT
         resolver: zodResolver(formSchema),
         defaultValues: {
             name: "",
@@ -306,7 +276,6 @@ const AdminProductForm = () => {
         },
     });
 
-    // CORREÇÃO (Erro 3): O 'data' aqui é o 'FormSchemaOutput'
     const onSubmit = (data: FormSchemaOutput) => {
         const newFiles = data.image_files || [];
 
@@ -327,19 +296,18 @@ const AdminProductForm = () => {
         }
 
         if (isEditMode) {
-            // 'data' já tem os tipos corretos (price: number, colors: string[])
             const payload: ProductUpdatePayload = {
-                ...data,
+                ...(data as z.infer<typeof editSchema>), // data já está transformada (preços são números em centavos)
                 id: productId,
                 images_to_delete: imagesToDelete,
-                store_ids: data.store_ids || [], // Garante que não é undefined
+                store_ids: data.store_ids || [],
             };
             updateMutation.mutate(payload);
         } else {
             const payload: ProductInsertPayload = {
                 ...(data as z.infer<typeof createSchema>),
                 image_files: data.image_files as File[],
-                store_ids: data.store_ids || [], // Garante que não é undefined
+                store_ids: data.store_ids || [],
             };
             createMutation.mutate(payload);
         }
@@ -361,6 +329,25 @@ const AdminProductForm = () => {
     const removeExistingImage = (imageUrl: string) => {
         setExistingImages(existingImages.filter((img) => img !== imageUrl));
         setImagesToDelete((prev) => [...prev, imageUrl]);
+    };
+
+    // --- 5. FUNÇÃO DE FORMATAÇÃO NO BLUR ---
+    const handlePriceBlur = (
+        e: React.FocusEvent<HTMLInputElement>,
+        fieldName: "price" | "originalPrice"
+    ) => {
+        const value = e.target.value;
+        const cents = parseCurrency(value);
+        if (cents !== undefined) {
+            // Formata de centavos (ex: 75900) para "759,00"
+            const formatted = (cents / 100).toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+            form.setValue(fieldName, formatted);
+        } else {
+            form.setValue(fieldName, ""); // Limpa se for inválido
+        }
     };
 
     return (
@@ -392,7 +379,6 @@ const AdminProductForm = () => {
                             <FormSkeleton />
                         ) : (
                             <Form {...form}>
-                                {/* CORREÇÃO (Erro 3): O 'data' agora é 'FormSchemaOutput' */}
                                 <form
                                     onSubmit={form.handleSubmit(
                                         onSubmit as any
@@ -453,20 +439,14 @@ const AdminProductForm = () => {
                                                     <FormControl>
                                                         <Input
                                                             type="text"
-                                                            placeholder="7.999,00"
+                                                            placeholder="759,00"
                                                             {...field}
-                                                            value={
-                                                                field.value ??
-                                                                ""
-                                                            }
                                                             onBlur={(e) => {
-                                                                field.onChange(
-                                                                    formatPriceForDisplay(
-                                                                        e.target
-                                                                            .value
-                                                                    )
+                                                                handlePriceBlur(
+                                                                    e,
+                                                                    "price"
                                                                 );
-                                                                field.onBlur();
+                                                                field.onBlur(); // Dispara a validação do Zod
                                                             }}
                                                         />
                                                     </FormControl>
@@ -489,18 +469,12 @@ const AdminProductForm = () => {
                                                     <FormControl>
                                                         <Input
                                                             type="text"
-                                                            placeholder="8.999,00"
+                                                            placeholder="850,00"
                                                             {...field}
-                                                            value={
-                                                                field.value ??
-                                                                ""
-                                                            }
                                                             onBlur={(e) => {
-                                                                field.onChange(
-                                                                    formatPriceForDisplay(
-                                                                        e.target
-                                                                            .value
-                                                                    )
+                                                                handlePriceBlur(
+                                                                    e,
+                                                                    "originalPrice"
                                                                 );
                                                                 field.onBlur();
                                                             }}
@@ -516,6 +490,7 @@ const AdminProductForm = () => {
                                         />
                                     </div>
 
+                                    {/* O resto do formulário (storage, ram, etc.) continua igual... */}
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                         <FormField
                                             control={form.control}

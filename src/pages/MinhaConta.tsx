@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Mail, PersonStanding, Phone, User, AlertTriangle } from "lucide-react";
 
@@ -15,18 +15,22 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
+// --- ESTA É A CORREÇÃO ---
 import {
     Form,
     FormControl,
+    FormDescription,
     FormField,
     FormItem,
     FormLabel,
     FormMessage,
 } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { updateCustomerProfile, CustomerUpdatePayload } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 
 // Schema de validação para o formulário de perfil
 const profileSchema = z.object({
@@ -41,8 +45,10 @@ const profileSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
 const MinhaConta = () => {
-    const { profile, isLoggedIn, session, refetchProfile } = useCustomerAuth();
+    const { profile, isLoggedIn, session, refetchProfile, isLoadingSession } =
+        useCustomerAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -70,7 +76,6 @@ const MinhaConta = () => {
             updateCustomerProfile(data),
         onSuccess: async () => {
             // Atualiza os dados do usuário no Supabase Auth (user_metadata)
-            // Isso é importante para que a saudação na Navbar seja atualizada no próximo refresh
             const { error: authError } = await supabase.auth.updateUser({
                 data: {
                     full_name: form.getValues("name"),
@@ -98,15 +103,23 @@ const MinhaConta = () => {
         },
     });
 
-    // Redireciona se não estiver logado
+    // Redireciona se não estiver logado (APÓS o carregamento da sessão)
     useEffect(() => {
-        if (!isLoggedIn) {
-            navigate("/login", { state: { from: location }, replace: true });
+        // Espera o carregamento da sessão terminar
+        if (!isLoadingSession) {
+            if (!isLoggedIn) {
+                // A linha 112 agora funciona, pois 'location' está definido
+                navigate("/login", {
+                    state: { from: location },
+                    replace: true,
+                });
+            }
         }
-    }, [isLoggedIn, navigate]);
+    }, [isLoggedIn, isLoadingSession, navigate, location]);
 
-    if (!profile) {
-        // Isso pode aparecer rapidamente enquanto o perfil carrega
+    // Exibe "Carregando" enquanto a sessão/perfil é verificado
+    // Isso impede o "flash" da página antes do redirecionamento
+    if (isLoadingSession || (!profile && isLoggedIn)) {
         return (
             <div className="min-h-screen bg-background">
                 <Navbar />
@@ -115,6 +128,11 @@ const MinhaConta = () => {
                 </div>
             </div>
         );
+    }
+
+    // Se chegou aqui e não está logado, o useEffect acima fará o redirect
+    if (!isLoggedIn) {
+        return null; // Evita renderizar o formulário
     }
 
     const onSubmit = (data: ProfileFormValues) => {
@@ -167,7 +185,7 @@ const MinhaConta = () => {
                                         id="email"
                                         type="email"
                                         value={
-                                            session?.user?.email ||
+                                            profile.email ||
                                             "Email não encontrado"
                                         }
                                         disabled
@@ -216,6 +234,8 @@ const MinhaConta = () => {
                                                     {...field}
                                                 />
                                             </FormControl>
+
+                                            {/* O ERRO ESTAVA AQUI (linha 239) */}
                                             <FormDescription>
                                                 Usaremos este número para
                                                 confirmar seu orçamento.

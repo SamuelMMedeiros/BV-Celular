@@ -3,10 +3,11 @@ import {
     useContext,
     useState,
     useEffect,
-    useCallback,
+    ReactNode,
     useMemo,
+    useCallback,
 } from "react";
-import { Product, Store } from "@/types";
+import { Product, Store, CartItem } from "@/types";
 import {
     MessageCircle,
     Trash2,
@@ -14,409 +15,343 @@ import {
     ArrowLeft,
     Store as StoreIcon,
     User,
+    Loader2,
+    AlertTriangle,
+    Minus,
+    Plus,
+    X,
 } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
-    Drawer,
-    DrawerContent,
-    DrawerHeader,
-    DrawerTitle,
-    DrawerDescription,
-    DrawerTrigger,
-    DrawerFooter,
-} from "@/components/ui/drawer";
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
+    SheetTrigger,
+    SheetFooter,
+    SheetClose,
+} from "@/components/ui/sheet";
 import { useQuery } from "@tanstack/react-query";
-import { fetchStores } from "@/lib/api";
-import { Skeleton } from "@/components/ui/skeleton";
+import { fetchStores, createOrder } from "@/lib/api";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import { useCustomerAuth } from "./CustomerAuthContext";
-import { useNavigate, useLocation } from "react-router-dom"; // 1. Importar hooks de navegação
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { formatCurrency } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
-// --- 1. Definição do Tipo de Item do Carrinho ---
-export interface CartItem {
-    product: Product;
-    quantity: number;
-}
+// --------------------------------------------------------------
+// CONTEXTO DO CARRINHO
+// --------------------------------------------------------------
 
-// --- 2. Definição do Tipo de Contexto ---
 interface CartContextType {
-    items: CartItem[];
-    addItem: (product: Product) => void;
-    removeItem: (productId: string) => void;
-    updateQuantity: (productId: string, quantity: number) => void;
+    cartItems: CartItem[];
+    addToCart: (item: CartItem) => void;
+    removeFromCart: (itemId: string) => void;
+    updateQuantity: (itemId: string, quantity: number) => void;
     clearCart: () => void;
     itemCount: number;
-    generateWhatsAppMessage: (
-        items: CartItem[],
-        customerName: string
-    ) => string;
+    totalPrice: number;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
+const LOCAL_STORAGE_KEY = "bvcelular_cart";
 
-// --- 3. Provider do Carrinho ---
 export const CartProvider = ({ children }: { children: React.ReactNode }) => {
-    // Inicializa o estado lendo do localStorage para persistência
-    const [items, setItems] = useState<CartItem[]>(() => {
+    const [cartItems, setCartItems] = useState<CartItem[]>(() => {
         try {
-            const stored = localStorage.getItem("bv_celular_cart");
+            const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
             return stored ? JSON.parse(stored) : [];
-        } catch (e) {
-            console.error("Failed to read cart from localStorage", e);
+        } catch {
             return [];
         }
     });
 
-    // Salva o estado no localStorage sempre que 'items' muda
     useEffect(() => {
-        localStorage.setItem("bv_celular_cart", JSON.stringify(items));
-    }, [items]);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cartItems));
+    }, [cartItems]);
 
-    // Contagem total de itens (para o badge na Navbar)
     const itemCount = useMemo(
-        () => items.reduce((count, item) => count + item.quantity, 0),
-        [items]
+        () => cartItems.reduce((count, item) => count + item.quantity, 0),
+        [cartItems]
     );
 
-    // --- Funções de Lógica ---
-    const addItem = useCallback((product: Product) => {
-        setItems((prevItems) => {
-            const existingItem = prevItems.find(
-                (item) => item.product.id === product.id
-            );
+    const totalPrice = useMemo(
+        () =>
+            cartItems.reduce(
+                (total, item) => total + item.price * item.quantity,
+                0
+            ),
+        [cartItems]
+    );
 
-            if (existingItem) {
-                return prevItems.map((item) =>
-                    item.product.id === product.id
-                        ? { ...item, quantity: item.quantity + 1 }
-                        : item
+    const addToCart = useCallback((item: CartItem) => {
+        setCartItems((prev) => {
+            const existing = prev.find((i) => i.id === item.id);
+            if (existing) {
+                return prev.map((i) =>
+                    i.id === item.id
+                        ? { ...i, quantity: Math.min(i.quantity + 1, 5) }
+                        : i
                 );
-            } else {
-                return [...prevItems, { product, quantity: 1 }];
             }
+            return [...prev, { ...item, quantity: 1 }];
         });
     }, []);
 
-    const removeItem = useCallback((productId: string) => {
-        setItems((prevItems) =>
-            prevItems.filter((item) => item.product.id !== productId)
+    const removeFromCart = useCallback((id: string) => {
+        setCartItems((prev) => prev.filter((item) => item.id !== id));
+    }, []);
+
+    const updateQuantity = useCallback((id: string, qty: number) => {
+        if (qty < 1 || qty > 5) return;
+        setCartItems((prev) =>
+            prev.map((item) =>
+                item.id === id ? { ...item, quantity: qty } : item
+            )
         );
     }, []);
 
-    const updateQuantity = useCallback(
-        (productId: string, quantity: number) => {
-            setItems((prevItems) => {
-                if (quantity <= 0) {
-                    return prevItems.filter(
-                        (item) => item.product.id !== productId
-                    );
-                }
-                return prevItems.map((item) =>
-                    item.product.id === productId
-                        ? { ...item, quantity: quantity }
-                        : item
-                );
-            });
-        },
-        []
-    );
-
-    const clearCart = useCallback(() => {
-        setItems([]);
-    }, []);
-
-    // --- Função de Geração de Mensagem para WhatsApp ---
-    const generateWhatsAppMessage = useCallback(
-        (items: CartItem[], customerName: string): string => {
-            if (items.length === 0) return "O carrinho está vazio.";
-
-            let totalValue = 0;
-
-            // --- Header (Substitui o placeholder pelo nome real) ---
-            let message = `👋 *NOVO PEDIDO DE ORÇAMENTO!*
-    
-👤 Cliente: ${customerName}
-📱 Origem: Website BV Celular
-    
----
-*📋 ITENS DO CARRINHO:*\n`;
-
-            // --- Lista de Itens ---
-            items.forEach((item, index) => {
-                const price = item.product.price / 100;
-                totalValue += price * item.quantity;
-
-                message += `\n${index + 1}. *${item.product.name}* (x${
-                    item.quantity
-                })\n`;
-                message += `   💰 Preço Unid.: R$ ${price.toLocaleString(
-                    "pt-BR",
-                    { minimumFractionDigits: 2 }
-                )}`;
-                message += `\n   ${
-                    item.product.storage?.toUpperCase() || ""
-                } / ${item.product.ram?.toUpperCase() || ""} RAM`;
-            });
-
-            // --- Footer ---
-            message += `\n\n---`;
-            message += `\n*✅ TOTAL DO ORÇAMENTO:* R$ ${totalValue.toLocaleString(
-                "pt-BR",
-                { minimumFractionDigits: 2 }
-            )}`;
-            message += `\n\nAguardamos o contato para confirmar a disponibilidade e a forma de pagamento!`;
-
-            return message;
-        },
-        []
-    );
-    // --- Fim da Geração de Mensagem ---
-
-    const value = {
-        items,
-        addItem,
-        removeItem,
-        updateQuantity,
-        clearCart,
-        itemCount,
-        generateWhatsAppMessage,
-    };
+    const clearCart = useCallback(() => setCartItems([]), []);
 
     return (
-        <CartContext.Provider value={value}>{children}</CartContext.Provider>
+        <CartContext.Provider
+            value={{
+                cartItems,
+                addToCart,
+                removeFromCart,
+                updateQuantity,
+                clearCart,
+                itemCount,
+                totalPrice,
+            }}
+        >
+            {children}
+        </CartContext.Provider>
     );
 };
 
-// Hook de uso
 export const useCart = () => {
     const context = useContext(CartContext);
-    if (context === undefined) {
+    if (!context)
         throw new Error("useCart deve ser usado dentro de um CartProvider");
-    }
     return context;
 };
 
-// Helper para formatação de WhatsApp (Igual ao AdminStores)
-const formatWhatsapp = (number: string): string => {
-    const cleaned = number.replace(/\D/g, "");
-    if (cleaned.length === 11)
-        return `(${cleaned.substring(0, 2)}) ${cleaned.substring(
-            2,
-            7
-        )}-${cleaned.substring(7, 11)}`;
-    if (cleaned.length === 10)
-        return `(${cleaned.substring(0, 2)}) ${cleaned.substring(
-            2,
-            6
-        )}-${cleaned.substring(6, 10)}`;
-    return number;
-};
+// --------------------------------------------------------------
+// CART DRAWER
+// --------------------------------------------------------------
 
-// --- Componente UI para o Drawer/Lista (Escolha da Loja) ---
 export const CartDrawer = () => {
     const {
-        items,
+        cartItems,
         itemCount,
-        removeItem,
+        totalPrice,
+        removeFromCart,
         updateQuantity,
         clearCart,
-        generateWhatsAppMessage,
     } = useCart();
+
     const { isLoggedIn, profile } = useCustomerAuth();
+    const [isSheetOpen, setIsSheetOpen] = useState(false);
+    const [step, setStep] = useState<"cart" | "stores" | "auth">("cart");
+    const [isSavingOrder, setIsSavingOrder] = useState(false);
 
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [step, setStep] = useState<"cart" | "stores" | "auth">("cart"); // 3 Passos
-
-    // 2. Hooks de navegação
+    const { toast } = useToast();
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Query para buscar todas as lojas
     const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
         queryKey: ["allStores"],
         queryFn: fetchStores,
-        enabled: isDrawerOpen && step === "stores",
+        enabled: isSheetOpen && step === "stores",
     });
 
-    // Helper para formatar preços
-    const formatPrice = (priceInCents: number) => {
-        return (priceInCents / 100).toLocaleString("pt-BR", {
-            minimumFractionDigits: 2,
-        });
+    if (location.pathname.startsWith("/admin")) return null;
+
+    const handleProceedToNextStep = () => {
+        if (itemCount === 0) return;
+        if (!isLoggedIn) setStep("auth");
+        else setStep("stores");
     };
 
-    // Lógica que envia o pedido para a loja selecionada
-    const handleSelectStore = (store: Store) => {
-        const message = generateWhatsAppMessage(
-            items,
-            profile?.name || "Cliente Sem Cadastro"
-        );
-        const encodedMessage = encodeURIComponent(message);
+    const handleSelectStore = async (storeId: string) => {
+        const store = stores?.find((s) => s.id === storeId);
+        if (!store) return;
 
-        const whatsappCleaned = store.whatsapp.replace(/\D/g, "");
+        let orderId: string | null = null;
 
-        window.open(
-            `https://wa.me/55${whatsappCleaned}?text=${encodedMessage}`,
-            "_blank"
-        );
-        setIsDrawerOpen(false);
+        if (isLoggedIn && profile) {
+            setIsSavingOrder(true);
+            try {
+                const orderItems = cartItems.map((i) => ({
+                    id: i.id,
+                    name: i.name,
+                    price: i.price,
+                    quantity: i.quantity,
+                    category: i.category,
+                }));
+
+                const newOrder = await createOrder({
+                    client_id: profile.id,
+                    store_id: store.id,
+                    total_price: totalPrice,
+                    items: orderItems,
+                });
+
+                orderId = newOrder.id;
+
+                toast({
+                    title: "Pedido salvo!",
+                    description: "Seu pedido foi salvo no histórico.",
+                });
+            } catch {
+                toast({
+                    variant: "destructive",
+                    title: "Erro ao salvar",
+                    description: "O WhatsApp abrirá mesmo assim.",
+                });
+            } finally {
+                setIsSavingOrder(false);
+            }
+        }
+
+        const itemsText = cartItems
+            .map((i) => `${i.quantity}x ${i.name}`)
+            .join("%0A");
+        const totalText = `*Total: ${formatCurrency(totalPrice)}*%0A%0A`;
+
+        let intro =
+            isLoggedIn && profile
+                ? `Olá, *${store.name}*!%0A%0AEu sou *${profile.name}* e gostaria de fazer um pedido:%0A%0A`
+                : `Olá, *${store.name}*!%0A%0AGostaria de fazer um pedido:%0A%0A`;
+
+        if (orderId) intro += `*(Ref: ${orderId.substring(0, 8)})*%0A%0A`;
+
+        const fullMessage =
+            intro + itemsText + "%0A%0A" + totalText + "Aguardo retorno!";
+        const whatsappUrl = `https://api.whatsapp.com/send?phone=${store.whatsapp.replace(
+            /\D/g,
+            ""
+        )}&text=${fullMessage}`;
+
+        window.open(whatsappUrl, "_blank");
+
+        clearCart();
+        setIsSheetOpen(false);
         setStep("cart");
     };
 
-    const handleProceedToStores = () => {
-        if (itemCount === 0) return;
+    // --------------------------------------------------------------
+    // RENDERIZAR ITENS DO CARRINHO
+    // --------------------------------------------------------------
 
-        if (!isLoggedIn) {
-            setStep("auth");
-        } else {
-            setStep("stores");
-        }
-    };
-
-    const totalOrderValue =
-        items.reduce(
-            (total, item) => total + item.product.price * item.quantity,
-            0
-        ) / 100;
-
-    // Renderiza a lista de itens do carrinho
     const renderCartItems = () => (
-        <div className="p-4 overflow-y-auto">
+        <ScrollArea className="flex-1 -mx-6 px-6">
             {itemCount === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                     O carrinho está vazio.
                 </div>
             ) : (
-                <div className="space-y-4">
-                    {items.map((item) => (
+                <div className="flex flex-col gap-4 py-4">
+                    {cartItems.map((item) => (
                         <div
-                            key={item.product.id}
-                            className="flex items-center space-x-4 border-b pb-4"
+                            key={item.id}
+                            className="flex flex-col gap-3 border-b pb-4"
                         >
-                            <img
-                                src={
-                                    item.product.images?.[0] ||
-                                    "/placeholder.svg"
-                                }
-                                alt={item.product.name}
-                                className="h-16 w-16 object-cover rounded-md"
-                            />
-                            <div className="flex-1 min-w-0">
-                                <p className="font-semibold truncate">
-                                    {item.product.name}
+                            <div className="flex items-start justify-between gap-3">
+                                <img
+                                    src={item.images[0] || "/placeholder.svg"}
+                                    alt={item.name}
+                                    className="h-16 w-16 rounded-md object-cover border"
+                                />
+                                <p className="flex-1 font-medium">
+                                    {item.name}
                                 </p>
-                                <p className="text-sm text-primary">
-                                    R${" "}
-                                    {formatPrice(
-                                        item.product.price * item.quantity
-                                    )}
-                                </p>
-                            </div>
-                            <div className="flex items-center space-x-2">
                                 <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-8 w-8"
-                                    onClick={() =>
-                                        updateQuantity(
-                                            item.product.id,
-                                            item.quantity - 1
-                                        )
-                                    }
-                                >
-                                    -
-                                </Button>
-                                <span className="w-6 text-center">
-                                    {item.quantity}
-                                </span>
-                                <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-8 w-8"
-                                    onClick={() =>
-                                        updateQuantity(
-                                            item.product.id,
-                                            item.quantity + 1
-                                        )
-                                    }
-                                >
-                                    +
-                                </Button>
-                                <Button
-                                    size="icon"
                                     variant="ghost"
-                                    className="h-8 w-8 text-destructive"
-                                    onClick={() => removeItem(item.product.id)}
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => removeFromCart(item.id)}
                                 >
-                                    <Trash2 className="h-4 w-4" />
+                                    <X className="h-4 w-4" />
                                 </Button>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                                <p className="text-lg text-primary font-bold">
+                                    {formatCurrency(item.price * item.quantity)}
+                                </p>
+
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={() =>
+                                            updateQuantity(
+                                                item.id,
+                                                item.quantity - 1
+                                            )
+                                        }
+                                    >
+                                        <Minus className="h-4 w-4" />
+                                    </Button>
+
+                                    <span className="w-4 text-center font-medium">
+                                        {item.quantity}
+                                    </span>
+
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={() =>
+                                            updateQuantity(
+                                                item.id,
+                                                item.quantity + 1
+                                            )
+                                        }
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     ))}
                 </div>
             )}
-        </div>
+        </ScrollArea>
     );
 
-    // Renderiza a lista de lojas para escolha
-    const renderStoreSelection = () => {
-        if (isLoadingStores) {
-            return (
-                <div className="p-4 text-center text-muted-foreground">
-                    <Skeleton className="h-6 w-1/2 mx-auto mb-4" />
-                    Carregando lojas...
-                </div>
-            );
-        }
+    // --------------------------------------------------------------
+    // TELAS INTERMEDIÁRIAS (LOGIN e LOJAS)
+    // --------------------------------------------------------------
 
-        if (!stores || stores.length === 0) {
-            return (
-                <div className="p-4 text-center text-destructive">
-                    Nenhuma loja cadastrada para finalizar o pedido.
-                </div>
-            );
-        }
-
-        return (
-            <div className="p-4 space-y-3 overflow-y-auto">
-                <p className="text-sm font-semibold">
-                    Selecione a loja para enviar o pedido:
-                </p>
-                {stores.map((store) => (
-                    <Button
-                        key={store.id}
-                        className="w-full h-auto py-3 justify-start transition-colors duration-150"
-                        variant="outline"
-                        onClick={() => handleSelectStore(store)}
-                    >
-                        <div className="flex flex-col items-start">
-                            <span className="font-bold">{store.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                                {formatWhatsapp(store.whatsapp)} -{" "}
-                                {store.city || "Online"}
-                            </span>
-                        </div>
-                    </Button>
-                ))}
-            </div>
-        );
-    };
-
-    // Renderiza a tela de autenticação (se o cliente não estiver logado)
     const renderAuthPrompt = () => (
-        <div className="p-6 text-center space-y-4">
+        <div className="p-6 text-center space-y-4 flex-1 flex flex-col justify-center">
             <User className="h-10 w-10 mx-auto text-primary" />
-            <DrawerTitle>Quase lá!</DrawerTitle>
-            <DrawerDescription>
-                Precisamos do seu nome e telefone para enviar o pedido à loja.
-            </DrawerDescription>
+            <SheetTitle>Quase lá!</SheetTitle>
+            <SheetDescription>
+                Precisamos do seu nome e telefone para enviar o pedido.
+            </SheetDescription>
+
             <Button
                 size="lg"
                 className="w-full"
                 onClick={() => {
-                    // 3. CORREÇÃO: Navega para a página /login e passa a rota atual
                     navigate("/login", { state: { from: location } });
-                    setIsDrawerOpen(false); // Fecha o Drawer
-                    setStep("cart"); // Volta ao passo 1
+                    setIsSheetOpen(false);
+                    setStep("cart");
                 }}
             >
                 Fazer Login ou Cadastro
@@ -424,92 +359,162 @@ export const CartDrawer = () => {
         </div>
     );
 
+    const renderStoreSelection = () => (
+        <div className="p-4 flex-1 flex flex-col justify-center">
+            <Label className="text-base font-semibold text-center mb-3">
+                Selecione a loja:
+            </Label>
+
+            {isLoadingStores ? (
+                <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Carregando lojas...</span>
+                </div>
+            ) : (
+                <Select
+                    onValueChange={handleSelectStore}
+                    disabled={isSavingOrder}
+                >
+                    <SelectTrigger>
+                        <SelectValue placeholder="Escolha uma loja" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {stores?.map((store) => (
+                            <SelectItem key={store.id} value={store.id}>
+                                {store.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )}
+
+            {isSavingOrder && (
+                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground pt-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Salvando pedido...</span>
+                </div>
+            )}
+        </div>
+    );
+
+    // --------------------------------------------------------------
+    // UI PRINCIPAL DO DRAWER
+    // --------------------------------------------------------------
+
     return (
-        <Drawer
-            open={isDrawerOpen}
+        <Sheet
+            open={isSheetOpen}
             onOpenChange={(open) => {
-                setIsDrawerOpen(open);
+                setIsSheetOpen(open);
                 if (!open) setStep("cart");
             }}
         >
-            <DrawerTrigger asChild>
+            <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative ml-2">
                     <ShoppingCart className="h-5 w-5" />
                     {itemCount > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-xs text-white">
+                        <span className="absolute -top-1 -right-1 bg-destructive text-white rounded-full h-4 w-4 flex items-center justify-center text-xs">
                             {itemCount}
                         </span>
                     )}
                 </Button>
-            </DrawerTrigger>
-            <DrawerContent className="max-h-[90vh]">
-                <DrawerHeader>
-                    {/* Exibe o botão de voltar quando estiver no passo de escolha de loja */}
+            </SheetTrigger>
+
+            <SheetContent
+                side="right"
+                className="flex flex-col w-full sm:max-w-md"
+            >
+                <SheetHeader>
                     {(step === "stores" || step === "auth") && (
                         <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setStep("cart")}
-                            className="absolute top-4 left-4"
+                            className="absolute top-3 left-4"
                         >
                             <ArrowLeft className="mr-2 h-4 w-4" />
                             Voltar
                         </Button>
                     )}
-                    <DrawerTitle>
-                        {step === "cart"
-                            ? `Seu Carrinho (${itemCount} Itens)`
-                            : "Finalizar Pedido"}
-                    </DrawerTitle>
-                    <DrawerDescription>
-                        {step === "cart"
-                            ? "Lista de itens para orçamento."
-                            : "Acesse/escolha a loja para finalizar via WhatsApp."}
-                    </DrawerDescription>
-                </DrawerHeader>
 
-                {/* Renderização do Conteúdo por Passo */}
+                    <SheetTitle>
+                        {step === "cart"
+                            ? `Meu Carrinho (${itemCount} Itens)`
+                            : "Finalizar Pedido"}
+                    </SheetTitle>
+                </SheetHeader>
+
                 {step === "cart" && renderCartItems()}
                 {step === "auth" && renderAuthPrompt()}
                 {step === "stores" && renderStoreSelection()}
 
-                <DrawerFooter className="bg-background border-t flex-col">
-                    {step === "cart" && itemCount > 0 && (
-                        <>
-                            <div className="flex justify-between items-center">
-                                <span className="text-lg font-bold">
-                                    Total:
-                                </span>
-                                <span className="text-xl font-bold text-primary">
-                                    R${" "}
-                                    {totalOrderValue.toLocaleString("pt-BR", {
-                                        minimumFractionDigits: 2,
-                                    })}
-                                </span>
-                            </div>
-                            <Button
-                                size="lg"
-                                className="w-full"
-                                onClick={handleProceedToStores}
-                                disabled={itemCount === 0}
-                            >
-                                <StoreIcon className="mr-2 h-5 w-5" />
-                                Escolher Loja e Finalizar
-                            </Button>
-                        </>
-                    )}
+                {/* -------------------------------------------------------------- */}
+                {/*  FOOTER CORRIGIDO — TOTAL EM CIMA / BOTÕES EMBAIXO */}
+                {/* -------------------------------------------------------------- */}
 
-                    {/* Botão Limpar Carrinho (Disponível em ambos os passos) */}
-                    <Button
-                        variant="ghost"
-                        onClick={clearCart}
-                        disabled={itemCount === 0 || isLoadingStores}
-                        className="w-full text-sm text-muted-foreground hover:text-destructive"
-                    >
-                        Limpar Carrinho
-                    </Button>
-                </DrawerFooter>
-            </DrawerContent>
-        </Drawer>
+                {step === "cart" && (
+                    <SheetFooter className="bg-background border-t pt-4 flex-col gap-3">
+                        {itemCount > 0 ? (
+                            <>
+                                {/* TOTAL EM LINHA SEPARADA */}
+                                <div className="w-full flex flex-col text-right pr-1">
+                                    <span className="text-sm text-muted-foreground">
+                                        Total:
+                                    </span>
+                                    <span className="text-2xl font-bold text-primary">
+                                        {formatCurrency(totalPrice)}
+                                    </span>
+                                </div>
+
+                                {/* BOTÕES ABAIXO */}
+                                <div className="flex w-full justify-between gap-3">
+                                    <Button
+                                        variant="ghost"
+                                        onClick={clearCart}
+                                        className="text-muted-foreground hover:text-destructive"
+                                    >
+                                        Limpar Carrinho
+                                    </Button>
+
+                                    <Button
+                                        size="lg"
+                                        className="w-full"
+                                        onClick={handleProceedToNextStep}
+                                    >
+                                        <StoreIcon className="mr-2 h-5 w-5" />
+                                        Escolher Loja e Finalizar
+                                    </Button>
+                                </div>
+                            </>
+                        ) : (
+                            <SheetClose asChild>
+                                <Button variant="outline" className="w-full">
+                                    Continuar Comprando
+                                </Button>
+                            </SheetClose>
+                        )}
+                    </SheetFooter>
+                )}
+
+                {step === "cart" && !isLoggedIn && (
+                    <div className="p-4 pt-0 mt-auto">
+                        <Alert>
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle>Entre para salvar!</AlertTitle>
+                            <AlertDescription>
+                                <Link
+                                    to="/login"
+                                    className="underline font-medium"
+                                    onClick={() => setIsSheetOpen(false)}
+                                >
+                                    Faça login ou cadastre-se
+                                </Link>{" "}
+                                para salvar carrinhos no seu histórico.
+                            </AlertDescription>
+                        </Alert>
+                    </div>
+                )}
+            </SheetContent>
+        </Sheet>
     );
 };

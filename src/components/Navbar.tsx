@@ -8,13 +8,11 @@ import {
     LogOut,
     MessageCircle,
     Menu,
-    ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuthAdmin"; // <-- CORREÇÃO DA IMPORTAÇÃO
+import { useAuth } from "@/hooks/useAuthAdmin";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
-import { supabase } from "@/integrations/supabase/client";
 import { CartDrawer } from "@/contexts/CartContext";
 import {
     Sheet,
@@ -25,7 +23,6 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 
-// Definição dos links de navegação para reutilização
 const navLinks = [
     { to: "/aparelhos", label: "Aparelhos", icon: Smartphone },
     { to: "/acessorios", label: "Acessórios", icon: Tag },
@@ -35,19 +32,12 @@ const navLinks = [
 export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-
-    // --- INÍCIO DA ALTERAÇÃO ---
-    // Verificamos se estamos em uma rota de admin
     const isAdminRoute = location.pathname.startsWith("/admin");
 
-    // Só chamamos o hook de admin (useAuth) se estivermos na rota de admin.
-    // Caso contrário, usamos um objeto "dummy" (falso) com valores nulos.
     const { employeeProfile, logout: adminLogout } = isAdminRoute
         ? useAuth()
         : { employeeProfile: null, logout: async () => {} };
-    // --- FIM DA ALTERAÇÃO ---
 
-    // O hook de cliente (useCustomerAuth) continua funcionando normalmente em todas as páginas
     const {
         isLoggedIn: isCustomerLoggedIn,
         getGreeting,
@@ -65,7 +55,7 @@ export const Navbar = () => {
     return (
         <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container flex h-16 items-center justify-between">
-                {/* --- 1. Menu Hamburguer (MOBILE) e Logo --- */}
+                {/* LOGO + MOBILE MENU */}
                 <div className="flex items-center space-x-2">
                     <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                         <SheetTrigger asChild className="md:hidden">
@@ -108,6 +98,7 @@ export const Navbar = () => {
 
                                 <Separator className="my-4" />
 
+                                {/* ADMIN - MOBILE */}
                                 {employeeProfile && (
                                     <>
                                         <Button
@@ -123,7 +114,7 @@ export const Navbar = () => {
                                         >
                                             <Link
                                                 to="/admin"
-                                                className="flex items-center gap-3 text-sm"
+                                                className="flex items-center gap-3"
                                             >
                                                 <ShieldCheck className="h-5 w-5" />
                                                 <span>
@@ -131,6 +122,7 @@ export const Navbar = () => {
                                                 </span>
                                             </Link>
                                         </Button>
+
                                         <div className="mt-4 pt-4 border-t">
                                             <p className="text-sm font-medium mb-2">
                                                 Olá,{" "}
@@ -152,6 +144,7 @@ export const Navbar = () => {
                                     </>
                                 )}
 
+                                {/* CLIENTE - MOBILE */}
                                 {isCustomerLoggedIn && !employeeProfile && (
                                     <div className="mt-4 pt-4 border-t">
                                         <p className="text-sm font-medium mb-2">
@@ -181,8 +174,8 @@ export const Navbar = () => {
                     </Link>
                 </div>
 
-                {/* --- 2. Links de Navegação (DESKTOP) --- */}
-                <div className="hidden md:flex items-center gap-2">
+                {/* NAV LINKS - DESKTOP */}
+                <div className="hidden md:flex items-center gap-3">
                     {navLinks.map((link) => (
                         <Button
                             key={link.to}
@@ -201,23 +194,20 @@ export const Navbar = () => {
                     ))}
                 </div>
 
-                {/* --- 3. Ícones de Ação (Login/Carrinho/Admin) --- */}
-                <div className="flex items-center space-x-1">
-                    {!employeeProfile && (
-                        <div className="border-r pr-2">
-                            <CustomerAuthPopover />
-                        </div>
-                    )}
+                {/* AÇÕES À DIREITA */}
+                <div className="flex items-center gap-3">
+                    {/* LOGIN CLIENTE */}
+                    {!employeeProfile && <CustomerAuthPopover />}
 
+                    {/* CARRINHO */}
                     <CartDrawer />
 
-                    {employeeProfile ? (
-                        <div className="hidden md:flex items-center">
-                            <div className="flex items-center gap-2 border-r pr-2 ml-2">
-                                <span className="text-sm font-medium hidden sm:inline">
-                                    Olá, {employeeProfile.name.split(" ")[0]}
-                                </span>
-                            </div>
+                    {/* ADMIN - DESKTOP */}
+                    {employeeProfile && (
+                        <div className="hidden md:flex items-center gap-3 ml-2">
+                            <span className="text-sm font-medium">
+                                Olá, {employeeProfile.name.split(" ")[0]}
+                            </span>
 
                             <Button
                                 variant={
@@ -234,18 +224,17 @@ export const Navbar = () => {
                                     <span>Painel</span>
                                 </Link>
                             </Button>
+
                             <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={handleAdminLogout}
-                                className="flex items-center gap-2 text-destructive hover:text-destructive"
+                                className="text-destructive hover:text-destructive flex gap-2"
                             >
                                 <LogOut className="h-4 w-4" />
-                                <span>Sair (Admin)</span>
+                                <span>Sair</span>
                             </Button>
                         </div>
-                    ) : (
-                        <></>
                     )}
                 </div>
             </div>
