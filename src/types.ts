@@ -1,6 +1,5 @@
 import { Database } from "@/integrations/supabase/types";
 
-// Tipo para os dados de um Produto
 export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'colors' | 'images' | 'category'> & {
   stores: Store[];
   colors: string[]; 
@@ -8,7 +7,10 @@ export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'col
   category: 'aparelho' | 'acessorio'; 
 };
 
-export type Store = Database['public']['Tables']['Stores']['Row'];
+// Atualizado com 'address'
+export type Store = Database['public']['Tables']['Stores']['Row'] & {
+    address?: string | null;
+};
 
 export type Employee = Omit<Database['public']['Tables']['Employees']['Row'], 'store_id'> & {
   store_id?: string | null; 
@@ -47,18 +49,10 @@ export type Order = {
   status: string; 
   items: OrderCartItem[]; 
   created_at: string;
-  Clients?: {
-    name: string;
-    phone: string;
-    email: string;
-  } | null;
-  Stores?: {
-    name: string;
-    city: string | null;
-  } | null;
+  Clients?: { name: string; phone: string; email: string; } | null;
+  Stores?: { name: string; city: string | null; } | null;
 };
 
-// --- NOVOS TIPOS ---
 export type Banner = {
     id: string;
     title: string;
@@ -69,11 +63,31 @@ export type Banner = {
     active: boolean;
 };
 
-export type WarrantyPayload = {
-    client_name: string;
-    client_phone: string;
-    invoice_number: string;
+// Atualizado para nova estrutura
+export type Warranty = {
+    id: string;
+    client_id: string;
+    store_id: string;
     product_model: string;
     serial_number: string;
+    invoice_number?: string | null;
+    purchase_date: string; // Vem como string do banco
+    warranty_months: number;
+    warranty_end_date: string;
+    created_at: string;
+    // Relacionamentos
+    Clients?: CustomerProfile | null;
+    Stores?: Store | null;
+};
+
+// Payload para criação
+export type WarrantyInsertPayload = {
+    client_id: string;
+    store_id: string;
+    product_model: string;
+    serial_number: string;
+    invoice_number?: string;
     purchase_date: Date;
+    warranty_months: number;
+    warranty_end_date: Date;
 };

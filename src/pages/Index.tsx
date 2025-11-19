@@ -1,6 +1,3 @@
-//
-// === CÓDIGO COMPLETO PARA: src/pages/Index.tsx ===
-//
 import { Navbar } from "@/components/Navbar";
 import { ProductCard } from "@/components/ProductCard";
 import { useQuery } from "@tanstack/react-query";
@@ -14,10 +11,11 @@ import {
     Smartphone,
     Tag,
     Sparkles,
-    ShieldCheck,
+    Headphones,
 } from "lucide-react";
 import { HeroBanner } from "@/components/HeroBanner";
 import { Footer } from "@/components/Footer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Carousel,
     CarouselContent,
@@ -33,15 +31,23 @@ const Index = () => {
         queryFn: () => fetchPromotions(),
     });
 
-    // Busca Todos os Produtos (para seção de Novidades/Destaques)
+    // Busca Todos os Produtos
     const { data: allProducts, isLoading: loadingAll } = useQuery<Product[]>({
         queryKey: ["products-home"],
         queryFn: fetchAllProducts,
     });
 
-    // Filtra as novidades (simulação: pega os primeiros 8 produtos não promocionais)
-    const newArrivals = allProducts
-        ? allProducts.filter((p) => !p.isPromotion).slice(0, 8)
+    // Filtra para as seções
+    const newPhones = allProducts
+        ? allProducts
+              .filter((p) => p.category === "aparelho" && !p.isPromotion)
+              .slice(0, 4)
+        : [];
+
+    const newAccessories = allProducts
+        ? allProducts
+              .filter((p) => p.category === "acessorio" && !p.isPromotion)
+              .slice(0, 4)
         : [];
 
     return (
@@ -49,41 +55,35 @@ const Index = () => {
             <Navbar />
 
             <main className="flex-1">
-                {/* 1. Hero Banner (Carrossel Principal) */}
+                {/* 1. Hero Banner (Banners Manuais + Promoções Automáticas) */}
                 <HeroBanner />
 
-                {/* 2. Atalhos de Categoria */}
-                <section className="container py-12">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* 2. Navegação Rápida */}
+                <section className="container py-8 md:py-12">
+                    {/* Ajustado para grid-cols-3 pois removemos um item */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         <CategoryCard
                             icon={Smartphone}
-                            title="Aparelhos"
-                            subtitle="iPhones e Androids"
+                            title="Celulares"
+                            subtitle="Novos e Seminovos"
                             link="/aparelhos"
                             color="bg-blue-100 text-blue-700"
                         />
                         <CategoryCard
-                            icon={Tag}
+                            icon={Headphones}
                             title="Acessórios"
-                            subtitle="Capas e Películas"
+                            subtitle="Audio, Cases e + "
                             link="/acessorios"
                             color="bg-purple-100 text-purple-700"
                         />
+                        {/* Botão Garantia REMOVIDO daqui */}
                         <CategoryCard
                             icon={Sparkles}
-                            title="Promoções"
-                            subtitle="Ofertas Imperdíveis"
+                            title="Ofertas"
+                            subtitle="Descontos Especiais"
                             link="/promocoes"
-                            color="bg-pink-100 text-pink-700"
+                            color="bg-amber-100 text-amber-700"
                         />
-                        <CategoryCard
-                            icon={ShieldCheck}
-                            title="Garantia"
-                            subtitle="Registrar Produto"
-                            link="/garantia"
-                            color="bg-green-100 text-green-700"
-                        />{" "}
-                        {/* <-- CORREÇÃO AQUI: Link apontando para /garantia */}
                     </div>
                 </section>
 
@@ -125,58 +125,99 @@ const Index = () => {
                     )}
                 </section>
 
-                {/* 4. Seção de Novidades (Grid) */}
+                {/* 4. Seção de Destaques (Abas: Aparelhos vs Acessórios) */}
                 <section className="bg-muted/30 py-16">
                     <div className="container">
-                        <div className="text-center mb-10">
-                            <h2 className="text-3xl font-bold tracking-tight">
-                                Novidades na Loja
-                            </h2>
-                            <p className="text-muted-foreground mt-2">
-                                Confira os últimos lançamentos disponíveis.
-                            </p>
-                        </div>
-
-                        {loadingAll ? (
-                            <ProductListSkeleton count={8} />
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                                {newArrivals.map((product) => (
-                                    <ProductCard
-                                        key={product.id}
-                                        product={product}
-                                    />
-                                ))}
+                        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                            <div className="text-center md:text-left">
+                                <h2 className="text-3xl font-bold tracking-tight">
+                                    Novidades na Loja
+                                </h2>
+                                <p className="text-muted-foreground mt-1">
+                                    Os lançamentos mais recentes.
+                                </p>
                             </div>
-                        )}
 
-                        <div className="mt-10 text-center">
-                            <Button size="lg" asChild>
+                            <Button variant="outline" asChild>
                                 <Link to="/aparelhos">
-                                    Ver Catálogo Completo
+                                    Ver Todos os Produtos
                                 </Link>
                             </Button>
                         </div>
+
+                        <Tabs defaultValue="phones" className="w-full">
+                            <div className="flex justify-center md:justify-start mb-6">
+                                <TabsList className="grid w-full max-w-md grid-cols-2">
+                                    <TabsTrigger value="phones">
+                                        Aparelhos
+                                    </TabsTrigger>
+                                    <TabsTrigger value="accessories">
+                                        Acessórios
+                                    </TabsTrigger>
+                                </TabsList>
+                            </div>
+
+                            <TabsContent value="phones">
+                                {loadingAll ? (
+                                    <ProductListSkeleton count={4} />
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                        {newPhones.map((product) => (
+                                            <ProductCard
+                                                key={product.id}
+                                                product={product}
+                                            />
+                                        ))}
+                                        {newPhones.length === 0 && (
+                                            <p className="col-span-4 text-center py-8 text-muted-foreground">
+                                                Nenhum aparelho novo no momento.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </TabsContent>
+
+                            <TabsContent value="accessories">
+                                {loadingAll ? (
+                                    <ProductListSkeleton count={4} />
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                        {newAccessories.map((product) => (
+                                            <ProductCard
+                                                key={product.id}
+                                                product={product}
+                                            />
+                                        ))}
+                                        {newAccessories.length === 0 && (
+                                            <p className="col-span-4 text-center py-8 text-muted-foreground">
+                                                Nenhum acessório novo no
+                                                momento.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </TabsContent>
+                        </Tabs>
                     </div>
                 </section>
 
-                {/* 5. Banner Institucional / Newsletter (Estático) */}
+                {/* 5. Banner Institucional */}
                 <section className="container py-16">
-                    <div className="bg-primary rounded-3xl p-8 md:p-16 text-primary-foreground text-center md:text-left flex flex-col md:flex-row items-center justify-between gap-8">
+                    <div className="bg-primary rounded-3xl p-8 md:p-16 text-primary-foreground text-center md:text-left flex flex-col md:flex-row items-center justify-between gap-8 shadow-xl">
                         <div className="space-y-4 max-w-xl">
                             <h2 className="text-3xl md:text-4xl font-bold">
                                 Precisa de ajuda para escolher?
                             </h2>
                             <p className="text-primary-foreground/80 text-lg">
-                                Nossa equipe está pronta para te atender no
-                                WhatsApp e tirar todas as suas dúvidas sobre
-                                qual aparelho é ideal para você.
+                                Nossa equipe de especialistas está pronta para
+                                te atender no WhatsApp. Tire dúvidas sobre
+                                modelos, garantia e formas de pagamento.
                             </p>
                         </div>
                         <Button
                             variant="secondary"
                             size="lg"
-                            className="whitespace-nowrap text-lg h-14 px-8 rounded-full"
+                            className="whitespace-nowrap text-lg h-14 px-8 rounded-full shadow-md hover:scale-105 transition-transform"
                         >
                             Falar com Consultor
                         </Button>

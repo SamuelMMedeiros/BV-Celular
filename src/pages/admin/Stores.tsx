@@ -1,11 +1,10 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
     Table,
     TableBody,
@@ -15,24 +14,11 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
     Dialog,
     DialogContent,
-    DialogDescription,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-    DialogFooter,
-    DialogClose,
 } from "@/components/ui/dialog";
 import {
     Form,
@@ -43,8 +29,6 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, ArrowLeft, Edit, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Store } from "@/types";
 import {
@@ -55,66 +39,47 @@ import {
     StoreInsertPayload,
     StoreUpdatePayload,
 } from "@/lib/api";
+import { Edit, Trash2, Plus, MapPin } from "lucide-react";
 
-// 1. Schema de Validação (Zod) para o formulário de Loja
 const storeSchema = z.object({
-    name: z.string().min(2, { message: "O nome é obrigatório." }),
-    whatsapp: z
-        .string()
-        .min(10, { message: "O WhatsApp é obrigatório (só números)." }),
+    name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres."),
+    whatsapp: z.string().min(10, "WhatsApp inválido."),
     city: z.string().optional(),
+    address: z.string().optional(), // <-- NOVO CAMPO
 });
+
 type StoreFormValues = z.infer<typeof storeSchema>;
 
-export const AdminStores = () => {
+const AdminStores = () => {
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editingStore, setEditingStore] = useState<Store | null>(null);
 
-    // Estado para controlar o modal de Adicionar/Editar
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [storeToEdit, setStoreToEdit] = useState<Store | null>(null);
-
-    // Estado para controlar o diálogo de Excluir
-    const [storeToDelete, setStoreToDelete] = useState<Store | null>(null);
-
-    // 2. Configuração do Formulário (React Hook Form)
-    const form = useForm<StoreFormValues>({
-        resolver: zodResolver(storeSchema),
-        defaultValues: { name: "", whatsapp: "", city: "" },
-    });
-
-    // 3. Efeito para preencher o formulário quando 'storeToEdit' mudar
-    useEffect(() => {
-        if (storeToEdit) {
-            form.reset({
-                name: storeToEdit.name,
-                whatsapp: storeToEdit.whatsapp,
-                city: storeToEdit.city || "",
-            });
-            setIsFormOpen(true); // Abre o modal
-        } else {
-            form.reset({ name: "", whatsapp: "", city: "" }); // Limpa ao fechar
-        }
-    }, [storeToEdit, form]);
-
-    // 4. Query para buscar todas as Lojas
-    const {
-        data: stores,
-        isLoading,
-        isError,
-    } = useQuery<Store[]>({
+    const { data: stores, isLoading } = useQuery<Store[]>({
         queryKey: ["stores"],
         queryFn: fetchStores,
     });
 
-    // 5. Mutações (Create, Update, Delete)
+    const form = useForm<StoreFormValues>({
+        resolver: zodResolver(storeSchema),
+        defaultValues: {
+            name: "",
+            whatsapp: "",
+            city: "",
+            address: "", // <-- NOVO CAMPO
+        },
+    });
 
     const createMutation = useMutation({
         mutationFn: (data: StoreInsertPayload) => createStore(data),
         onSuccess: () => {
-            toast({ title: "Sucesso!", description: "Loja criada." });
+            toast({
+                title: "Sucesso",
+                description: "Loja criada com sucesso.",
+            });
             queryClient.invalidateQueries({ queryKey: ["stores"] });
-            setIsFormOpen(false);
+            handleCloseDialog();
         },
         onError: (error) => {
             toast({
@@ -128,10 +93,9 @@ export const AdminStores = () => {
     const updateMutation = useMutation({
         mutationFn: (data: StoreUpdatePayload) => updateStore(data),
         onSuccess: () => {
-            toast({ title: "Sucesso!", description: "Loja atualizada." });
+            toast({ title: "Sucesso", description: "Loja atualizada." });
             queryClient.invalidateQueries({ queryKey: ["stores"] });
-            setIsFormOpen(false);
-            setStoreToEdit(null);
+            handleCloseDialog();
         },
         onError: (error) => {
             toast({
@@ -143,82 +107,67 @@ export const AdminStores = () => {
     });
 
     const deleteMutation = useMutation({
-        mutationFn: (storeId: string) => deleteStore(storeId),
+        mutationFn: (id: string) => deleteStore(id),
         onSuccess: () => {
-            toast({ title: "Sucesso!", description: "Loja excluída." });
+            toast({ title: "Sucesso", description: "Loja removida." });
             queryClient.invalidateQueries({ queryKey: ["stores"] });
-            setStoreToDelete(null);
-        },
-        onError: (error) => {
-            toast({
-                variant: "destructive",
-                title: "Erro",
-                description: error.message,
-            });
-            setStoreToDelete(null);
         },
     });
 
-    // 6. Função de Envio do Formulário (decide entre Criar ou Atualizar)
-    const onSubmit = (data: StoreFormValues) => {
-        if (storeToEdit) {
-            // Modo Edição
-            const payload: StoreUpdatePayload = { ...data, id: storeToEdit.id };
-            updateMutation.mutate(payload);
-        } else {
-            // Modo Criação
-            const payload: StoreInsertPayload = data;
-            createMutation.mutate(payload);
+    const handleEdit = (store: Store) => {
+        setEditingStore(store);
+        form.reset({
+            name: store.name,
+            whatsapp: store.whatsapp,
+            city: store.city || "",
+            address: store.address || "", // <-- NOVO CAMPO
+        });
+        setIsDialogOpen(true);
+    };
+
+    const handleDelete = (id: string) => {
+        if (confirm("Tem certeza que deseja excluir esta loja?")) {
+            deleteMutation.mutate(id);
         }
     };
 
-    const isLoadingMutation =
-        createMutation.isPending || updateMutation.isPending;
+    const handleCloseDialog = () => {
+        setIsDialogOpen(false);
+        setEditingStore(null);
+        form.reset({ name: "", whatsapp: "", city: "", address: "" });
+    };
+
+    const onSubmit = (data: StoreFormValues) => {
+        if (editingStore) {
+            updateMutation.mutate({ ...data, id: editingStore.id });
+        } else {
+            createMutation.mutate(data);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-background">
             <Navbar />
-
             <main className="container py-8">
-                {/* Cabeçalho da Página */}
-                <div className="mb-6 flex items-center justify-between">
-                    <div>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                            className="mb-2"
-                        >
-                            <Link to="/admin">
-                                <ArrowLeft className="mr-2 h-4 w-4" />
-                                Voltar ao Painel
-                            </Link>
-                        </Button>
-                        <h1 className="text-3xl font-bold text-foreground">
-                            Gerenciar Lojas
-                        </h1>
-                    </div>
-                    <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold">Gerenciar Lojas</h1>
+                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button onClick={() => setStoreToEdit(null)}>
-                                {" "}
-                                {/* Limpa o form para 'Criar' */}
-                                <Plus className="mr-2 h-4 w-4" />
-                                Adicionar Nova
+                            <Button
+                                onClick={() => {
+                                    setEditingStore(null);
+                                    form.reset();
+                                }}
+                            >
+                                <Plus className="mr-2 h-4 w-4" /> Nova Loja
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px]">
+                        <DialogContent>
                             <DialogHeader>
                                 <DialogTitle>
-                                    {storeToEdit
-                                        ? "Editar Loja"
-                                        : "Adicionar Nova Loja"}
+                                    {editingStore ? "Editar Loja" : "Nova Loja"}
                                 </DialogTitle>
-                                <DialogDescription>
-                                    Preencha os dados da loja.
-                                </DialogDescription>
                             </DialogHeader>
-                            {/* 7. Formulário dentro do Modal */}
                             <Form {...form}>
                                 <form
                                     onSubmit={form.handleSubmit(onSubmit)}
@@ -234,7 +183,7 @@ export const AdminStores = () => {
                                                 </FormLabel>
                                                 <FormControl>
                                                     <Input
-                                                        placeholder="Loja Centro"
+                                                        placeholder="Ex: Unidade Centro"
                                                         {...field}
                                                     />
                                                 </FormControl>
@@ -247,13 +196,10 @@ export const AdminStores = () => {
                                         name="whatsapp"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>
-                                                    WhatsApp (com DDD)
-                                                </FormLabel>
+                                                <FormLabel>WhatsApp</FormLabel>
                                                 <FormControl>
                                                     <Input
-                                                        type="tel"
-                                                        placeholder="34999998888"
+                                                        placeholder="5534999999999"
                                                         {...field}
                                                     />
                                                 </FormControl>
@@ -266,12 +212,10 @@ export const AdminStores = () => {
                                         name="city"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>
-                                                    Cidade (Opcional)
-                                                </FormLabel>
+                                                <FormLabel>Cidade</FormLabel>
                                                 <FormControl>
                                                     <Input
-                                                        placeholder="Patos de Minas"
+                                                        placeholder="Uberlândia"
                                                         {...field}
                                                     />
                                                 </FormControl>
@@ -279,163 +223,95 @@ export const AdminStores = () => {
                                             </FormItem>
                                         )}
                                     />
-                                    <DialogFooter>
-                                        <DialogClose asChild>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                disabled={isLoadingMutation}
-                                            >
-                                                Cancelar
-                                            </Button>
-                                        </DialogClose>
-                                        <Button
-                                            type="submit"
-                                            disabled={isLoadingMutation}
-                                        >
-                                            {isLoadingMutation
-                                                ? "Salvando..."
-                                                : "Salvar"}
-                                        </Button>
-                                    </DialogFooter>
+                                    {/* NOVO CAMPO DE ENDEREÇO */}
+                                    <FormField
+                                        control={form.control}
+                                        name="address"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>
+                                                    Endereço Completo
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        placeholder="Av. Afonso Pena, 1000"
+                                                        {...field}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <Button
+                                        type="submit"
+                                        className="w-full"
+                                        disabled={
+                                            createMutation.isPending ||
+                                            updateMutation.isPending
+                                        }
+                                    >
+                                        {editingStore ? "Atualizar" : "Criar"}
+                                    </Button>
                                 </form>
                             </Form>
                         </DialogContent>
                     </Dialog>
                 </div>
 
-                {/* 8. Tabela de Lojas */}
-                <div className="rounded-lg border">
+                <div className="border rounded-lg">
                     <Table>
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Nome</TableHead>
-                                <TableHead>WhatsApp</TableHead>
                                 <TableHead>Cidade</TableHead>
-                                <TableHead className="w-[100px]">
+                                <TableHead>Endereço</TableHead>
+                                <TableHead>WhatsApp</TableHead>
+                                <TableHead className="text-right">
                                     Ações
                                 </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading &&
-                                Array.from({ length: 3 }).map((_, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell>
-                                            <Skeleton className="h-5 w-1/2" />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Skeleton className="h-5 w-1/3" />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Skeleton className="h-5 w-1/3" />
-                                        </TableCell>
-                                        <TableCell className="flex gap-2">
-                                            <Skeleton className="h-8 w-8" />
-                                            <Skeleton className="h-8 w-8" />
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            {isError && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={4}
-                                        className="text-center text-destructive"
-                                    >
-                                        <AlertTriangle className="mr-2 inline h-4 w-4" />
-                                        Erro ao carregar as lojas.
+                            {stores?.map((store) => (
+                                <TableRow key={store.id}>
+                                    <TableCell className="font-medium">
+                                        {store.name}
+                                    </TableCell>
+                                    <TableCell>{store.city || "-"}</TableCell>
+                                    <TableCell>
+                                        <div className="flex items-center gap-2 text-muted-foreground">
+                                            {store.address && (
+                                                <MapPin className="h-3 w-3" />
+                                            )}
+                                            {store.address || "-"}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>{store.whatsapp}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => handleEdit(store)}
+                                        >
+                                            <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-destructive"
+                                            onClick={() =>
+                                                handleDelete(store.id)
+                                            }
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
                                     </TableCell>
                                 </TableRow>
-                            )}
-                            {!isLoading &&
-                                !isError &&
-                                stores?.map((store) => (
-                                    <TableRow key={store.id}>
-                                        <TableCell className="font-medium">
-                                            {store.name}
-                                        </TableCell>
-                                        <TableCell>{store.whatsapp}</TableCell>
-                                        <TableCell>
-                                            {store.city || "N/A"}
-                                        </TableCell>
-                                        <TableCell className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={() =>
-                                                    setStoreToEdit(store)
-                                                } // Abre o modal para Edição
-                                            >
-                                                <Edit className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                variant="destructive"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={() =>
-                                                    setStoreToDelete(store)
-                                                } // Abre o alerta de exclusão
-                                                disabled={
-                                                    deleteMutation.isPending
-                                                }
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                            ))}
                         </TableBody>
                     </Table>
                 </div>
-
-                {!isLoading && !isError && stores?.length === 0 && (
-                    <div className="py-20 text-center text-muted-foreground">
-                        Nenhuma loja cadastrada ainda.
-                    </div>
-                )}
             </main>
-
-            {/* 9. Diálogo de Confirmação de Exclusão */}
-            <AlertDialog
-                open={!!storeToDelete}
-                onOpenChange={(open) => {
-                    if (!open) setStoreToDelete(null);
-                }}
-            >
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Esta ação não pode ser desfeita. Isso irá excluir
-                            permanentemente a loja
-                            <span className="font-medium">
-                                {" "}
-                                "{storeToDelete?.name}"{" "}
-                            </span>
-                            e removerá sua associação com todos os produtos.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={deleteMutation.isPending}>
-                            Cancelar
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                            className={buttonVariants({
-                                variant: "destructive",
-                            })}
-                            onClick={() =>
-                                deleteMutation.mutate(storeToDelete!.id)
-                            }
-                            disabled={deleteMutation.isPending}
-                        >
-                            {deleteMutation.isPending
-                                ? "Excluindo..."
-                                : "Excluir"}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div>
     );
 };

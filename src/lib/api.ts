@@ -1,9 +1,11 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { supabase } from "@/integrations/supabase/client";
-import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, WarrantyPayload } from "@/types";
+import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, WarrantyInsertPayload } from "@/types";
 import { Database } from "@/integrations/supabase/types";
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'; // <-- CORREÇÃO 1: IMPORTAÇÃO ADICIONADA
 
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
   store_ids?: string[]; 
@@ -651,9 +653,11 @@ export const updateOrderStatus = async (orderId: string, newStatus: string): Pro
   if (error) throw new Error(error.message);
 };
 
+
 // ==================================================================
 // FUNÇÕES DE API (FAVORITOS)
 // ==================================================================
+
 export const checkIsFavorite = async (clientId: string, productId: string): Promise<boolean> => {
   const { data, error } = await supabase
     .from('Favorites')
@@ -666,7 +670,7 @@ export const checkIsFavorite = async (clientId: string, productId: string): Prom
     console.error("Erro ao verificar favorito:", error);
     return false;
   }
-  return !!data; 
+  return !!data;
 };
 
 export const toggleFavorite = async (clientId: string, productId: string): Promise<boolean> => {
@@ -692,7 +696,8 @@ export const toggleFavorite = async (clientId: string, productId: string): Promi
 };
 
 export const fetchClientFavorites = async (clientId: string): Promise<Product[]> => {
-  const { data, error } = await supabase
+  //@ts-ignore
+  const { data, error } = await (supabase
     .from('Favorites')
     .select(`
       product_id,
@@ -702,7 +707,7 @@ export const fetchClientFavorites = async (clientId: string): Promise<Product[]>
       )
     `)
     .eq('client_id', clientId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false }) as Promise<any>);
 
   if (error) throw new Error(error.message);
 
@@ -726,7 +731,7 @@ export const fetchClientFavorites = async (clientId: string): Promise<Product[]>
 };
 
 // ==================================================================
-// FUNÇÕES DE API (BANNERS) - NOVAS
+// FUNÇÕES DE API (BANNERS)
 // ==================================================================
 
 export const fetchBanners = async (): Promise<Banner[]> => {
@@ -740,10 +745,52 @@ export const fetchBanners = async (): Promise<Banner[]> => {
     return data as Banner[];
 };
 
-export const createWarranty = async (payload: WarrantyPayload): Promise<void> => {
+// ==================================================================
+// FUNÇÕES DE API (GARANTIAS)
+// ==================================================================
+
+export const createWarranty = async (payload: WarrantyInsertPayload): Promise<void> => {
+    // CORREÇÃO DE TIPAGEM: Usamos 'as any' para contornar erro de tipos
     const { error } = await supabase
         .from('Warranties')
-        .insert(payload);
+        .insert({
+            ...payload,
+            purchase_date: payload.purchase_date.toISOString(),
+            warranty_end_date: payload.warranty_end_date.toISOString()
+        } as any);
         
     if (error) throw new Error(error.message);
+};
+
+export const fetchAllWarranties = async (): Promise<Warranty[]> => {
+    const { data, error } = await supabase
+        .from('Warranties')
+        .select(`
+            *,
+            Clients ( id, name, phone, email ),
+            Stores ( * )
+        `)
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    
+    // CORREÇÃO: Usamos 'as any' para evitar deep instantiation error
+    return data as any as Warranty[];
+};
+
+export const fetchClientWarranties = async (clientId: string): Promise<Warranty[]> => {
+    //@ts-ignore
+    const { data, error } = await supabase
+        .from('Warranties')
+        .select(`
+            *,
+            Stores ( name, address, city )
+        `)
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    
+    // CORREÇÃO: Usamos 'as any' para evitar deep instantiation error
+    return data as any as Warranty[];
 };

@@ -27,7 +27,7 @@ import Acessorios from "./pages/Acessorios";
 import CustomerLogin from "./pages/CustomerLogin";
 import MinhaConta from "./pages/MinhaConta";
 import ProductDetails from "./pages/ProductDetails";
-import WarrantyPage from "./pages/Warranty"; // <-- IMPORTAR
+import AdminWarranties from "./pages/admin/Warranties";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -78,7 +78,6 @@ const App = () => (
                             path="/produto/:productId"
                             element={<ProductDetails />}
                         />
-                        <Route path="/garantia" element={<WarrantyPage />} />{" "}
                         {/* <-- NOVA ROTA */}
                         <Route path="*" element={<NotFound />} />
                     </Route>
@@ -106,6 +105,10 @@ const App = () => (
                             />
                             <Route path="clients" element={<AdminClients />} />
                             <Route path="orders" element={<AdminOrders />} />
+                            <Route
+                                path="warranties"
+                                element={<AdminWarranties />}
+                            />
                         </Route>
                     </Route>
                 </Routes>
