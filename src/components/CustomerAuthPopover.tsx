@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { User, LogOut, Settings } from "lucide-react";
-import { Link } from "react-router-dom"; // <-- Importar Link
+import { User, LogOut, Settings, Heart, Package } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
     Popover,
     PopoverContent,
@@ -13,11 +13,11 @@ import {
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"; // <-- Importar DropdownMenu
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"; // <-- Importar Avatar
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
-import { CustomerAuthForm } from "./CustomerAuthForm"; // Importa o formulário
+import { CustomerAuthForm } from "./CustomerAuthForm";
 
 // Helper para pegar as iniciais do nome
 const getInitials = (name: string) => {
@@ -31,24 +31,25 @@ export const CustomerAuthPopover = () => {
     const { profile, isLoggedIn, logout, getGreeting } = useCustomerAuth();
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
-    // --- Renderização Logado (AGORA É UM DROPDOWN) ---
+    // --- Renderização Logado (Dropdown) ---
     if (isLoggedIn && profile) {
         return (
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button
                         variant="ghost"
-                        className="flex items-center gap-2 h-9 w-9 p-0 rounded-full"
+                        size="icon"
+                        className="rounded-full"
                     >
                         <Avatar className="h-8 w-8">
-                            <AvatarFallback className="bg-primary text-primary-foreground text-xs font-medium">
+                            <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
                                 {getInitials(profile.name)}
                             </AvatarFallback>
                         </Avatar>
                         <span className="sr-only">Abrir menu do usuário</span>
                     </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end">
+                <DropdownMenuContent className="w-56" align="end" forceMount>
                     <DropdownMenuLabel className="font-normal">
                         <div className="flex flex-col space-y-1">
                             <p className="text-sm font-medium leading-none">
@@ -61,14 +62,27 @@ export const CustomerAuthPopover = () => {
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
 
-                    {/* --- NOVO LINK --- */}
                     <DropdownMenuItem asChild className="cursor-pointer">
                         <Link to="/minha-conta">
                             <Settings className="mr-2 h-4 w-4" />
                             <span>Minha Conta</span>
                         </Link>
                     </DropdownMenuItem>
-                    {/* --- FIM DO NOVO LINK --- */}
+
+                    {/* Atalhos extras úteis */}
+                    <DropdownMenuItem asChild className="cursor-pointer">
+                        <Link to="/minha-conta">
+                            <Package className="mr-2 h-4 w-4" />
+                            <span>Meus Pedidos</span>
+                        </Link>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem asChild className="cursor-pointer">
+                        <Link to="/minha-conta">
+                            <Heart className="mr-2 h-4 w-4" />
+                            <span>Favoritos</span>
+                        </Link>
+                    </DropdownMenuItem>
 
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -83,21 +97,21 @@ export const CustomerAuthPopover = () => {
         );
     }
 
-    // --- Renderização Não Logado (Continua sendo um Popover) ---
+    // --- Renderização Não Logado (Popover de Login) ---
     return (
         <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
             <PopoverTrigger asChild>
                 <Button
                     variant="ghost"
-                    size="sm"
-                    className="flex items-center gap-2"
+                    size="sm" // Tamanho menor para alinhar com ícones
+                    className="gap-2 px-2 md:px-4" // Padding reduzido no mobile
                 >
-                    <User className="h-4 w-4" />
-                    <span className="hidden sm:inline">Entrar/Cadastrar</span>
+                    <User className="h-5 w-5" />
+                    {/* CORREÇÃO AQUI: Texto escondido no mobile (hidden), visível no desktop (md:inline) */}
+                    <span className="hidden md:inline font-medium">Entrar</span>
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-4">
-                {/* Renderiza o formulário e passa a função de fechar o popover */}
+            <PopoverContent className="w-80 p-4" align="end">
                 <CustomerAuthForm onSuccess={() => setIsPopoverOpen(false)} />
             </PopoverContent>
         </Popover>
