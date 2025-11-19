@@ -26,7 +26,8 @@ import AdminOrders from "./pages/admin/Orders";
 import Acessorios from "./pages/Acessorios";
 import CustomerLogin from "./pages/CustomerLogin";
 import MinhaConta from "./pages/MinhaConta";
-import ProductDetails from "./pages/ProductDetails"; // <-- IMPORTAR A NOVA PÁGINA
+import ProductDetails from "./pages/ProductDetails";
+import WarrantyPage from "./pages/Warranty"; // <-- IMPORTAR
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -36,9 +37,6 @@ const queryClient = new QueryClient({
     },
 });
 
-/*
-  Layout Público
-*/
 const PublicLayout = () => (
     <CustomerAuthProvider>
         <CartProvider>
@@ -47,9 +45,6 @@ const PublicLayout = () => (
     </CustomerAuthProvider>
 );
 
-/*
-  Layout de Admin
-*/
 const AdminLayout = () => (
     <AuthProvider>
         <CustomerAuthProvider>
@@ -79,13 +74,12 @@ const App = () => (
                         <Route path="/promocoes" element={<Promocoes />} />
                         <Route path="/acessorios" element={<Acessorios />} />
                         <Route path="/minha-conta" element={<MinhaConta />} />
-
-                        {/* --- NOVA ROTA DE DETALHES DO PRODUTO --- */}
                         <Route
                             path="/produto/:productId"
                             element={<ProductDetails />}
                         />
-
+                        <Route path="/garantia" element={<WarrantyPage />} />{" "}
+                        {/* <-- NOVA ROTA */}
                         <Route path="*" element={<NotFound />} />
                     </Route>
 

@@ -1,7 +1,7 @@
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
-import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order } from "@/types";
+import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, WarrantyPayload } from "@/types";
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid';
 
@@ -652,10 +652,8 @@ export const updateOrderStatus = async (orderId: string, newStatus: string): Pro
 };
 
 // ==================================================================
-// FUNÇÕES DE API (FAVORITOS) - NOVAS
+// FUNÇÕES DE API (FAVORITOS)
 // ==================================================================
-
-// Verifica se um produto específico é favorito do usuário
 export const checkIsFavorite = async (clientId: string, productId: string): Promise<boolean> => {
   const { data, error } = await supabase
     .from('Favorites')
@@ -668,16 +666,13 @@ export const checkIsFavorite = async (clientId: string, productId: string): Prom
     console.error("Erro ao verificar favorito:", error);
     return false;
   }
-  return !!data; // Retorna true se encontrou, false se não
+  return !!data; 
 };
 
-// Alterna o favorito (Se tem, remove. Se não tem, cria)
 export const toggleFavorite = async (clientId: string, productId: string): Promise<boolean> => {
-  // 1. Verifica se já existe
   const isFav = await checkIsFavorite(clientId, productId);
 
   if (isFav) {
-    // REMOVER
     const { error } = await supabase
       .from('Favorites')
       .delete()
@@ -685,19 +680,17 @@ export const toggleFavorite = async (clientId: string, productId: string): Promi
       .eq('product_id', productId);
       
     if (error) throw new Error(error.message);
-    return false; // Agora não é mais favorito
+    return false; 
   } else {
-    // ADICIONAR
     const { error } = await supabase
       .from('Favorites')
       .insert({ client_id: clientId, product_id: productId });
       
     if (error) throw new Error(error.message);
-    return true; // Agora é favorito
+    return true; 
   }
 };
 
-// Busca todos os produtos favoritos do cliente
 export const fetchClientFavorites = async (clientId: string): Promise<Product[]> => {
   const { data, error } = await supabase
     .from('Favorites')
@@ -713,8 +706,6 @@ export const fetchClientFavorites = async (clientId: string): Promise<Product[]>
 
   if (error) throw new Error(error.message);
 
-  // Mapeia o resultado para o formato de Product[]
-  // O Supabase retorna { product_id, Products: {...} }
   const products = data.map((item: any) => {
     const product = item.Products;
     if (!product) return null;
@@ -732,4 +723,27 @@ export const fetchClientFavorites = async (clientId: string): Promise<Product[]>
   }).filter(Boolean) as Product[];
 
   return products;
+};
+
+// ==================================================================
+// FUNÇÕES DE API (BANNERS) - NOVAS
+// ==================================================================
+
+export const fetchBanners = async (): Promise<Banner[]> => {
+    const { data, error } = await supabase
+        .from('Banners')
+        .select('*')
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data as Banner[];
+};
+
+export const createWarranty = async (payload: WarrantyPayload): Promise<void> => {
+    const { error } = await supabase
+        .from('Warranties')
+        .insert(payload);
+        
+    if (error) throw new Error(error.message);
 };

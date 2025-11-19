@@ -1,24 +1,20 @@
 import { Database } from "@/integrations/supabase/types";
 
-// Tipo para os dados de um Produto, incluindo Lojas
-// --- CORREÇÃO: Omitimos 'category' da base e o redefinimos com o tipo correto ---
+// Tipo para os dados de um Produto
 export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'colors' | 'images' | 'category'> & {
   stores: Store[];
-  colors: string[]; // Força a ser string[]
-  images: string[]; // Força a ser string[]
+  colors: string[]; 
+  images: string[]; 
   category: 'aparelho' | 'acessorio'; 
 };
 
-// Tipo para os dados de uma Loja
 export type Store = Database['public']['Tables']['Stores']['Row'];
 
-// Tipo para os dados de um Funcionário (Admin)
 export type Employee = Omit<Database['public']['Tables']['Employees']['Row'], 'store_id'> & {
-  store_id?: string | null; // Opcional
-  Stores?: Pick<Store, 'id' | 'name'> | null; // Relação opcional
+  store_id?: string | null; 
+  Stores?: Pick<Store, 'id' | 'name'> | null; 
 };
 
-// Tipo para o perfil de um Cliente
 export type CustomerProfile = {
   id: string;
   name: string;
@@ -26,9 +22,8 @@ export type CustomerProfile = {
   email: string;
 };
 
-// Tipo para os itens no Carrinho (usado no Context)
 export type CartItem = {
-  id: string; // product.id
+  id: string; 
   name: string;
   price: number;
   images: string[];
@@ -36,26 +31,22 @@ export type CartItem = {
   category: 'aparelho' | 'acessorio'; 
 };
 
-// Tipo para os itens de um pedido (armazenado no JSONB 'items' da tabela Orders)
 export type OrderCartItem = {
-  id: string; // product.id
+  id: string; 
   name: string;
   price: number;
   quantity: number;
   category: 'aparelho' | 'acessorio';
 };
 
-// Tipo para um Pedido (Orçamento)
 export type Order = {
   id: string;
   client_id: string;
   store_id: string; 
   total_price: number;
-  status: string; // 'pending', 'completed', 'cancelled'
+  status: string; 
   items: OrderCartItem[]; 
   created_at: string;
-  
-  // --- RELACIONAMENTOS (Opcionais, preenchidos via Query) ---
   Clients?: {
     name: string;
     phone: string;
@@ -65,4 +56,24 @@ export type Order = {
     name: string;
     city: string | null;
   } | null;
+};
+
+// --- NOVOS TIPOS ---
+export type Banner = {
+    id: string;
+    title: string;
+    subtitle: string | null;
+    image_url: string;
+    link_url: string;
+    button_text: string;
+    active: boolean;
+};
+
+export type WarrantyPayload = {
+    client_name: string;
+    client_phone: string;
+    invoice_number: string;
+    product_model: string;
+    serial_number: string;
+    purchase_date: Date;
 };

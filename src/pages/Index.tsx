@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 //
 // === CÓDIGO COMPLETO PARA: src/pages/Index.tsx ===
 //
@@ -35,7 +34,6 @@ const Index = () => {
     });
 
     // Busca Todos os Produtos (para seção de Novidades/Destaques)
-    // Limitaremos a exibição na interface, mas a query traz tudo
     const { data: allProducts, isLoading: loadingAll } = useQuery<Product[]>({
         queryKey: ["products-home"],
         queryFn: fetchAllProducts,
@@ -81,10 +79,11 @@ const Index = () => {
                         <CategoryCard
                             icon={ShieldCheck}
                             title="Garantia"
-                            subtitle="Compra Segura"
-                            link="#"
+                            subtitle="Registrar Produto"
+                            link="/garantia"
                             color="bg-green-100 text-green-700"
-                        />
+                        />{" "}
+                        {/* <-- CORREÇÃO AQUI: Link apontando para /garantia */}
                     </div>
                 </section>
 
@@ -191,6 +190,7 @@ const Index = () => {
 };
 
 // Componente de Card de Categoria
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CategoryCard = ({ icon: Icon, title, subtitle, link, color }: any) => (
     <Link to={link} className="group block">
         <div
