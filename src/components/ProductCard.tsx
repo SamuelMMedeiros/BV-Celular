@@ -3,12 +3,13 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MapPin, Palette, HardDrive, Cpu, ShoppingCart } from "lucide-react";
-import { CartItem, Product } from "@/types";
-import { useCart } from "@/contexts/CartContext";
-import { useToast } from "@/hooks/use-toast";
-import { formatCurrency } from "@/lib/utils";
-import { CheckCircle } from "lucide-react";
-import { useNavigate } from "react-router-dom"; // <-- IMPORTAR useNavigate
+import { CartItem, Product } from "@/types"; 
+import { useCart } from "@/contexts/CartContext"; 
+import { useToast } from "@/hooks/use-toast"; 
+import { formatCurrency } from "@/lib/utils"; 
+import { CheckCircle } from "lucide-react"; 
+import { useNavigate } from "react-router-dom";
+import { FavoriteButton } from "./FavoriteButton"; // <-- IMPORTAR
 
 interface ProductCardProps {
     product: Product;
@@ -42,11 +43,9 @@ const formatArrayData = (data: any): string => {
 };
 
 export const ProductCard = ({ product }: ProductCardProps) => {
-    // Removemos o state de Dialog
-    const navigate = useNavigate(); // <-- Hook de navegação
-
-    const { addToCart } = useCart();
-    const { toast } = useToast();
+    const navigate = useNavigate(); 
+    const { addToCart } = useCart(); 
+    const { toast } = useToast(); 
 
     const discount =
         product.originalPrice && product.originalPrice > product.price
@@ -63,33 +62,30 @@ export const ProductCard = ({ product }: ProductCardProps) => {
         ? product.images[0]
         : product.images || "/placeholder.svg";
 
-    // Função para navegar para a página de detalhes
     const handleCardClick = () => {
         navigate(`/produto/${product.id}`);
     };
 
     const handleAddToCart = (e: React.MouseEvent) => {
-        e.stopPropagation(); // Impede que o clique vá para a página de detalhes
-
+        e.stopPropagation(); 
+        
         const cartItem: CartItem = {
             id: product.id,
             name: product.name,
-            price: product.price,
+            price: product.price, 
             images: product.images,
-            quantity: 1,
+            quantity: 1, 
             category: product.category,
         };
 
         addToCart(cartItem);
-
+        
         toast({
             title: "Adicionado ao Carrinho",
             description: (
-                <div className="flex items-center gap-2">
+                 <div className="flex items-center gap-2">
                     <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span>
-                        "{product.name}" foi adicionado ao seu carrinho.
-                    </span>
+                    <span>"{product.name}" foi adicionado ao seu carrinho.</span>
                 </div>
             ),
             variant: "default",
@@ -98,9 +94,14 @@ export const ProductCard = ({ product }: ProductCardProps) => {
 
     return (
         <Card
-            className="group cursor-pointer overflow-hidden shadow-card transition-all hover:shadow-hover"
-            onClick={handleCardClick} // <-- Navega ao clicar no card
+            className="group cursor-pointer overflow-hidden shadow-card transition-all hover:shadow-hover relative"
+            onClick={handleCardClick}
         >
+            {/* --- BOTÃO DE FAVORITO ADICIONADO --- */}
+            <div className="absolute top-2 right-2 z-20">
+                <FavoriteButton productId={product.id} />
+            </div>
+
             <div className="relative aspect-square overflow-hidden bg-muted">
                 <img
                     src={firstImage}
@@ -108,7 +109,7 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
                 {product.isPromotion && discount > 0 && (
-                    <Badge className="absolute right-2 top-2 bg-destructive text-destructive-foreground">
+                    <Badge className="absolute left-2 top-2 bg-destructive text-destructive-foreground z-10">
                         -{discount}%
                     </Badge>
                 )}
@@ -122,10 +123,14 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                 <div className="mb-3 space-y-1 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
                         <HardDrive className="h-3 w-3" />
-                        <span>{product.storage?.toUpperCase() || "N/A"}</span>
+                        <span>
+                            {product.storage?.toUpperCase() || "N/A"}
+                        </span>
                         <span className="mx-1">•</span>
                         <Cpu className="h-3 w-3" />
-                        <span>{product.ram?.toUpperCase() || "N/A"} RAM</span>
+                        <span>
+                            {product.ram?.toUpperCase() || "N/A"} RAM
+                        </span>
                     </div>
                     <div className="flex items-center gap-1">
                         <Palette className="h-3 w-3" />
@@ -155,15 +160,15 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                     <Button
                         className="flex-1"
                         size="sm"
-                        onClick={handleCardClick} // Também navega
+                        onClick={handleCardClick} 
                     >
                         Ver Detalhes
                     </Button>
                     <Button
                         variant="outline"
                         size="icon"
-                        className="w-10 h-10"
-                        onClick={handleAddToCart} // Adiciona sem sair da tela
+                        className="w-10 h-10" 
+                        onClick={handleAddToCart} 
                     >
                         <ShoppingCart className="h-4 w-4" />
                     </Button>

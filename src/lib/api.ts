@@ -614,9 +614,6 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
   return data;
 };
 
-// --- NOVAS FUNÇÕES (Orçamentos) ---
-
-// (Admin) Busca todos os pedidos
 export const fetchAllOrders = async (): Promise<Order[]> => {
   const { data, error } = await supabase
     .from('Orders')
@@ -631,7 +628,6 @@ export const fetchAllOrders = async (): Promise<Order[]> => {
   return data as Order[];
 };
 
-// (Cliente) Busca os pedidos do cliente logado
 export const fetchClientOrders = async (clientId: string): Promise<Order[]> => {
   const { data, error } = await supabase
     .from('Orders')
@@ -646,7 +642,6 @@ export const fetchClientOrders = async (clientId: string): Promise<Order[]> => {
   return data as Order[];
 };
 
-// (Admin) Atualiza o status do pedido
 export const updateOrderStatus = async (orderId: string, newStatus: string): Promise<void> => {
   const { error } = await supabase
     .from('Orders')
@@ -654,4 +649,87 @@ export const updateOrderStatus = async (orderId: string, newStatus: string): Pro
     .eq('id', orderId);
 
   if (error) throw new Error(error.message);
+};
+
+// ==================================================================
+// FUNÇÕES DE API (FAVORITOS) - NOVAS
+// ==================================================================
+
+// Verifica se um produto específico é favorito do usuário
+export const checkIsFavorite = async (clientId: string, productId: string): Promise<boolean> => {
+  const { data, error } = await supabase
+    .from('Favorites')
+    .select('id')
+    .eq('client_id', clientId)
+    .eq('product_id', productId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Erro ao verificar favorito:", error);
+    return false;
+  }
+  return !!data; // Retorna true se encontrou, false se não
+};
+
+// Alterna o favorito (Se tem, remove. Se não tem, cria)
+export const toggleFavorite = async (clientId: string, productId: string): Promise<boolean> => {
+  // 1. Verifica se já existe
+  const isFav = await checkIsFavorite(clientId, productId);
+
+  if (isFav) {
+    // REMOVER
+    const { error } = await supabase
+      .from('Favorites')
+      .delete()
+      .eq('client_id', clientId)
+      .eq('product_id', productId);
+      
+    if (error) throw new Error(error.message);
+    return false; // Agora não é mais favorito
+  } else {
+    // ADICIONAR
+    const { error } = await supabase
+      .from('Favorites')
+      .insert({ client_id: clientId, product_id: productId });
+      
+    if (error) throw new Error(error.message);
+    return true; // Agora é favorito
+  }
+};
+
+// Busca todos os produtos favoritos do cliente
+export const fetchClientFavorites = async (clientId: string): Promise<Product[]> => {
+  const { data, error } = await supabase
+    .from('Favorites')
+    .select(`
+      product_id,
+      Products (
+        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images,
+        ProductStores ( Stores ( id, name, whatsapp, city ) )
+      )
+    `)
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  // Mapeia o resultado para o formato de Product[]
+  // O Supabase retorna { product_id, Products: {...} }
+  const products = data.map((item: any) => {
+    const product = item.Products;
+    if (!product) return null;
+
+    const stores = (product.ProductStores || [])
+      .map((ps: any) => ps.Stores)
+      .filter((s: any) => s !== null);
+
+    return {
+      ...product,
+      stores: stores,
+      colors: parseArrayData(product.colors),
+      images: parseArrayData(product.images),
+    } as unknown as Product;
+  }).filter(Boolean) as Product[];
+
+  return products;
 };

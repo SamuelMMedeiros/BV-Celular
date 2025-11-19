@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchProductById } from "@/lib/api";
 import { useCart } from "@/contexts/CartContext";
@@ -11,6 +11,7 @@ import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FavoriteButton } from "@/components/FavoriteButton"; // <-- IMPORTAR
 import {
     Select,
     SelectContent,
@@ -39,7 +40,6 @@ const ProductDetails = () => {
     const [selectedImage, setSelectedImage] = useState<string>("");
     const [selectedStore, setSelectedStore] = useState<Store | null>(null);
 
-    // Busca os dados do produto
     const {
         data: product,
         isLoading,
@@ -50,7 +50,6 @@ const ProductDetails = () => {
         enabled: !!productId,
     });
 
-    // Define a imagem inicial assim que o produto carrega
     useEffect(() => {
         if (product?.images && product.images.length > 0) {
             setSelectedImage(product.images[0]);
@@ -93,7 +92,7 @@ const ProductDetails = () => {
         const cartItem: CartItem = {
             id: product.id,
             name: product.name,
-            price: product.price, // Já está em centavos
+            price: product.price,
             images: product.images,
             quantity: 1,
             category: product.category,
@@ -131,7 +130,6 @@ const ProductDetails = () => {
             <Navbar />
 
             <main className="container py-8 flex-1">
-                {/* Breadcrumb / Botão Voltar */}
                 <div className="mb-6">
                     <Button
                         variant="ghost"
@@ -145,7 +143,7 @@ const ProductDetails = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
-                    {/* COLUNA DA ESQUERDA: Imagens */}
+                    {/* IMAGENS */}
                     <div className="space-y-4">
                         <div className="aspect-square w-full bg-muted rounded-xl overflow-hidden border relative">
                             <img
@@ -160,7 +158,6 @@ const ProductDetails = () => {
                             )}
                         </div>
 
-                        {/* Galeria de Miniaturas */}
                         {product.images && product.images.length > 1 && (
                             <div className="flex gap-4 overflow-x-auto pb-2">
                                 {product.images.map((img, idx) => (
@@ -184,20 +181,24 @@ const ProductDetails = () => {
                         )}
                     </div>
 
-                    {/* COLUNA DA DIREITA: Informações */}
+                    {/* INFORMAÇÕES */}
                     <div className="flex flex-col space-y-6">
                         <div>
                             <div className="flex justify-between items-start">
-                                <h1 className="text-3xl md:text-4xl font-bold text-foreground">
+                                <h1 className="text-3xl md:text-4xl font-bold text-foreground max-w-[80%]">
                                     {product.name}
                                 </h1>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={handleShare}
-                                >
-                                    <Share2 className="h-5 w-5 text-muted-foreground" />
-                                </Button>
+                                {/* --- BOTÕES DE AÇÃO --- */}
+                                <div className="flex gap-2">
+                                    <FavoriteButton productId={product.id} />
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={handleShare}
+                                    >
+                                        <Share2 className="h-5 w-5 text-muted-foreground" />
+                                    </Button>
+                                </div>
                             </div>
 
                             <div className="mt-2 flex flex-wrap gap-2">
@@ -362,7 +363,6 @@ const ProductDetails = () => {
     );
 };
 
-// Componente de Carregamento (Skeleton)
 const ProductDetailsSkeleton = () => (
     <div className="min-h-screen bg-background flex flex-col">
         <Navbar />
