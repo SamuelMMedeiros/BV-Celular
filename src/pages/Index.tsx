@@ -1,112 +1,225 @@
-import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Smartphone, Tag, Zap, Shield, TrendingUp } from "lucide-react";
-import { motion } from "framer-motion";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+//
+// === CÓDIGO COMPLETO PARA: src/pages/Index.tsx ===
+//
 import { Navbar } from "@/components/Navbar";
+import { ProductCard } from "@/components/ProductCard";
+import { useQuery } from "@tanstack/react-query";
+import { fetchPromotions, fetchAllProducts } from "@/lib/api";
+import { Product } from "@/types";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import {
+    ArrowRight,
+    Smartphone,
+    Tag,
+    Sparkles,
+    ShieldCheck,
+} from "lucide-react";
+import { HeroBanner } from "@/components/HeroBanner";
+import { Footer } from "@/components/Footer";
+import {
+    Carousel,
+    CarouselContent,
+    CarouselItem,
+    CarouselNext,
+    CarouselPrevious,
+} from "@/components/ui/carousel";
 
 const Index = () => {
-  const features = [
-    {
-      icon: Smartphone,
-      title: "Aparelhos de Qualidade",
-      description: "Smartphones e tablets das melhores marcas"
-    },
-    {
-      icon: Tag,
-      title: "Promoções Exclusivas",
-      description: "Ofertas imperdíveis todos os dias"
-    },
-    {
-      icon: Zap,
-      title: "Entrega Rápida",
-      description: "Receba seu produto com agilidade"
-    },
-    {
-      icon: Shield,
-      title: "Compra Segura",
-      description: "Garantia e suporte em todas as compras"
-    }
-  ];
+    // Busca Produtos em Promoção
+    const { data: promotions, isLoading: loadingPromos } = useQuery<Product[]>({
+        queryKey: ["promotions-home"],
+        queryFn: () => fetchPromotions(),
+    });
 
-  return (
-    <div className="min-h-screen bg-gradient-hero">
-      <Navbar />
-      
-      {/* Hero Section */}
-      <section className="container py-20 md:py-32">
-        <div className="mx-auto max-w-4xl text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <h1 className="mb-6 text-4xl font-bold tracking-tight text-foreground sm:text-5xl md:text-6xl">
-              Bem-vindo à{" "}
-              <span className="bg-gradient-primary bg-clip-text text-transparent">
-                BV Celular
-              </span>
-            </h1>
-            <p className="mb-8 text-lg text-muted-foreground md:text-xl">
-              Encontre os melhores aparelhos e promoções em tecnologia. 
-              Qualidade, preço justo e atendimento excepcional.
-            </p>
-            
-            <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
-              <Button size="lg" asChild className="group">
-                <Link to="/aparelhos" className="flex items-center gap-2">
-                  <Smartphone className="h-5 w-5 transition-transform group-hover:scale-110" />
-                  Ver Aparelhos
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild className="group">
-                <Link to="/promocoes" className="flex items-center gap-2">
-                  <Tag className="h-5 w-5 transition-transform group-hover:scale-110" />
-                  Promoções
-                  <TrendingUp className="h-4 w-4 text-primary" />
-                </Link>
-              </Button>
-            </div>
-          </motion.div>
-        </div>
-      </section>
+    // Busca Todos os Produtos (para seção de Novidades/Destaques)
+    // Limitaremos a exibição na interface, mas a query traz tudo
+    const { data: allProducts, isLoading: loadingAll } = useQuery<Product[]>({
+        queryKey: ["products-home"],
+        queryFn: fetchAllProducts,
+    });
 
-      {/* Features Section */}
-      <section className="container pb-20">
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
-          {features.map((feature, index) => {
-            const Icon = feature.icon;
-            return (
-              <motion.div
-                key={feature.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-              >
-                <div className="group rounded-xl border bg-card p-6 shadow-card transition-all hover:shadow-hover">
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-accent">
-                    <Icon className="h-6 w-6 text-accent-foreground transition-transform group-hover:scale-110" />
-                  </div>
-                  <h3 className="mb-2 text-lg font-semibold text-card-foreground">
-                    {feature.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {feature.description}
-                  </p>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      </section>
+    // Filtra as novidades (simulação: pega os primeiros 8 produtos não promocionais)
+    const newArrivals = allProducts
+        ? allProducts.filter((p) => !p.isPromotion).slice(0, 8)
+        : [];
 
-      {/* Footer */}
-      <footer className="border-t bg-background/50 py-8">
-        <div className="container text-center text-sm text-muted-foreground">
-          <p>© 2025 Loja BV Celular. Todos os direitos reservados.</p>
+    return (
+        <div className="min-h-screen bg-background flex flex-col">
+            <Navbar />
+
+            <main className="flex-1">
+                {/* 1. Hero Banner (Carrossel Principal) */}
+                <HeroBanner />
+
+                {/* 2. Atalhos de Categoria */}
+                <section className="container py-12">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <CategoryCard
+                            icon={Smartphone}
+                            title="Aparelhos"
+                            subtitle="iPhones e Androids"
+                            link="/aparelhos"
+                            color="bg-blue-100 text-blue-700"
+                        />
+                        <CategoryCard
+                            icon={Tag}
+                            title="Acessórios"
+                            subtitle="Capas e Películas"
+                            link="/acessorios"
+                            color="bg-purple-100 text-purple-700"
+                        />
+                        <CategoryCard
+                            icon={Sparkles}
+                            title="Promoções"
+                            subtitle="Ofertas Imperdíveis"
+                            link="/promocoes"
+                            color="bg-pink-100 text-pink-700"
+                        />
+                        <CategoryCard
+                            icon={ShieldCheck}
+                            title="Garantia"
+                            subtitle="Compra Segura"
+                            link="#"
+                            color="bg-green-100 text-green-700"
+                        />
+                    </div>
+                </section>
+
+                {/* 3. Seção de Promoções (Carrossel de Produtos) */}
+                <section className="container py-8">
+                    <div className="flex justify-between items-end mb-6">
+                        <div>
+                            <h2 className="text-3xl font-bold tracking-tight">
+                                Ofertas Relâmpago ⚡
+                            </h2>
+                            <p className="text-muted-foreground">
+                                Os melhores preços da semana.
+                            </p>
+                        </div>
+                        <Button variant="ghost" asChild>
+                            <Link to="/promocoes" className="gap-2">
+                                Ver tudo <ArrowRight className="h-4 w-4" />
+                            </Link>
+                        </Button>
+                    </div>
+
+                    {loadingPromos ? (
+                        <ProductListSkeleton count={4} />
+                    ) : (
+                        <Carousel opts={{ align: "start" }} className="w-full">
+                            <CarouselContent className="-ml-4">
+                                {promotions?.map((product) => (
+                                    <CarouselItem
+                                        key={product.id}
+                                        className="pl-4 md:basis-1/2 lg:basis-1/4"
+                                    >
+                                        <ProductCard product={product} />
+                                    </CarouselItem>
+                                ))}
+                            </CarouselContent>
+                            <CarouselPrevious />
+                            <CarouselNext />
+                        </Carousel>
+                    )}
+                </section>
+
+                {/* 4. Seção de Novidades (Grid) */}
+                <section className="bg-muted/30 py-16">
+                    <div className="container">
+                        <div className="text-center mb-10">
+                            <h2 className="text-3xl font-bold tracking-tight">
+                                Novidades na Loja
+                            </h2>
+                            <p className="text-muted-foreground mt-2">
+                                Confira os últimos lançamentos disponíveis.
+                            </p>
+                        </div>
+
+                        {loadingAll ? (
+                            <ProductListSkeleton count={8} />
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                {newArrivals.map((product) => (
+                                    <ProductCard
+                                        key={product.id}
+                                        product={product}
+                                    />
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-10 text-center">
+                            <Button size="lg" asChild>
+                                <Link to="/aparelhos">
+                                    Ver Catálogo Completo
+                                </Link>
+                            </Button>
+                        </div>
+                    </div>
+                </section>
+
+                {/* 5. Banner Institucional / Newsletter (Estático) */}
+                <section className="container py-16">
+                    <div className="bg-primary rounded-3xl p-8 md:p-16 text-primary-foreground text-center md:text-left flex flex-col md:flex-row items-center justify-between gap-8">
+                        <div className="space-y-4 max-w-xl">
+                            <h2 className="text-3xl md:text-4xl font-bold">
+                                Precisa de ajuda para escolher?
+                            </h2>
+                            <p className="text-primary-foreground/80 text-lg">
+                                Nossa equipe está pronta para te atender no
+                                WhatsApp e tirar todas as suas dúvidas sobre
+                                qual aparelho é ideal para você.
+                            </p>
+                        </div>
+                        <Button
+                            variant="secondary"
+                            size="lg"
+                            className="whitespace-nowrap text-lg h-14 px-8 rounded-full"
+                        >
+                            Falar com Consultor
+                        </Button>
+                    </div>
+                </section>
+            </main>
+
+            <Footer />
         </div>
-      </footer>
-    </div>
-  );
+    );
 };
+
+// Componente de Card de Categoria
+const CategoryCard = ({ icon: Icon, title, subtitle, link, color }: any) => (
+    <Link to={link} className="group block">
+        <div
+            className={`h-full p-6 rounded-xl border transition-all hover:shadow-lg hover:-translate-y-1 bg-card`}
+        >
+            <div
+                className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${color} group-hover:scale-110 transition-transform`}
+            >
+                <Icon className="h-6 w-6" />
+            </div>
+            <h3 className="font-bold text-lg">{title}</h3>
+            <p className="text-sm text-muted-foreground">{subtitle}</p>
+        </div>
+    </Link>
+);
+
+// Skeleton de Carregamento
+const ProductListSkeleton = ({ count }: { count: number }) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+        {Array.from({ length: count }).map((_, i) => (
+            <div key={i} className="space-y-4">
+                <Skeleton className="h-64 w-full rounded-xl" />
+                <div className="space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                </div>
+            </div>
+        ))}
+    </div>
+);
 
 export default Index;
