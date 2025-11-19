@@ -41,19 +41,6 @@ export type OrderInsertPayload = {
   status?: string;
 };
 
-export type BannerInsertPayload = {
-    title: string;
-    subtitle?: string | null;
-    image_url: string; 
-    link_url: string;
-    button_text: string;
-    active?: boolean;
-};
-
-export type BannerUpdatePayload = Partial<BannerInsertPayload> & {
-    id: string;
-};
-
 
 // ==================================================================
 // FUNÇÕES DE API (PRODUTOS)
@@ -453,7 +440,7 @@ export const fetchEmployees = async (): Promise<Employee[]> => {
 export const fetchEmployeeProfile = async (userId: string): Promise<Employee | null> => {
   console.log("[API] Buscando perfil via RPC get_admin_profile...");
   
-  // @ts-ignore: Ignora erro de tipo da função RPC por enquanto
+  // @ts-ignore: Ignora erro de tipo da função RPC
   const { data, error } = await supabase.rpc('get_admin_profile');
 
   if (error) {
@@ -640,7 +627,7 @@ export const fetchAllOrders = async (): Promise<Order[]> => {
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
-  // @ts-ignore: Ignora erro de tipo para evitar loop infinito
+  // @ts-ignore
   return data as unknown as Order[];
 };
 
@@ -655,7 +642,7 @@ export const fetchClientOrders = async (clientId: string): Promise<Order[]> => {
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
-  // @ts-ignore: Ignora erro de tipo
+  // @ts-ignore
   return data as unknown as Order[];
 };
 
@@ -711,7 +698,7 @@ export const toggleFavorite = async (clientId: string, productId: string): Promi
 };
 
 export const fetchClientFavorites = async (clientId: string): Promise<Product[]> => {
-  // @ts-ignore: Ignora erro de profundidade de tipo temporariamente
+  // @ts-ignore
   const { data, error } = await (supabase
     .from('Favorites')
     .select(`
@@ -748,6 +735,17 @@ export const fetchClientFavorites = async (clientId: string): Promise<Product[]>
 // ==================================================================
 // FUNÇÕES DE API (BANNERS)
 // ==================================================================
+
+export const fetchBanners = async (): Promise<Banner[]> => {
+    const { data, error } = await supabase
+        .from('Banners')
+        .select('*')
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data as Banner[];
+};
 
 export const fetchAllBannersAdmin = async (): Promise<Banner[]> => {
     const { data, error } = await supabase
@@ -803,23 +801,12 @@ export const uploadBannerImage = async (file: File): Promise<string> => {
     return publicUrlData.publicUrl;
 };
 
-export const fetchBanners = async (): Promise<Banner[]> => {
-    const { data, error } = await supabase
-        .from('Banners')
-        .select('*')
-        .eq('active', true)
-        .order('created_at', { ascending: false });
-
-    if (error) throw new Error(error.message);
-    return data as Banner[];
-};
-
 // ==================================================================
 // FUNÇÕES DE API (GARANTIAS)
 // ==================================================================
 
 export const createWarranty = async (payload: WarrantyInsertPayload): Promise<void> => {
-    // CORREÇÃO DE TIPAGEM: Usamos 'as any' para contornar erro de tipos
+    // @ts-ignore
     const { error } = await supabase
         .from('Warranties')
         .insert({
@@ -843,7 +830,7 @@ export const fetchAllWarranties = async (): Promise<Warranty[]> => {
 
     if (error) throw new Error(error.message);
     
-    // CORREÇÃO: Usamos 'as any' para evitar deep instantiation error
+    // @ts-ignore
     return data as any as Warranty[];
 };
 
@@ -860,7 +847,7 @@ export const fetchClientWarranties = async (clientId: string): Promise<Warranty[
 
     if (error) throw new Error(error.message);
     
-
+    // @ts-ignore
     return data as any as Warranty[];
 };
 
@@ -868,7 +855,6 @@ export const fetchClientWarranties = async (clientId: string): Promise<Warranty[
 // FUNÇÕES DE API (CUPONS)
 // ==================================================================
 
-// Busca um cupom pelo código (usado no carrinho)
 export const fetchCoupon = async (code: string): Promise<Coupon | null> => {
     const { data, error } = await supabase
         .from('Coupons')
@@ -884,7 +870,6 @@ export const fetchCoupon = async (code: string): Promise<Coupon | null> => {
     return data as Coupon;
 };
 
-// (Admin) Lista todos os cupons
 export const fetchAllCoupons = async (): Promise<Coupon[]> => {
     const { data, error } = await supabase
         .from('Coupons')
@@ -895,19 +880,17 @@ export const fetchAllCoupons = async (): Promise<Coupon[]> => {
     return data as Coupon[];
 };
 
-// (Admin) Cria cupom
 export const createCoupon = async (payload: CouponInsertPayload): Promise<void> => {
     const { error } = await supabase
         .from('Coupons')
         .insert({
             ...payload,
-            code: payload.code.toUpperCase() // Sempre maiúsculo
+            code: payload.code.toUpperCase()
         });
 
     if (error) throw new Error(error.message);
 };
 
-// (Admin) Deleta cupom
 export const deleteCoupon = async (id: string): Promise<void> => {
     const { error } = await supabase
         .from('Coupons')
@@ -917,12 +900,48 @@ export const deleteCoupon = async (id: string): Promise<void> => {
     if (error) throw new Error(error.message);
 };
 
-// (Admin) Alterna status do cupom (Ativo/Inativo)
 export const toggleCouponStatus = async (id: string, currentStatus: boolean): Promise<void> => {
-      const { error } = await supabase
+     const { error } = await supabase
         .from('Coupons')
         .update({ active: !currentStatus })
         .eq('id', id);
 
     if (error) throw new Error(error.message);
+};
+
+// ==================================================================
+// FUNÇÕES DE API (CONTROLE DE USO DE CUPOM) - NOVAS
+// ==================================================================
+
+// Verifica se o cliente já usou o cupom
+export const checkCouponUsage = async (clientId: string, couponId: string): Promise<boolean> => {
+  //@ts-ignore
+    const { data, error } = await supabase
+        .from('CouponUsages')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('coupon_id', couponId)
+        .maybeSingle();
+
+    if (error) {
+        console.error("Erro ao verificar uso do cupom:", error);
+        return false;
+    }
+    return !!data; // Retorna true se já usou
+};
+
+// Registra o uso do cupom
+export const createCouponUsage = async (clientId: string, couponId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('CouponUsages')
+        .insert({
+            client_id: clientId,
+            coupon_id: couponId
+        });
+
+    if (error) {
+        console.error("Erro ao registrar uso do cupom:", error);
+        // Não lançamos erro aqui para não bloquear o pedido caso o log de cupom falhe,
+        // mas num sistema rígido, deveríamos lançar.
+    }
 };

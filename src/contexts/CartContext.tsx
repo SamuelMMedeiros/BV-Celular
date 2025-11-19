@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import {
     createContext,
     useContext,
@@ -8,48 +7,10 @@ import {
     useMemo,
     useCallback,
 } from "react";
-import { Product, Store, CartItem, Coupon } from "@/types";
-import {
-    ShoppingCart,
-    ArrowLeft,
-    Store as StoreIcon,
-    User,
-    Loader2,
-    AlertTriangle,
-    Minus,
-    Plus,
-    X,
-    TicketPercent,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetTrigger,
-    SheetFooter,
-    SheetClose,
-} from "@/components/ui/sheet";
-import { useQuery } from "@tanstack/react-query";
-import { fetchStores, createOrder, upsertClient, fetchCoupon } from "@/lib/api";
-import { useCustomerAuth } from "./CustomerAuthContext";
-import { useNavigate, useLocation, Link } from "react-router-dom";
-import { formatCurrency } from "@/lib/utils";
+import { CartItem, Coupon } from "@/types";
+import { fetchCoupon, checkCouponUsage } from "@/lib/api"; // Importar verificação
+import { useCustomerAuth } from "./CustomerAuthContext"; // Importar Auth
 import { useToast } from "@/hooks/use-toast";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-
 
 interface CartContextType {
     cartItems: CartItem[];
@@ -58,8 +19,8 @@ interface CartContextType {
     updateQuantity: (itemId: string, quantity: number) => void;
     clearCart: () => void;
     itemCount: number;
-    
-    // Novos campos para Cupom
+
+    // Campos de Cupom
     subtotal: number;
     discountAmount: number;
     totalPrice: number;
@@ -70,7 +31,7 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'bvcelular_cart';
+const LOCAL_STORAGE_KEY = "bvcelular_cart";
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
     const [cartItems, setCartItems] = useState<CartItem[]>(() => {
@@ -85,6 +46,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
     const [coupon, setCoupon] = useState<Coupon | null>(null);
 
+    // Acesso ao perfil do usuário para validação
+    const { profile, isLoggedIn } = useCustomerAuth();
+    const { toast } = useToast();
+
     useEffect(() => {
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cartItems));
     }, [cartItems]);
@@ -94,31 +59,28 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         [cartItems]
     );
 
-    // 1. Calcula Subtotal
     const subtotal = useMemo(() => {
-        return cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+        return cartItems.reduce(
+            (total, item) => total + item.price * item.quantity,
+            0
+        );
     }, [cartItems]);
 
-    // 2. Calcula Desconto
     const discountAmount = useMemo(() => {
         if (!coupon) return 0;
-        // Preço em centavos * porcentagem / 100
         return Math.round(subtotal * (coupon.discount_percent / 100));
     }, [subtotal, coupon]);
 
-    // 3. Total Final
     const totalPrice = subtotal - discountAmount;
 
     const addToCart = useCallback((item: CartItem) => {
         setCartItems((prevItems) => {
-            const existingItem = prevItems.find(
-                (i) => i.id === item.id
-            );
+            const existingItem = prevItems.find((i) => i.id === item.id);
 
             if (existingItem) {
                 return prevItems.map((i) =>
                     i.id === item.id
-                        ? { ...i, quantity: Math.min(i.quantity + 1, 5) } 
+                        ? { ...i, quantity: Math.min(i.quantity + 1, 5) }
                         : i
                 );
             } else {
@@ -135,13 +97,11 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
     const updateQuantity = useCallback(
         (productId: string, quantity: number) => {
-            if (quantity < 1 || quantity > 5) return; 
-            
+            if (quantity < 1 || quantity > 5) return;
+
             setCartItems((prevItems) => {
                 if (quantity <= 0) {
-                    return prevItems.filter(
-                        (item) => item.id !== productId
-                    );
+                    return prevItems.filter((item) => item.id !== productId);
                 }
                 return prevItems.map((item) =>
                     item.id === productId
@@ -155,14 +115,43 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
     const clearCart = useCallback(() => {
         setCartItems([]);
-        setCoupon(null); // Limpa cupom ao limpar carrinho
+        setCoupon(null);
     }, []);
 
-    // Lógica do Cupom
+    // --- LÓGICA DE APLICAÇÃO DE CUPOM ATUALIZADA ---
     const applyCoupon = async (code: string) => {
         if (!code) return false;
+
+        // 1. Verifica se está logado
+        if (!isLoggedIn || !profile) {
+            toast({
+                variant: "destructive",
+                title: "Login necessário",
+                description: "Faça login para usar cupons de desconto.",
+            });
+            return false;
+        }
+
+        // 2. Busca o cupom
         const foundCoupon = await fetchCoupon(code);
+
         if (foundCoupon) {
+            // 3. Verifica se já usou
+            const alreadyUsed = await checkCouponUsage(
+                profile.id,
+                foundCoupon.id
+            );
+
+            if (alreadyUsed) {
+                toast({
+                    variant: "destructive",
+                    title: "Cupom já utilizado",
+                    description:
+                        "Você já usou este cupom em uma compra anterior.",
+                });
+                return false;
+            }
+
             setCoupon(foundCoupon);
             return true;
         }
@@ -187,7 +176,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <CartContext.Provider value={value}>{children}</CartContext.Provider>
+        <CartContext.Provider value={value}>
+            {children}
+            {/* O CartDrawer é renderizado na Navbar, não aqui, para evitar duplicidade visual */}
+        </CartContext.Provider>
     );
 };
 
@@ -198,6 +190,3 @@ export const useCart = () => {
     }
     return context;
 };
-
-// --- COMPONENTE VISUAL (CART DRAWER) ---
-import { CartDrawer as DrawerComponent } from "@/components/CartDrawer"; 
