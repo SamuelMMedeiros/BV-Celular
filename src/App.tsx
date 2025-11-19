@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom"; // Importe o Outlet
+import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
@@ -22,37 +22,39 @@ import AdminProductForm from "./pages/admin/ProductForm";
 import AdminStores from "./pages/admin/Stores";
 import AdminEmployees from "./pages/admin/Employees";
 import AdminClients from "./pages/admin/Clients";
+import AdminOrders from "./pages/admin/Orders";
 import Acessorios from "./pages/Acessorios";
 import CustomerLogin from "./pages/CustomerLogin";
-import MinhaConta from "./pages/MinhaConta"; // <-- IMPORTAR A NOVA PÁGINA
+import MinhaConta from "./pages/MinhaConta";
+import ProductDetails from "./pages/ProductDetails"; // <-- IMPORTAR A NOVA PÁGINA
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            refetchOnWindowFocus: false,
+        },
+    },
+});
 
 /*
   Layout Público
-  - Carrega a autenticação de Cliente e o Carrinho.
-  - NÃO carrega o AuthProvider (Admin), evitando o conflito no reload.
 */
 const PublicLayout = () => (
     <CustomerAuthProvider>
         <CartProvider>
-            <Outlet />{" "}
-            {/* Renderiza as rotas filhas (Index, Aparelhos, etc.) */}
+            <Outlet />
         </CartProvider>
     </CustomerAuthProvider>
 );
 
 /*
   Layout de Admin
-  - Carrega TODOS os contextos (Admin, Cliente e Carrinho).
-  - O AuthProvider (Admin) é necessário aqui para o ProtectedRoute funcionar.
 */
 const AdminLayout = () => (
     <AuthProvider>
         <CustomerAuthProvider>
             <CartProvider>
-                <Outlet />{" "}
-                {/* Renderiza as rotas filhas (Admin, AdminProducts, etc.) */}
+                <Outlet />
             </CartProvider>
         </CustomerAuthProvider>
     </AuthProvider>
@@ -65,7 +67,7 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
                 <Routes>
-                    {/* Rotas Públicas usam o PublicLayout */}
+                    {/* Rotas Públicas */}
                     <Route element={<PublicLayout />}>
                         <Route path="/" element={<Index />} />
                         <Route path="/login" element={<CustomerLogin />} />
@@ -76,55 +78,42 @@ const App = () => (
                         <Route path="/aparelhos" element={<Aparelhos />} />
                         <Route path="/promocoes" element={<Promocoes />} />
                         <Route path="/acessorios" element={<Acessorios />} />
-
-                        {/* --- NOVA ROTA ADICIONADA --- */}
                         <Route path="/minha-conta" element={<MinhaConta />} />
 
-                        {/* A Rota NotFound agora fica aqui para pegar erros 404 públicos */}
+                        {/* --- NOVA ROTA DE DETALHES DO PRODUTO --- */}
+                        <Route
+                            path="/produto/:productId"
+                            element={<ProductDetails />}
+                        />
+
                         <Route path="*" element={<NotFound />} />
                     </Route>
 
-                    {/* Rotas de Admin usam o AdminLayout (que inclui o AuthProvider) */}
+                    {/* Rotas de Admin */}
                     <Route path="/admin" element={<AdminLayout />}>
                         <Route element={<ProtectedRoute />}>
-                            {/* /admin agora é a rota "index" deste grupo */}
                             <Route index element={<Admin />} />
-
-                            {/* /admin/products */}
                             <Route
                                 path="products"
                                 element={<AdminProducts />}
                             />
-
-                            {/* /admin/products/new */}
                             <Route
                                 path="products/new"
                                 element={<AdminProductForm />}
                             />
-
-                            {/* /admin/products/edit/:productId */}
                             <Route
                                 path="products/edit/:productId"
                                 element={<AdminProductForm />}
                             />
-
-                            {/* /admin/stores */}
                             <Route path="stores" element={<AdminStores />} />
-
-                            {/* /admin/employees */}
                             <Route
                                 path="employees"
                                 element={<AdminEmployees />}
                             />
-
-                            {/* /admin/clients */}
                             <Route path="clients" element={<AdminClients />} />
+                            <Route path="orders" element={<AdminOrders />} />
                         </Route>
                     </Route>
-
-                    {/* Nota: A rota "NotFound" foi movida para dentro do PublicLayout 
-                      para garantir que qualquer rota não-admin seja tratada por ele.
-                    */}
                 </Routes>
             </BrowserRouter>
         </TooltipProvider>

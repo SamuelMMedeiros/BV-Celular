@@ -1,5 +1,4 @@
-/* eslint-disable react-hooks/rules-of-hooks */
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
     Smartphone,
@@ -10,10 +9,10 @@ import {
     Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuthAdmin";
-import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { AuthContext } from "@/contexts/AuthContext"; // Importação do Contexto (Lógica Admin)
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext"; // Hook do Cliente
 import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
-import { CartDrawer } from "@/contexts/CartContext";
+import { CartDrawer } from "@/components/CartDrawer"; // <-- IMPORTAÇÃO CORRIGIDA (Vem de components)
 import {
     Sheet,
     SheetContent,
@@ -23,6 +22,7 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 
+// Definição dos links de navegação
 const navLinks = [
     { to: "/aparelhos", label: "Aparelhos", icon: Smartphone },
     { to: "/acessorios", label: "Acessórios", icon: Tag },
@@ -32,12 +32,16 @@ const navLinks = [
 export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const isAdminRoute = location.pathname.startsWith("/admin");
 
-    const { employeeProfile, logout: adminLogout } = isAdminRoute
-        ? useAuth()
-        : { employeeProfile: null, logout: async () => {} };
+    // --- LÓGICA SEGURA PARA ADMIN ---
+    // Tentamos acessar o contexto de Admin.
+    // Se estivermos em uma rota pública, ele será undefined (o que é esperado e seguro).
+    const adminContext = useContext(AuthContext);
 
+    const employeeProfile = adminContext?.employeeProfile;
+    const adminLogout = adminContext?.logout || (async () => {});
+
+    // --- LÓGICA PARA CLIENTE ---
     const {
         isLoggedIn: isCustomerLoggedIn,
         getGreeting,
@@ -55,7 +59,7 @@ export const Navbar = () => {
     return (
         <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container flex h-16 items-center justify-between">
-                {/* LOGO + MOBILE MENU */}
+                {/* --- 1. Menu Hamburguer (MOBILE) e Logo --- */}
                 <div className="flex items-center space-x-2">
                     <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                         <SheetTrigger asChild className="md:hidden">
@@ -98,7 +102,7 @@ export const Navbar = () => {
 
                                 <Separator className="my-4" />
 
-                                {/* ADMIN - MOBILE */}
+                                {/* Menu Admin Mobile */}
                                 {employeeProfile && (
                                     <>
                                         <Button
@@ -114,7 +118,7 @@ export const Navbar = () => {
                                         >
                                             <Link
                                                 to="/admin"
-                                                className="flex items-center gap-3"
+                                                className="flex items-center gap-3 text-sm"
                                             >
                                                 <ShieldCheck className="h-5 w-5" />
                                                 <span>
@@ -122,7 +126,6 @@ export const Navbar = () => {
                                                 </span>
                                             </Link>
                                         </Button>
-
                                         <div className="mt-4 pt-4 border-t">
                                             <p className="text-sm font-medium mb-2">
                                                 Olá,{" "}
@@ -144,7 +147,7 @@ export const Navbar = () => {
                                     </>
                                 )}
 
-                                {/* CLIENTE - MOBILE */}
+                                {/* Menu Cliente Mobile */}
                                 {isCustomerLoggedIn && !employeeProfile && (
                                     <div className="mt-4 pt-4 border-t">
                                         <p className="text-sm font-medium mb-2">
@@ -174,8 +177,8 @@ export const Navbar = () => {
                     </Link>
                 </div>
 
-                {/* NAV LINKS - DESKTOP */}
-                <div className="hidden md:flex items-center gap-3">
+                {/* --- 2. Links de Navegação (DESKTOP) --- */}
+                <div className="hidden md:flex items-center gap-2">
                     {navLinks.map((link) => (
                         <Button
                             key={link.to}
@@ -194,20 +197,26 @@ export const Navbar = () => {
                     ))}
                 </div>
 
-                {/* AÇÕES À DIREITA */}
-                <div className="flex items-center gap-3">
-                    {/* LOGIN CLIENTE */}
-                    {!employeeProfile && <CustomerAuthPopover />}
+                {/* --- 3. Ícones de Ação (Login/Carrinho/Admin) --- */}
+                <div className="flex items-center space-x-1">
+                    {/* Login de Cliente (apenas se não for admin logado) */}
+                    {!employeeProfile && (
+                        <div className="border-r pr-2">
+                            <CustomerAuthPopover />
+                        </div>
+                    )}
 
-                    {/* CARRINHO */}
+                    {/* Carrinho de Compras */}
                     <CartDrawer />
 
-                    {/* ADMIN - DESKTOP */}
-                    {employeeProfile && (
-                        <div className="hidden md:flex items-center gap-3 ml-2">
-                            <span className="text-sm font-medium">
-                                Olá, {employeeProfile.name.split(" ")[0]}
-                            </span>
+                    {/* Área do Admin (Desktop) */}
+                    {employeeProfile ? (
+                        <div className="hidden md:flex items-center">
+                            <div className="flex items-center gap-2 border-r pr-2 ml-2">
+                                <span className="text-sm font-medium hidden sm:inline">
+                                    Olá, {employeeProfile.name.split(" ")[0]}
+                                </span>
+                            </div>
 
                             <Button
                                 variant={
@@ -224,17 +233,18 @@ export const Navbar = () => {
                                     <span>Painel</span>
                                 </Link>
                             </Button>
-
                             <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={handleAdminLogout}
-                                className="text-destructive hover:text-destructive flex gap-2"
+                                className="flex items-center gap-2 text-destructive hover:text-destructive"
                             >
                                 <LogOut className="h-4 w-4" />
-                                <span>Sair</span>
+                                <span>Sair (Admin)</span>
                             </Button>
                         </div>
+                    ) : (
+                        <></>
                     )}
                 </div>
             </div>

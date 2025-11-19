@@ -1,87 +1,119 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { createContext, useContext, useEffect, useState } from "react";
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Employee } from "@/types";
 import { fetchEmployeeProfile } from "@/lib/api";
 
-// Define o tipo do que será compartilhado pelo Context
 interface AuthContextType {
     session: Session | null;
     user: User | null;
-    employeeProfile: Employee | null; // O perfil do Admin/Funcionário
+    employeeProfile: Employee | null;
     loading: boolean;
     logout: () => Promise<void>;
 }
 
-// Cria o Context
-// CORREÇÃO: Exportamos o Context para o hook poder usá-lo
 export const AuthContext = createContext<AuthContextType | undefined>(
     undefined
 );
 
-// Cria o "Provedor" (o componente que vai envolver nosso App)
+const ADMIN_PROFILE_KEY = "bv_admin_profile"; // Chave para o LocalStorage
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
+
+    // 1. INICIALIZAÇÃO COM CACHE (Carrega instantaneamente)
     const [employeeProfile, setEmployeeProfile] = useState<Employee | null>(
-        null
+        () => {
+            try {
+                const stored = localStorage.getItem(ADMIN_PROFILE_KEY);
+                return stored ? JSON.parse(stored) : null;
+            } catch {
+                return null;
+            }
+        }
     );
-    const [loading, setLoading] = useState(true);
+
+    // Se tiver perfil em cache, não começa carregando (tela branca evitada!)
+    const [loading, setLoading] = useState(!employeeProfile);
 
     useEffect(() => {
-        // 1. Função para buscar sessão E perfil de funcionário
-        const getSessionAndProfile = async (currentSession: Session | null) => {
-            setSession(currentSession);
-            setUser(currentSession?.user ?? null);
-            setLoading(true); // <-- Mantém true aqui até o fim
+        let mounted = true;
 
-            if (currentSession?.user) {
-                // !!! ESTA É A CORREÇÃO CRÍTICA !!!
-                // Envolvemos a busca de perfil em um try...catch.
-                // Se um cliente estiver logado, fetchEmployeeProfile VAI falhar.
-                // Não podemos deixar esse erro quebrar o React.
+        const getSessionAndProfile = async (
+            sessionFromEvent: Session | null
+        ) => {
+            if (!mounted) return;
+
+            setSession(sessionFromEvent);
+            setUser(sessionFromEvent?.user ?? null);
+
+            if (sessionFromEvent?.user) {
                 try {
+                    // Busca dados atualizados do banco (usando a nova RPC rápida)
                     const profile = await fetchEmployeeProfile(
-                        currentSession.user.id
+                        sessionFromEvent.user.id
                     );
-                    setEmployeeProfile(profile); // Será null se for cliente, o que está correto.
-                } catch (error: any) {
-                    console.error(
-                        "Falha ao buscar perfil de funcionário (AuthContext):",
-                        error.message
-                    );
-                    // Garante que o perfil de funcionário é nulo em caso de erro
-                    setEmployeeProfile(null);
+
+                    if (mounted) {
+                        if (profile) {
+                            console.log(
+                                "[Auth] Perfil Admin atualizado/confirmado."
+                            );
+                            setEmployeeProfile(profile);
+                            // Salva no cache para o próximo reload
+                            localStorage.setItem(
+                                ADMIN_PROFILE_KEY,
+                                JSON.stringify(profile)
+                            );
+                        } else {
+                            console.warn(
+                                "[Auth] Usuário logado mas não é Admin. Limpando acesso."
+                            );
+                            setEmployeeProfile(null);
+                            localStorage.removeItem(ADMIN_PROFILE_KEY);
+                        }
+                    }
+                } catch (error) {
+                    console.error("[Auth] Erro ao validar perfil:", error);
+                    // Em caso de erro de rede, mantemos o perfil do cache se existir (fallback)
+                    // Não limpamos o estado para não deslogar o usuário por instabilidade
                 }
             } else {
-                setEmployeeProfile(null);
+                // Se não tem sessão, limpa tudo
+                if (mounted) {
+                    setEmployeeProfile(null);
+                    localStorage.removeItem(ADMIN_PROFILE_KEY);
+                }
             }
-            // Define o loading como false APÓS tudo ter sido processado
-            setLoading(false);
+
+            if (mounted) setLoading(false);
         };
 
-        // 2. Busca a sessão inicial
-        supabase.auth
-            .getSession()
-            .then(({ data: { session: currentSession } }) => {
-                getSessionAndProfile(currentSession);
-            });
+        // Fluxo de inicialização
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            getSessionAndProfile(session);
+        });
 
-        // 3. Ouve mudanças no estado de autenticação (Login, Logout)
         const { data: authListener } = supabase.auth.onAuthStateChange(
-            async (_event, newSession) => {
-                await getSessionAndProfile(newSession);
+            (_event, session) => {
+                getSessionAndProfile(session);
             }
         );
 
         return () => {
-            authListener?.subscription.unsubscribe();
+            mounted = false;
+            authListener.subscription.unsubscribe();
         };
     }, []);
 
     const logout = async () => {
         await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setEmployeeProfile(null);
+        localStorage.removeItem(ADMIN_PROFILE_KEY); // Limpa cache ao sair
     };
 
     const value = {

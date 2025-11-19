@@ -6,7 +6,7 @@ export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'col
   stores: Store[];
   colors: string[]; // Força a ser string[]
   images: string[]; // Força a ser string[]
-  category: 'aparelho' | 'acessorio'; // <-- LINHA CORRIGIDA/ADICIONADA
+  category: 'aparelho' | 'acessorio'; 
 };
 
 // Tipo para os dados de uma Loja
@@ -33,7 +33,7 @@ export type CartItem = {
   price: number;
   images: string[];
   quantity: number;
-  category: 'aparelho' | 'acessorio'; // <-- O tipo esperado
+  category: 'aparelho' | 'acessorio'; 
 };
 
 // Tipo para os itens de um pedido (armazenado no JSONB 'items' da tabela Orders)
@@ -49,9 +49,20 @@ export type OrderCartItem = {
 export type Order = {
   id: string;
   client_id: string;
-  store_id: string; // Corrigido para text no SQL
+  store_id: string; 
   total_price: number;
-  status: string;
-  items: OrderCartItem[]; // O JSONB será deserializado para este tipo
+  status: string; // 'pending', 'completed', 'cancelled'
+  items: OrderCartItem[]; 
   created_at: string;
+  
+  // --- RELACIONAMENTOS (Opcionais, preenchidos via Query) ---
+  Clients?: {
+    name: string;
+    phone: string;
+    email: string;
+  } | null;
+  Stores?: {
+    name: string;
+    city: string | null;
+  } | null;
 };

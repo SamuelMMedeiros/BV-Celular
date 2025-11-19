@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
     createContext,
@@ -27,7 +28,7 @@ interface CustomerAuthContextType {
     logout: () => void;
     getGreeting: () => string;
     refetchProfile: () => Promise<void>;
-    isLoadingSession: boolean; // <-- ESTA LINHA FOI ADICIONADA
+    isLoadingSession: boolean;
 }
 
 const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(
@@ -38,24 +39,22 @@ const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(
 const extractProfile = (session: Session | null): CustomerProfile | null => {
     if (!session?.user) return null;
 
-    // Assegura que os metadados existam e tenham os campos que precisamos
     const metadata = session.user.user_metadata;
     if (metadata && metadata.full_name && metadata.phone) {
         return {
             id: session.user.id,
-            // (O email vem do nível superior do user, não do metadata)
             email: session.user.email || "",
             name: metadata.full_name as string,
             phone: metadata.phone as string,
         };
     }
-    // Fallback caso o metadata não exista, mas o usuário sim
+
     if (session.user.email) {
         return {
             id: session.user.id,
             email: session.user.email,
-            name: "Cliente", // Nome padrão
-            phone: "", // Telefone padrão
+            name: "Cliente",
+            phone: "",
         };
     }
 
@@ -71,34 +70,34 @@ export const CustomerAuthProvider = ({
     const { toast } = useToast();
     const [session, setSession] = useState<Session | null>(null);
     const [profile, setProfile] = useState<CustomerProfile | null>(null);
+    // Inicia como true para o carregamento inicial da página
     const [isLoadingSession, setIsLoadingSession] = useState(true);
 
-    // Função para buscar o perfil e a sessão (usada na inicialização e no refetch)
+    // Função para buscar o perfil e a sessão
     const fetchSessionAndProfile = useCallback(
         async (currentSession: Session | null) => {
-            setIsLoadingSession(true); // <-- GARANTE QUE O LOADING É TRUE NO INÍCIO
+            // --- CORREÇÃO IMPORTANTE ---
+            // Removemos o setIsLoadingSession(true) daqui.
+            // Isso evita que a tela "pisque" com skeletons toda vez que você troca de aba.
+            // A variável isLoadingSession continua controlando apenas o carregamento INICIAL.
+
             setSession(currentSession);
 
             if (currentSession?.user) {
-                // Se o usuário está logado, tentamos buscar o perfil na tabela 'Clients'
                 try {
-                    // Usamos a função da API para buscar o perfil no DB
                     const { data, error } = await supabase
                         .from("Clients")
                         .select("id, name, phone, email")
                         .eq("id", currentSession.user.id)
-                        .single();
+                        .maybeSingle();
 
-                    if (error && error.code !== "PGRST116") {
-                        // Ignora erro "não encontrado"
+                    if (error) {
                         throw error;
                     }
 
                     if (data) {
                         setProfile(data as CustomerProfile);
                     } else {
-                        // Se não achou na tabela Clients (ex: só se cadastrou no Auth),
-                        // extrai do metadata
                         setProfile(extractProfile(currentSession));
                     }
                 } catch (error: any) {
@@ -106,37 +105,35 @@ export const CustomerAuthProvider = ({
                         "Erro ao buscar perfil do cliente (Context):",
                         error.message
                     );
-                    setProfile(null); // Falha na busca
+                    setProfile(null);
                 }
             } else {
-                // Se não há sessão, não há perfil
                 setProfile(null);
             }
 
-            setIsLoadingSession(false); // <-- FINALIZA O LOADING
+            // Garantimos que o loading termine após a primeira verificação
+            setIsLoadingSession(false);
         },
         []
     );
 
-    // Função para forçar a re-busca dos dados da sessão e do perfil
     const refetchProfile = useCallback(async () => {
-        setIsLoadingSession(true);
+        // Aqui podemos manter o loading opcionalmente, ou removê-lo se preferir uma atualização silenciosa
+        // Por segurança, vamos manter false aqui também ou gerenciar um estado de 'isUpdating' separado se necessário.
+        // Mas para simplificar e evitar o travamento, não vamos bloquear a UI globalmente.
         const {
             data: { session: currentSession },
         } = await supabase.auth.getSession();
         await fetchSessionAndProfile(currentSession);
     }, [fetchSessionAndProfile]);
 
-    // 1. Lógica para buscar sessão e perfil na inicialização e em mudanças de Auth
     useEffect(() => {
-        // 1a. Tenta buscar a sessão no Local Storage
         supabase.auth
             .getSession()
             .then(({ data: { session: currentSession } }) => {
                 fetchSessionAndProfile(currentSession);
             });
 
-        // 1b. Ouve mudanças em tempo real (login/logout/refresh)
         const { data: authListener } = supabase.auth.onAuthStateChange(
             (_event, newSession) => {
                 fetchSessionAndProfile(newSession);
@@ -148,9 +145,6 @@ export const CustomerAuthProvider = ({
         };
     }, [fetchSessionAndProfile]);
 
-    // 2. Funções de Ação (Nova Lógica Email/Senha)
-
-    // A. Registro
     const signUp = useCallback(
         async (
             email: string,
@@ -162,10 +156,9 @@ export const CustomerAuthProvider = ({
                 email,
                 password,
                 options: {
-                    // Salva nome e telefone no metadata (user_metadata)
                     data: {
                         full_name: name,
-                        phone: phone.replace(/\D/g, ""), // Limpa o telefone para salvar apenas dígitos
+                        phone: phone.replace(/\D/g, ""),
                     },
                 },
             });
@@ -179,7 +172,6 @@ export const CustomerAuthProvider = ({
                 throw error;
             }
 
-            // Supabase envia um email de confirmação por padrão.
             toast({
                 title: "Sucesso!",
                 description:
@@ -190,7 +182,6 @@ export const CustomerAuthProvider = ({
         [toast]
     );
 
-    // B. Login
     const signIn = useCallback(
         async (email: string, password: string) => {
             const { error } = await supabase.auth.signInWithPassword({
@@ -207,7 +198,6 @@ export const CustomerAuthProvider = ({
                 throw error;
             }
 
-            // O useEffect do listener acima cuidará de atualizar o estado (session/profile)
             toast({
                 title: "Bem-vindo!",
                 description: "Login concluído com sucesso.",
@@ -216,14 +206,12 @@ export const CustomerAuthProvider = ({
         [toast]
     );
 
-    // C. Logout
     const logout = useCallback(async () => {
         await supabase.auth.signOut();
         setProfile(null);
         setSession(null);
     }, []);
 
-    // 3. Lógica de Saudação
     const getGreeting = useCallback((): string => {
         if (!profile) return "Entrar";
 
@@ -233,7 +221,7 @@ export const CustomerAuthProvider = ({
         if (hour >= 5 && hour < 12) {
             greeting = "Bom dia";
         } else if (hour >= 12 && hour < 18) {
-            greeting = "Boa noite";
+            greeting = "Boa tarde";
         } else {
             greeting = "Boa noite";
         }
@@ -256,7 +244,7 @@ export const CustomerAuthProvider = ({
         logout,
         getGreeting,
         refetchProfile,
-        isLoadingSession, // <-- ESTA LINHA FOI ADICIONADA
+        isLoadingSession,
     };
 
     return (
@@ -266,7 +254,6 @@ export const CustomerAuthProvider = ({
     );
 };
 
-// Hook de uso
 export const useCustomerAuth = () => {
     const context = useContext(CustomerAuthContext);
     if (context === undefined) {

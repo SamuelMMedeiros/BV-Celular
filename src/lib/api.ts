@@ -1,41 +1,37 @@
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
-import { Product, Store, Employee, CustomerProfile, OrderCartItem } from "@/types"; // Importar OrderCartItem
+import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order } from "@/types";
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid';
 
-// --- Tipos de Payload (Produtos) ---
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
   store_ids?: string[]; 
   image_files: File[];
 };
+
 export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
   id: string;
   image_files?: File[];
   images_to_delete?: string[];
 };
 
-// --- Tipos de Payload (Lojas) ---
 export type StoreInsertPayload = Database['public']['Tables']['Stores']['Insert'];
 export type StoreUpdatePayload = Database['public']['Tables']['Stores']['Update'] & {
   id: string;
 };
 
-// --- Tipos de Payload (Funcionários) ---
 export type EmployeeInsertPayload = Database['public']['Tables']['Employees']['Insert'];
 export type EmployeeUpdatePayload = Database['public']['Tables']['Employees']['Update'] & {
   id: string;
 };
 
-// --- Tipos de Payload (Clientes) ---
 export type CustomerUpdatePayload = {
   id: string;
   name: string;
   phone: string;
 };
 
-// --- NOVO TIPO DE PAYLOAD (Pedidos/Orçamentos) ---
 export type OrderInsertPayload = {
   client_id: string;
   store_id: string;
@@ -49,7 +45,6 @@ export type OrderInsertPayload = {
 // FUNÇÕES DE API (PRODUTOS)
 // ==================================================================
 
-// Helper para "limpar" dados de array que vêm do Supabase
 const parseArrayData = (data: any): any[] => {
   if (Array.isArray(data)) {
     return data.flatMap(item => {
@@ -65,7 +60,7 @@ const parseArrayData = (data: any): any[] => {
   if (typeof data === 'string' && data.startsWith('{')) {
     return data.replace(/[{}]/g, '').split(',');
   }
-  return []; // Retorna vazio se for null ou outro tipo
+  return []; 
 }
 
 export const fetchProducts = async (params: { q?: string; category?: 'aparelho' | 'acessorio', isPromotion?: boolean } = {}): Promise<Product[]> => {
@@ -135,32 +130,55 @@ export const fetchPromotions = async (params: { q?: string } = {}): Promise<Prod
 };
 
 export const fetchAllProducts = async (): Promise<Product[]> => {
-  let query = supabase
-    .from('Products')
-    .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images,
-      ProductStores (
-        Stores (
-          id, name, whatsapp, city
+  console.log("Iniciando fetchAllProducts..."); 
+  
+  try {
+    let query = supabase
+      .from('Products')
+      .select(`
+        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images,
+        ProductStores (
+          Stores (
+            id, name, whatsapp, city
+          )
         )
-      )
-    `)
-    .order('created_at', { ascending: false }); 
-  const { data: rawProducts, error } = await query;
-  if (error) throw new Error(error.message);
+      `)
+      .order('created_at', { ascending: false }); 
 
-  const products = rawProducts.map(product => {
-    const stores: Store[] = (product.ProductStores || [])
-      .map((ps: any) => ps.Stores)
-      .filter((store: any): store is Store => store !== null); 
-    return {
-      ...product,
-      stores: stores,
-      colors: parseArrayData(product.colors),
-      images: parseArrayData(product.images),
-    } as unknown as Product;
-  });
-  return products;
+    const { data: rawProducts, error } = await query;
+    
+    if (error) {
+      console.error("Erro no fetchAllProducts (Supabase):", error); 
+      throw new Error(error.message);
+    }
+    
+    if (!rawProducts) {
+        console.warn("fetchAllProducts retornou dados vazios/nulos.");
+        return [];
+    }
+
+    const products = rawProducts.map(product => {
+      const productStores = product.ProductStores || [];
+      
+      const stores: Store[] = productStores
+        .map((ps: any) => ps.Stores)
+        .filter((store: any): store is Store => store !== null && store !== undefined); 
+      
+      return {
+        ...product,
+        stores: stores,
+        colors: parseArrayData(product.colors),
+        images: parseArrayData(product.images),
+      } as unknown as Product;
+    });
+    
+    console.log("fetchAllProducts sucesso. Itens:", products.length); 
+    return products;
+    
+  } catch (e) {
+    console.error("Erro fatal em fetchAllProducts:", e);
+    throw e;
+  }
 };
 
 export const fetchProductById = async (productId: string): Promise<Product> => {
@@ -193,7 +211,6 @@ export const fetchProductById = async (productId: string): Promise<Product> => {
   return product;
 };
 
-// Helper para extrair nome do arquivo da URL do Supabase
 const getFileNameFromUrl = (url: string): string => {
   try {
     const newUrl = new URL(url);
@@ -258,7 +275,6 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
 };
 
 export const updateProduct = async (payload: ProductUpdatePayload): Promise<void> => {
-  
   if (payload.images_to_delete && payload.images_to_delete.length > 0) {
     const fileNames = payload.images_to_delete.map(getFileNameFromUrl).filter(Boolean);
     if (fileNames.length > 0) {
@@ -420,26 +436,23 @@ export const fetchEmployees = async (): Promise<Employee[]> => {
   return data as Employee[];
 };
 
-
 export const fetchEmployeeProfile = async (userId: string): Promise<Employee | null> => {
-  const { data, error } = await supabase
-    .from('Employees')
-    .select(`
-      id,
-      name,
-      email,
-      store_id,
-      Stores ( id, name )
-    `)
-    .eq('id', userId)
-    .single();
+  console.log("[API] Buscando perfil via RPC get_admin_profile...");
+  
+  const { data, error } = await supabase.rpc('get_admin_profile');
+
   if (error) {
-    if (error.code === 'PGRST116') { // Nenhum funcionário encontrado
-      return null; 
-    }
-    throw new Error(error.message);
+    console.error("[API] Erro na RPC get_admin_profile:", error);
+    return null;
   }
-  return data as Employee;
+
+  if (!data) {
+    console.log("[API] RPC retornou nulo (usuário não é admin).");
+    return null;
+  }
+
+  console.log("[API] Perfil encontrado via RPC:", data);
+  return data as unknown as Employee;
 };
 
 export const createEmployee = async (payload: EmployeeInsertPayload) => {
@@ -480,7 +493,6 @@ export const deleteEmployee = async (employeeId: string) => {
 // FUNÇÕES DE API (CLIENTES)
 // ==================================================================
 
-// (Admin) Busca TODOS os clientes
 export const fetchClients = async (): Promise<CustomerProfile[]> => {
   const { data, error } = await supabase
     .from('Clients')
@@ -499,36 +511,27 @@ export const fetchClients = async (): Promise<CustomerProfile[]> => {
   return data as CustomerProfile[];
 };
 
-// (Cliente) Busca o PRÓPRIO perfil
 export const fetchCustomerProfile = async (userId: string): Promise<CustomerProfile | null> => {
   const { data, error } = await supabase
-    .from('Clients') // Busca na nova tabela "Clients"
+    .from('Clients') 
     .select(`
       id,
       name,
       phone,
       email
     `)
-    .eq('id', userId) // Pelo ID do usuário logado
-    .single();
+    .eq('id', userId) 
+    .maybeSingle(); 
 
   if (error) {
-    if (error.code === 'PGRST116') { // Nenhum cliente encontrado
-      return null; 
-    }
     console.error("Erro ao buscar perfil do cliente:", error);
     throw new Error(error.message);
   }
   return data as CustomerProfile;
 };
 
-// (Admin) Deleta um cliente
 export const deleteClient = async (clientId: string) => {
   if (!clientId) throw new Error("ID do cliente não encontrado.");
-  
-  // NOTE: A exclusão de usuário (auth.users) SÓ PODE ser feita no backend (Supabase Functions)
-  // Vamos deletar apenas o perfil 'Clients'
-  
   const { error } = await supabase
     .from('Clients')
     .delete()
@@ -540,11 +543,9 @@ export const deleteClient = async (clientId: string) => {
   }
 };
 
-// (Cliente) Atualiza o PRÓPRIO perfil
 export const updateCustomerProfile = async (payload: CustomerUpdatePayload): Promise<void> => {
   const { id, ...updateData } = payload;
   
-  // 1. Atualiza a tabela 'Clients'
   const { error } = await supabase
     .from('Clients')
     .update({ 
@@ -558,7 +559,6 @@ export const updateCustomerProfile = async (payload: CustomerUpdatePayload): Pro
     throw new Error(error.message);
   }
   
-  // 2. Atualiza o user_metadata no Supabase Auth
   const { error: authError } = await supabase.auth.updateUser({
     data: { 
       full_name: updateData.name, 
@@ -571,29 +571,39 @@ export const updateCustomerProfile = async (payload: CustomerUpdatePayload): Pro
   }
 };
 
+export const upsertClient = async (profile: { id: string; name: string; phone: string; email: string }) => {
+    const { error } = await supabase
+        .from('Clients')
+        .upsert({
+            id: profile.id,
+            name: profile.name,
+            phone: profile.phone,
+            email: profile.email
+        }, { onConflict: 'id' });
+
+    if (error) {
+        console.error("Erro ao fazer upsert do cliente:", error);
+        throw error;
+    }
+};
+
 // ==================================================================
-// --- NOVA SEÇÃO: FUNÇÕES DE API (PEDIDOS/ORÇAMENTOS) ---
+// FUNÇÕES DE API (PEDIDOS/ORÇAMENTOS)
 // ==================================================================
 
-/**
- * Cria um novo Pedido/Orçamento no banco de dados.
- * Associado a um cliente e a uma loja.
- */
 export const createOrder = async (payload: OrderInsertPayload): Promise<Database['public']['Tables']['Orders']['Row']> => {
-  
-  // Mapeia os dados para o formato exato da tabela
   const orderData: Database['public']['Tables']['Orders']['Insert'] = {
     client_id: payload.client_id,
     store_id: payload.store_id,
     total_price: payload.total_price,
-    items: payload.items, // O Supabase (com RLS) aceitará o JSONB
+    items: payload.items, 
     status: payload.status || 'pending'
   };
 
   const { data, error } = await supabase
     .from('Orders')
     .insert(orderData)
-    .select() // Retorna o registro recém-criado
+    .select() 
     .single();
 
   if (error) {
@@ -602,4 +612,46 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
   }
 
   return data;
+};
+
+// --- NOVAS FUNÇÕES (Orçamentos) ---
+
+// (Admin) Busca todos os pedidos
+export const fetchAllOrders = async (): Promise<Order[]> => {
+  const { data, error } = await supabase
+    .from('Orders')
+    .select(`
+      *,
+      Clients ( name, phone, email ),
+      Stores ( name, city )
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data as Order[];
+};
+
+// (Cliente) Busca os pedidos do cliente logado
+export const fetchClientOrders = async (clientId: string): Promise<Order[]> => {
+  const { data, error } = await supabase
+    .from('Orders')
+    .select(`
+      *,
+      Stores ( name, city )
+    `)
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data as Order[];
+};
+
+// (Admin) Atualiza o status do pedido
+export const updateOrderStatus = async (orderId: string, newStatus: string): Promise<void> => {
+  const { error } = await supabase
+    .from('Orders')
+    .update({ status: newStatus })
+    .eq('id', orderId);
+
+  if (error) throw new Error(error.message);
 };
