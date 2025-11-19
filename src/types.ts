@@ -5,6 +5,7 @@ export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'col
   colors: string[]; 
   images: string[]; 
   category: 'aparelho' | 'acessorio'; 
+  brand?: string | null;
 };
 
 // Atualizado com 'address'

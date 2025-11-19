@@ -23,7 +23,6 @@ import {
     CarouselNext,
     CarouselPrevious,
 } from "@/components/ui/carousel";
-import { SEO } from "@/components/SEO";
 
 const Index = () => {
     // Busca Produtos em Promoção
@@ -52,8 +51,8 @@ const Index = () => {
         : [];
 
     return (
-        <div className="min-h-screen bg-background flex flex-col">
-            <SEO title="Início" />
+        // CORREÇÃO 1: Adicionado 'overflow-x-hidden' para impedir barras de rolagem horizontais indesejadas
+        <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
             <Navbar />
 
             <main className="flex-1">
@@ -78,7 +77,6 @@ const Index = () => {
                             link="/acessorios"
                             color="bg-purple-100 text-purple-700"
                         />
-                        {/* Botão Garantia REMOVIDO daqui */}
                         <CategoryCard
                             icon={Sparkles}
                             title="Ofertas"
@@ -121,8 +119,9 @@ const Index = () => {
                                     </CarouselItem>
                                 ))}
                             </CarouselContent>
-                            <CarouselPrevious />
-                            <CarouselNext />
+                            {/* CORREÇÃO 2: Setas escondidas no mobile ('hidden md:flex') para evitar overflow */}
+                            <CarouselPrevious className="hidden md:flex" />
+                            <CarouselNext className="hidden md:flex" />
                         </Carousel>
                     )}
                 </section>

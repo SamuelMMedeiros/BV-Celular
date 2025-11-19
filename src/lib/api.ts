@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
   store_ids?: string[]; 
   image_files: File[];
+  brand?: string;
 };
 
 export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
@@ -254,6 +255,7 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
     colors: payload.colors || [],
     isPromotion: payload.isPromotion,
     category: payload.category,
+    brand: payload.brand, 
     images: imageUrls,
   };
   const { data: newProduct, error: productError } = await supabase
@@ -327,6 +329,7 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     colors: payload.colors || [],
     isPromotion: payload.isPromotion,
     category: payload.category,
+    brand: payload.brand, 
     images: finalImageUrls,
   };
 
@@ -945,3 +948,4 @@ export const createCouponUsage = async (clientId: string, couponId: string): Pro
         // mas num sistema rígido, deveríamos lançar.
     }
 };
+

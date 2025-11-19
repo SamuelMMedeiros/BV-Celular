@@ -1,130 +1,111 @@
-import { Navbar } from "@/components/Navbar";
 import { useState, useEffect } from "react";
-import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { ProductCard } from "@/components/ProductCard";
-import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
+import { Navbar } from "@/components/Navbar";
+import { ProductCard } from "@/components/ProductCard";
 import { fetchProducts } from "@/lib/api";
 import { Product } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Headset } from "lucide-react"; // Usando Headset para acessórios
-
-// Componente para o estado de Loading
-const ProductGridSkeleton = () => (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="space-y-3">
-                <Skeleton className="aspect-square w-full" />
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-8 w-1/4" />
-                <Skeleton className="h-9 w-full" />
-            </div>
-        ))}
-    </div>
-);
+import { Button } from "@/components/ui/button";
+import { Footer } from "@/components/Footer";
+import { SEO } from "@/components/SEO";
+import { ProductFilters } from "@/components/ProductFilters"; // <-- IMPORTAR
+import { Filter } from "lucide-react";
 
 const Acessorios = () => {
-    const [searchTerm, setSearchTerm] = useState("");
-    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+    const [searchParams] = useSearchParams();
+    const queryFromUrl = searchParams.get("q") || "";
 
-    // Debounce para a busca: espera 500ms após o usuário parar de digitar
-    useEffect(() => {
-        const timerId = setTimeout(() => {
-            setDebouncedSearchTerm(searchTerm);
-        }, 500);
-        return () => clearTimeout(timerId);
-    }, [searchTerm]);
+    const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
 
-    // Busca os dados usando React Query (Filtrando por 'acessorio')
-    const {
-        data: products,
-        isLoading,
-        isError,
-    } = useQuery<Product[]>({
-        queryKey: ["products", "acessorios", debouncedSearchTerm],
-        // ALTERAÇÃO AQUI: categoria é 'acessorio'
+    const { data: allProducts, isLoading } = useQuery<Product[]>({
+        queryKey: ["products", "acessorio", queryFromUrl],
         queryFn: () =>
-            fetchProducts({
-                q: debouncedSearchTerm,
-                category: "acessorio",
-                isPromotion: false,
-            }),
+            fetchProducts({ category: "acessorio", q: queryFromUrl }),
     });
 
+    const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+
+    useEffect(() => {
+        if (allProducts) setFilteredProducts(allProducts);
+    }, [allProducts]);
+
     return (
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen bg-background flex flex-col">
+            <SEO
+                title="Acessórios"
+                description="Capas, películas, carregadores e muito mais."
+            />
             <Navbar />
 
-            <main className="container py-8">
-                {/* Header */}
-                <div className="mb-8 flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent">
-                        <Headset className="h-6 w-6 text-accent-foreground" />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl font-bold text-foreground">
-                            Acessórios
-                        </h1>
-                        <p className="text-sm text-muted-foreground">
-                            Tudo o que você precisa para complementar seu
-                            aparelho.
-                        </p>
-                    </div>
-                </div>
+            <main className="flex-1 container py-8">
+                <div className="flex flex-col md:flex-row items-start gap-8">
+                    {/* SIDEBAR */}
+                    {!isLoading && allProducts && (
+                        <aside className="w-full md:w-64 flex-shrink-0">
+                            <ProductFilters
+                                products={allProducts}
+                                onFilterChange={setFilteredProducts}
+                                isMobileOpen={isMobileFiltersOpen}
+                                onMobileClose={() =>
+                                    setIsMobileFiltersOpen(false)
+                                }
+                            />
+                        </aside>
+                    )}
 
-                {/* Search */}
-                <div className="relative mb-8 max-w-md">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                        type="text"
-                        placeholder="Buscar por cabo, película ou fone..."
-                        className="pl-10"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
+                    {/* CONTEÚDO */}
+                    <div className="flex-1 w-full">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                            <div>
+                                <h1 className="text-3xl font-bold tracking-tight">
+                                    Acessórios
+                                </h1>
+                                <p className="text-muted-foreground mt-1">
+                                    {filteredProducts.length} produtos
+                                    encontrados
+                                </p>
+                            </div>
 
-                {/* Products Grid */}
-                {isLoading && <ProductGridSkeleton />}
+                            <Button
+                                variant="outline"
+                                className="md:hidden w-full sm:w-auto"
+                                onClick={() => setIsMobileFiltersOpen(true)}
+                            >
+                                <Filter className="mr-2 h-4 w-4" /> Filtros
+                            </Button>
+                        </div>
 
-                {isError && (
-                    <div className="py-20 text-center">
-                        <p className="text-destructive">
-                            Erro ao carregar os acessórios.
-                        </p>
-                    </div>
-                )}
-
-                {!isLoading && !isError && products && (
-                    <>
-                        {products.length > 0 ? (
-                            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                {products.map((product, index) => (
-                                    <motion.div
-                                        key={product.id}
-                                        initial={{ opacity: 0, y: 20 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{
-                                            duration: 0.3,
-                                            delay: index * 0.1,
-                                        }}
-                                    >
-                                        <ProductCard product={product} />
-                                    </motion.div>
+                        {isLoading ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {[...Array(6)].map((_, i) => (
+                                    <div key={i} className="space-y-4">
+                                        <Skeleton className="h-64 w-full rounded-xl" />
+                                        <Skeleton className="h-4 w-3/4" />
+                                        <Skeleton className="h-4 w-1/2" />
+                                    </div>
                                 ))}
                             </div>
-                        ) : (
-                            <div className="py-20 text-center">
-                                <p className="text-muted-foreground">
+                        ) : filteredProducts.length === 0 ? (
+                            <div className="text-center py-16 bg-muted/30 rounded-xl border border-dashed">
+                                <p className="text-lg text-muted-foreground">
                                     Nenhum acessório encontrado.
                                 </p>
                             </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {filteredProducts.map((product) => (
+                                    <ProductCard
+                                        key={product.id}
+                                        product={product}
+                                    />
+                                ))}
+                            </div>
                         )}
-                    </>
-                )}
+                    </div>
+                </div>
             </main>
+            <Footer />
         </div>
     );
 };

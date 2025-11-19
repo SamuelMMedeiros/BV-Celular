@@ -40,10 +40,7 @@ import {
     ProductUpdatePayload,
 } from "@/lib/api";
 import { Store, Product } from "@/types";
-// --- 1. IMPORTAR AS NOVAS FUNÇÕES ---
 import { formatCurrency, parseCurrency } from "@/lib/utils";
-
-// --- 2. REMOVER OS HELPERS ANTIGOS (formatPriceForDisplay, parsePriceForDatabase) ---
 
 // --- Schemas de Validação (Zod) ---
 const MAX_FILE_SIZE_MB = 5;
@@ -55,17 +52,16 @@ const ACCEPTED_IMAGE_TYPES = [
     "image/webp",
 ];
 
-// --- 3. ATUALIZAR O SCHEMA PARA USAR O NOVO PARSER ---
 const commonSchema = z.object({
     name: z
         .string()
         .min(3, { message: "O nome deve ter pelo menos 3 caracteres." }),
     description: z.string().optional().nullable(),
+    brand: z.string().optional(), // Campo de Marca
 
     price: z
         .string()
         .min(1, { message: "Preço é obrigatório." })
-        // Usamos o parseCurrency. Se falhar (undefined), o 'refine' abaixo vai pegar.
         .transform((val) => parseCurrency(val))
         .refine((val) => val !== undefined && val > 0, {
             message: "Preço inválido.",
@@ -125,9 +121,7 @@ const createSchema = commonSchema.extend({
 const editSchema = commonSchema.extend({
     image_files: imageFileSchema,
 });
-// --- Fim dos Schemas ---
 
-// Tipo do formulário (antes da transformação do Zod)
 type FormValues = Omit<
     z.input<typeof createSchema>,
     "price" | "originalPrice" | "colors"
@@ -137,12 +131,10 @@ type FormValues = Omit<
     colors?: string | null;
 };
 
-// Helper: Converte dados do Produto (da API) para o formato do formulário
 const productToForm = (product: Product): FormValues => ({
     name: product.name,
     description: product.description ?? "",
-    // --- 4. FORMATAR PARA EXIBIÇÃO ---
-    // A API nos dá centavos (75900), formatCurrency transforma em R$ 759,00
+    brand: product.brand ?? "", // Campo de Marca
     price: product.price
         ? formatCurrency(product.price).replace("R$", "").trim()
         : "",
@@ -161,7 +153,6 @@ const productToForm = (product: Product): FormValues => ({
     image_files: [],
 });
 
-// Helper: Skeleton do formulário
 const FormSkeleton = () => (
     <div className="space-y-8">
         <Skeleton className="h-10 w-full" />
@@ -170,17 +161,11 @@ const FormSkeleton = () => (
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
         </div>
-        <div className="grid grid-cols-3 gap-6">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-        </div>
         <Skeleton className="h-24 w-1/2" />
         <Skeleton className="h-10 w-full" />
     </div>
 );
 
-// Tipo do formulário (após transformação do Zod)
 type FormSchemaOutput =
     | z.infer<typeof createSchema>
     | z.infer<typeof editSchema>;
@@ -214,6 +199,7 @@ const AdminProductForm = () => {
         defaultValues: {
             name: "",
             description: "",
+            brand: "", // Campo de Marca
             price: "",
             originalPrice: "",
             storage: "",
@@ -225,6 +211,8 @@ const AdminProductForm = () => {
             image_files: [],
         },
     });
+
+    const selectedCategory = form.watch("category");
 
     useEffect(() => {
         if (productToEdit) {
@@ -297,7 +285,7 @@ const AdminProductForm = () => {
 
         if (isEditMode) {
             const payload: ProductUpdatePayload = {
-                ...(data as z.infer<typeof editSchema>), // data já está transformada (preços são números em centavos)
+                ...(data as z.infer<typeof editSchema>),
                 id: productId,
                 images_to_delete: imagesToDelete,
                 store_ids: data.store_ids || [],
@@ -331,22 +319,24 @@ const AdminProductForm = () => {
         setImagesToDelete((prev) => [...prev, imageUrl]);
     };
 
-    // --- 5. FUNÇÃO DE FORMATAÇÃO NO BLUR ---
     const handlePriceBlur = (
         e: React.FocusEvent<HTMLInputElement>,
         fieldName: "price" | "originalPrice"
     ) => {
         const value = e.target.value;
         const cents = parseCurrency(value);
+
         if (cents !== undefined) {
-            // Formata de centavos (ex: 75900) para "759,00"
-            const formatted = (cents / 100).toLocaleString("pt-BR", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-            });
+            const formatted = (cents / 100)
+                .toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                })
+                .replace(/\s/g, "");
+
             form.setValue(fieldName, formatted);
         } else {
-            form.setValue(fieldName, ""); // Limpa se for inválido
+            form.setValue(fieldName, "");
         }
     };
 
@@ -385,48 +375,95 @@ const AdminProductForm = () => {
                                     )}
                                     className="space-y-8"
                                 >
+                                    {/* TIPO DE PRODUTO */}
                                     <FormField
                                         control={form.control}
-                                        name="name"
+                                        name="category"
                                         render={({ field }) => (
                                             <FormItem>
                                                 <FormLabel>
-                                                    Nome do Produto
+                                                    Tipo de Produto
                                                 </FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        placeholder="iPhone 15 Pro"
-                                                        {...field}
-                                                        value={
-                                                            field.value ?? ""
-                                                        }
-                                                    />
-                                                </FormControl>
+                                                <Select
+                                                    onValueChange={
+                                                        field.onChange
+                                                    }
+                                                    value={field.value}
+                                                >
+                                                    <FormControl>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Selecione o tipo" />
+                                                        </SelectTrigger>
+                                                    </FormControl>
+                                                    <SelectContent>
+                                                        <SelectItem value="aparelho">
+                                                            Aparelho (Celular,
+                                                            Tablet)
+                                                        </SelectItem>
+                                                        <SelectItem value="acessorio">
+                                                            Acessório (Capa,
+                                                            Carregador)
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
                                     />
 
-                                    <FormField
-                                        control={form.control}
-                                        name="description"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Descrição</FormLabel>
-                                                <FormControl>
-                                                    <Textarea
-                                                        placeholder="Descreva o produto..."
-                                                        {...field}
-                                                        value={
-                                                            field.value ?? ""
-                                                        }
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <FormField
+                                            control={form.control}
+                                            name="name"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>
+                                                        Nome do Produto
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            placeholder={
+                                                                selectedCategory ===
+                                                                "aparelho"
+                                                                    ? "iPhone 15 Pro"
+                                                                    : "Capa de Silicone"
+                                                            }
+                                                            {...field}
+                                                            value={
+                                                                field.value ??
+                                                                ""
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
 
+                                        {/* CAMPO DE MARCA */}
+                                        <FormField
+                                            control={form.control}
+                                            name="brand"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Marca</FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            placeholder="Ex: Apple, Samsung, Xiaomi"
+                                                            {...field}
+                                                            value={
+                                                                field.value ??
+                                                                ""
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
+                                    {/* PREÇOS */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <FormField
                                             control={form.control}
@@ -439,20 +476,17 @@ const AdminProductForm = () => {
                                                     <FormControl>
                                                         <Input
                                                             type="text"
-                                                            placeholder="759,00"
+                                                            placeholder="0,00"
                                                             {...field}
                                                             onBlur={(e) => {
                                                                 handlePriceBlur(
                                                                     e,
                                                                     "price"
                                                                 );
-                                                                field.onBlur(); // Dispara a validação do Zod
+                                                                field.onBlur();
                                                             }}
                                                         />
                                                     </FormControl>
-                                                    <FormDescription>
-                                                        Preço final de venda.
-                                                    </FormDescription>
                                                     <FormMessage />
                                                 </FormItem>
                                             )}
@@ -463,13 +497,13 @@ const AdminProductForm = () => {
                                             render={({ field }) => (
                                                 <FormItem>
                                                     <FormLabel>
-                                                        Preço Original (R$)
+                                                        Preço Original
                                                         (Opcional)
                                                     </FormLabel>
                                                     <FormControl>
                                                         <Input
                                                             type="text"
-                                                            placeholder="850,00"
+                                                            placeholder="0,00"
                                                             {...field}
                                                             onBlur={(e) => {
                                                                 handlePriceBlur(
@@ -481,8 +515,8 @@ const AdminProductForm = () => {
                                                         />
                                                     </FormControl>
                                                     <FormDescription>
-                                                        Preço "de" (para
-                                                        promoções).
+                                                        Use para mostrar
+                                                        desconto "de/por".
                                                     </FormDescription>
                                                     <FormMessage />
                                                 </FormItem>
@@ -490,128 +524,126 @@ const AdminProductForm = () => {
                                         />
                                     </div>
 
-                                    {/* O resto do formulário (storage, ram, etc.) continua igual... */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                        <FormField
-                                            control={form.control}
-                                            name="storage"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Armazenamento (Opcional)
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            placeholder="256GB"
-                                                            {...field}
-                                                            value={
-                                                                field.value ??
-                                                                ""
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="ram"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        RAM (Opcional)
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            placeholder="8GB"
-                                                            {...field}
-                                                            value={
-                                                                field.value ??
-                                                                ""
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="colors"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Cores (Opcional)
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            placeholder="Azul, Preto, Titânio"
-                                                            {...field}
-                                                            value={
-                                                                field.value ??
-                                                                ""
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormDescription>
-                                                        Separadas por vírgula.
-                                                    </FormDescription>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
+                                    {/* ESPECIFICAÇÕES (CONDICIONAL: APENAS PARA APARELHOS) */}
+                                    {selectedCategory === "aparelho" && (
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-muted/30 p-4 rounded-lg border border-dashed">
+                                            <div className="col-span-full text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                                                Especificações Técnicas
+                                            </div>
+                                            <FormField
+                                                control={form.control}
+                                                name="storage"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>
+                                                            Armazenamento
+                                                        </FormLabel>
+                                                        <FormControl>
+                                                            <Input
+                                                                placeholder="Ex: 256GB"
+                                                                {...field}
+                                                                value={
+                                                                    field.value ??
+                                                                    ""
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="ram"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>
+                                                            Memória RAM
+                                                        </FormLabel>
+                                                        <FormControl>
+                                                            <Input
+                                                                placeholder="Ex: 8GB"
+                                                                {...field}
+                                                                value={
+                                                                    field.value ??
+                                                                    ""
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="colors"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>
+                                                            Cores
+                                                        </FormLabel>
+                                                        <FormControl>
+                                                            <Input
+                                                                placeholder="Azul, Preto, Titânio"
+                                                                {...field}
+                                                                value={
+                                                                    field.value ??
+                                                                    ""
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                        <FormDescription className="text-xs">
+                                                            Separadas por
+                                                            vírgula
+                                                        </FormDescription>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </div>
+                                    )}
+
+                                    <FormField
+                                        control={form.control}
+                                        name="description"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>
+                                                    Descrição (Opcional)
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Textarea
+                                                        placeholder="Detalhes do produto..."
+                                                        {...field}
+                                                        value={
+                                                            field.value ?? ""
+                                                        }
+                                                        className="h-32"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <FormField
-                                            control={form.control}
-                                            name="category"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Categoria
-                                                    </FormLabel>
-                                                    <Select
-                                                        onValueChange={
-                                                            field.onChange
-                                                        }
-                                                        value={field.value}
-                                                    >
-                                                        <FormControl>
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Selecione a categoria" />
-                                                            </SelectTrigger>
-                                                        </FormControl>
-                                                        <SelectContent>
-                                                            <SelectItem value="aparelho">
-                                                                Aparelho
-                                                                (Celular,
-                                                                Tablet)
-                                                            </SelectItem>
-                                                            <SelectItem value="acessorio">
-                                                                Acessório (Capa,
-                                                                Carregador)
-                                                            </SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
+                                        {/* PROMOÇÃO */}
                                         <FormField
                                             control={form.control}
                                             name="isPromotion"
                                             render={({ field }) => (
-                                                <FormItem className="flex flex-col rounded-lg border p-4">
-                                                    <FormLabel>
-                                                        Produto em Promoção?
-                                                    </FormLabel>
-                                                    <FormDescription>
-                                                        Marque para exibir na
-                                                        página de Promoções.
-                                                    </FormDescription>
-                                                    <FormControl className="mt-2">
+                                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                                    <div className="space-y-0.5">
+                                                        <FormLabel className="text-base">
+                                                            Em Promoção?
+                                                        </FormLabel>
+                                                        <FormDescription>
+                                                            Marque para exibir
+                                                            na página de
+                                                            Promoções.
+                                                        </FormDescription>
+                                                    </div>
+                                                    <FormControl>
                                                         <Switch
                                                             checked={
                                                                 field.value
@@ -633,10 +665,11 @@ const AdminProductForm = () => {
                                             <FormItem>
                                                 <div className="mb-4">
                                                     <FormLabel className="text-base">
+                                                        Disponibilidade nas
                                                         Lojas
                                                     </FormLabel>
                                                     <FormDescription>
-                                                        Selecione as lojas onde
+                                                        Marque as lojas onde
                                                         este produto está
                                                         disponível.
                                                     </FormDescription>
@@ -644,55 +677,67 @@ const AdminProductForm = () => {
                                                 {isLoadingStores && (
                                                     <Skeleton className="h-5 w-1/4" />
                                                 )}
-                                                {stores?.map((store) => (
-                                                    <FormField
-                                                        key={store.id}
-                                                        control={form.control}
-                                                        name="store_ids"
-                                                        render={({ field }) => (
-                                                            <FormItem
-                                                                key={store.id}
-                                                                className="flex flex-row items-start space-x-3 space-y-0"
-                                                            >
-                                                                <FormControl>
-                                                                    <Checkbox
-                                                                        checked={field.value?.includes(
-                                                                            store.id
-                                                                        )}
-                                                                        onCheckedChange={(
-                                                                            checked
-                                                                        ) => {
-                                                                            return checked
-                                                                                ? field.onChange(
-                                                                                      [
-                                                                                          ...(field.value ||
-                                                                                              []),
-                                                                                          store.id,
-                                                                                      ]
-                                                                                  )
-                                                                                : field.onChange(
-                                                                                      field.value?.filter(
-                                                                                          (
-                                                                                              value
-                                                                                          ) =>
-                                                                                              value !==
-                                                                                              store.id
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    {stores?.map((store) => (
+                                                        <FormField
+                                                            key={store.id}
+                                                            control={
+                                                                form.control
+                                                            }
+                                                            name="store_ids"
+                                                            render={({
+                                                                field,
+                                                            }) => (
+                                                                <FormItem
+                                                                    key={
+                                                                        store.id
+                                                                    }
+                                                                    className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-card"
+                                                                >
+                                                                    <FormControl>
+                                                                        <Checkbox
+                                                                            checked={field.value?.includes(
+                                                                                store.id
+                                                                            )}
+                                                                            onCheckedChange={(
+                                                                                checked
+                                                                            ) => {
+                                                                                return checked
+                                                                                    ? field.onChange(
+                                                                                          [
+                                                                                              ...(field.value ||
+                                                                                                  []),
+                                                                                              store.id,
+                                                                                          ]
                                                                                       )
-                                                                                  );
-                                                                        }}
-                                                                    />
-                                                                </FormControl>
-                                                                <FormLabel className="font-normal">
-                                                                    {store.name}{" "}
-                                                                    (
-                                                                    {store.city ||
-                                                                        "Online"}
-                                                                    )
-                                                                </FormLabel>
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                ))}
+                                                                                    : field.onChange(
+                                                                                          field.value?.filter(
+                                                                                              (
+                                                                                                  value
+                                                                                              ) =>
+                                                                                                  value !==
+                                                                                                  store.id
+                                                                                          )
+                                                                                      );
+                                                                            }}
+                                                                        />
+                                                                    </FormControl>
+                                                                    <FormLabel className="font-normal cursor-pointer w-full">
+                                                                        {
+                                                                            store.name
+                                                                        }{" "}
+                                                                        <span className="text-muted-foreground text-xs">
+                                                                            (
+                                                                            {store.city ||
+                                                                                "Online"}
+                                                                            )
+                                                                        </span>
+                                                                    </FormLabel>
+                                                                </FormItem>
+                                                            )}
+                                                        />
+                                                    ))}
+                                                </div>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
@@ -715,48 +760,57 @@ const AdminProductForm = () => {
                                                         3)
                                                     </FormLabel>
                                                     <FormControl>
-                                                        <Input
-                                                            type="file"
-                                                            multiple
-                                                            accept="image/png, image/jpeg, image/webp"
-                                                            disabled={
-                                                                totalImages >= 3
-                                                            }
-                                                            onChange={(e) => {
-                                                                const files =
-                                                                    Array.from(
-                                                                        e.target
-                                                                            .files ||
-                                                                            []
-                                                                    );
-                                                                const total =
-                                                                    totalImages +
-                                                                    files.length;
-                                                                if (total > 3) {
-                                                                    form.setError(
-                                                                        "image_files",
-                                                                        {
-                                                                            type: "manual",
-                                                                            message:
-                                                                                "Máximo de 3 imagens no total.",
-                                                                        }
-                                                                    );
-                                                                    return;
+                                                        <div className="flex items-center gap-4">
+                                                            <Input
+                                                                type="file"
+                                                                multiple
+                                                                accept="image/png, image/jpeg, image/webp"
+                                                                disabled={
+                                                                    totalImages >=
+                                                                    3
                                                                 }
-                                                                onChange([
-                                                                    ...newFiles,
-                                                                    ...files,
-                                                                ]);
-                                                                form.clearErrors(
-                                                                    "image_files"
-                                                                );
-                                                            }}
-                                                        />
+                                                                className="cursor-pointer file:cursor-pointer file:text-primary file:font-medium"
+                                                                onChange={(
+                                                                    e
+                                                                ) => {
+                                                                    const files =
+                                                                        Array.from(
+                                                                            e
+                                                                                .target
+                                                                                .files ||
+                                                                                []
+                                                                        );
+                                                                    const total =
+                                                                        totalImages +
+                                                                        files.length;
+                                                                    if (
+                                                                        total >
+                                                                        3
+                                                                    ) {
+                                                                        form.setError(
+                                                                            "image_files",
+                                                                            {
+                                                                                type: "manual",
+                                                                                message:
+                                                                                    "Máximo de 3 imagens no total.",
+                                                                            }
+                                                                        );
+                                                                        return;
+                                                                    }
+                                                                    onChange([
+                                                                        ...newFiles,
+                                                                        ...files,
+                                                                    ]);
+                                                                    form.clearErrors(
+                                                                        "image_files"
+                                                                    );
+                                                                }}
+                                                            />
+                                                        </div>
                                                     </FormControl>
                                                     <FormDescription>
-                                                        {isEditMode
-                                                            ? "Envie novas imagens para adicionar. Clique no (X) para remover as atuais."
-                                                            : "Envie até 3 imagens."}
+                                                        Formatos: JPG, PNG,
+                                                        WEBP. Máx 5MB.
                                                     </FormDescription>
 
                                                     <div className="mt-4 grid grid-cols-3 gap-4">
@@ -764,20 +818,20 @@ const AdminProductForm = () => {
                                                             (url) => (
                                                                 <div
                                                                     key={url}
-                                                                    className="relative group"
+                                                                    className="relative group aspect-square"
                                                                 >
                                                                     <img
                                                                         src={
                                                                             url
                                                                         }
-                                                                        alt="Preview existente"
-                                                                        className="w-full h-24 object-cover rounded-md border"
+                                                                        alt="Existente"
+                                                                        className="w-full h-full object-cover rounded-md border"
                                                                     />
                                                                     <Button
                                                                         type="button"
                                                                         variant="destructive"
                                                                         size="icon"
-                                                                        className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100"
+                                                                        className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                                                                         onClick={() =>
                                                                             removeExistingImage(
                                                                                 url
@@ -798,20 +852,20 @@ const AdminProductForm = () => {
                                                                     key={
                                                                         preview.name
                                                                     }
-                                                                    className="relative group"
+                                                                    className="relative group aspect-square"
                                                                 >
                                                                     <img
                                                                         src={
                                                                             preview.url
                                                                         }
-                                                                        alt={`Preview ${preview.name}`}
-                                                                        className="w-full h-24 object-cover rounded-md border"
+                                                                        alt="Novo"
+                                                                        className="w-full h-full object-cover rounded-md border"
                                                                     />
                                                                     <Button
                                                                         type="button"
                                                                         variant="destructive"
                                                                         size="icon"
-                                                                        className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100"
+                                                                        className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                                                                         onClick={() =>
                                                                             removeNewFile(
                                                                                 index
@@ -824,7 +878,6 @@ const AdminProductForm = () => {
                                                             )
                                                         )}
                                                     </div>
-
                                                     {error && (
                                                         <FormMessage>
                                                             {error.message}
@@ -835,36 +888,19 @@ const AdminProductForm = () => {
                                         }}
                                     />
 
-                                    {createMutation.isError && (
-                                        <div className="flex items-center gap-2 text-sm text-destructive">
-                                            <AlertTriangle className="h-4 w-4" />
-                                            <span>
-                                                Erro ao criar:{" "}
-                                                {createMutation.error.message}
-                                            </span>
-                                        </div>
-                                    )}
-                                    {updateMutation.isError && (
-                                        <div className="flex items-center gap-2 text-sm text-destructive">
-                                            <AlertTriangle className="h-4 w-4" />
-                                            <span>
-                                                Erro ao atualizar:{" "}
-                                                {updateMutation.error.message}
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    <Button
-                                        type="submit"
-                                        disabled={isLoading}
-                                        className="w-full"
-                                    >
-                                        {isLoading
-                                            ? "Salvando..."
-                                            : isEditMode
-                                            ? "Salvar Alterações"
-                                            : "Salvar Produto"}
-                                    </Button>
+                                    <div className="pt-4">
+                                        <Button
+                                            type="submit"
+                                            disabled={isLoading}
+                                            className="w-full h-12 text-lg"
+                                        >
+                                            {isLoading
+                                                ? "Salvando..."
+                                                : isEditMode
+                                                ? "Salvar Alterações"
+                                                : "Cadastrar Produto"}
+                                        </Button>
+                                    </div>
                                 </form>
                             </Form>
                         )}

@@ -24,7 +24,7 @@ import AdminEmployees from "./pages/admin/Employees";
 import AdminClients from "./pages/admin/Clients";
 import AdminOrders from "./pages/admin/Orders";
 import Acessorios from "./pages/Acessorios";
-import CustomerLogin from "../CustomerLogin";
+import CustomerLogin from "./pages/CustomerLogin";
 import MinhaConta from "./pages/MinhaConta";
 import ProductDetails from "./pages/ProductDetails";
 import AdminWarranties from "./pages/admin/Warranties";
