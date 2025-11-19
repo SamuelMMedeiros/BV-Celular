@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { supabase } from "@/integrations/supabase/client";
 import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, WarrantyInsertPayload } from "@/types";
 import { Database } from "@/integrations/supabase/types";
-import { v4 as uuidv4 } from 'uuid'; // <-- CORREÇÃO 1: IMPORTAÇÃO ADICIONADA
+import { v4 as uuidv4 } from 'uuid'; 
 
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
   store_ids?: string[]; 
@@ -40,6 +39,19 @@ export type OrderInsertPayload = {
   total_price: number;
   items: OrderCartItem[];
   status?: string;
+};
+
+export type BannerInsertPayload = {
+    title: string;
+    subtitle?: string | null;
+    image_url: string; 
+    link_url: string;
+    button_text: string;
+    active?: boolean;
+};
+
+export type BannerUpdatePayload = Partial<BannerInsertPayload> & {
+    id: string;
 };
 
 
@@ -99,7 +111,7 @@ export const fetchProducts = async (params: { q?: string; category?: 'aparelho' 
   return products;
 };
 
-export const fetchPromotions = async (params: { q?: string } = {}): Promise<Product[]> => {
+export const fetchPromotions = async (params: { q?: string; isPromotion?: boolean } = {}): Promise<Product[]> => {
   let query = supabase
     .from('Products')
     .select(`
@@ -441,6 +453,7 @@ export const fetchEmployees = async (): Promise<Employee[]> => {
 export const fetchEmployeeProfile = async (userId: string): Promise<Employee | null> => {
   console.log("[API] Buscando perfil via RPC get_admin_profile...");
   
+  // @ts-ignore: Ignora erro de tipo da função RPC por enquanto
   const { data, error } = await supabase.rpc('get_admin_profile');
 
   if (error) {
@@ -627,7 +640,8 @@ export const fetchAllOrders = async (): Promise<Order[]> => {
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
-  return data as Order[];
+  // @ts-ignore: Ignora erro de tipo para evitar loop infinito
+  return data as unknown as Order[];
 };
 
 export const fetchClientOrders = async (clientId: string): Promise<Order[]> => {
@@ -641,7 +655,8 @@ export const fetchClientOrders = async (clientId: string): Promise<Order[]> => {
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
-  return data as Order[];
+  // @ts-ignore: Ignora erro de tipo
+  return data as unknown as Order[];
 };
 
 export const updateOrderStatus = async (orderId: string, newStatus: string): Promise<void> => {
@@ -696,7 +711,7 @@ export const toggleFavorite = async (clientId: string, productId: string): Promi
 };
 
 export const fetchClientFavorites = async (clientId: string): Promise<Product[]> => {
-  //@ts-ignore
+  // @ts-ignore: Ignora erro de profundidade de tipo temporariamente
   const { data, error } = await (supabase
     .from('Favorites')
     .select(`
@@ -733,6 +748,60 @@ export const fetchClientFavorites = async (clientId: string): Promise<Product[]>
 // ==================================================================
 // FUNÇÕES DE API (BANNERS)
 // ==================================================================
+
+export const fetchAllBannersAdmin = async (): Promise<Banner[]> => {
+    const { data, error } = await supabase
+        .from('Banners')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data as Banner[];
+};
+
+export const createBanner = async (payload: BannerInsertPayload): Promise<void> => {
+    const { error } = await supabase
+        .from('Banners')
+        .insert(payload);
+        
+    if (error) throw new Error(error.message);
+};
+
+export const updateBanner = async (payload: BannerUpdatePayload): Promise<void> => {
+    const { id, ...updateData } = payload;
+    const { error } = await supabase
+        .from('Banners')
+        .update(updateData)
+        .eq('id', id);
+        
+    if (error) throw new Error(error.message);
+};
+
+export const deleteBanner = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('Banners')
+        .delete()
+        .eq('id', id);
+        
+    if (error) throw new Error(error.message);
+};
+
+export const uploadBannerImage = async (file: File): Promise<string> => {
+    const fileName = `${uuidv4()}-${file.name}`;
+    const { data, error } = await supabase
+        .storage
+        .from('product-images') // Reutiliza bucket
+        .upload(`banners/${fileName}`, file);
+
+    if (error) throw new Error(error.message);
+    
+    const { data: publicUrlData } = supabase
+        .storage
+        .from('product-images')
+        .getPublicUrl(data.path);
+        
+    return publicUrlData.publicUrl;
+};
 
 export const fetchBanners = async (): Promise<Banner[]> => {
     const { data, error } = await supabase

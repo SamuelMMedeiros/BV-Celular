@@ -1,4 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//
+// === CÓDIGO COMPLETO PARA: src/pages/Admin.tsx ===
+//
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
@@ -38,6 +41,8 @@ import {
     TrendingUp,
     Store as StoreIcon,
     Users,
+    ShieldCheck,
+    ImageIcon, // <-- IMPORTADO
 } from "lucide-react";
 import { format, subDays, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -129,8 +134,6 @@ const AdminDashboard = () => {
                     .reduce((acc, curr) => acc + Number(curr.total_price), 0);
 
                 // O gráfico espera valores em Reais (não centavos) para ficar legível no eixo Y
-                // Se seus valores estão em centavos, divida por 100.
-                // Se já salvou como float no banco, mantenha.
                 // Assumindo centavos baseado no nosso histórico:
                 dayData[store.name] = storeRevenue / 100;
             });
@@ -139,7 +142,7 @@ const AdminDashboard = () => {
         });
     }, [orders, stores, selectedStoreId]);
 
-    // Cores para o gráfico (uma cor para cada loja se possível, ou rotacionar)
+    // Cores para o gráfico
     const colors = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
 
     if (isLoadingOrders || isLoadingStores) {
@@ -305,7 +308,6 @@ const AdminDashboard = () => {
                                     />
                                     <Legend />
 
-                                    {/* Gera uma barra para cada loja se estivermos vendo 'Todas' */}
                                     {selectedStoreId === "all" && stores ? (
                                         stores.map((store, index) => (
                                             <Bar
@@ -321,7 +323,6 @@ const AdminDashboard = () => {
                                             />
                                         ))
                                     ) : (
-                                        // Se uma loja específica estiver selecionada, mostra apenas uma barra genérica
                                         <Bar
                                             dataKey={
                                                 stores?.find(
@@ -380,6 +381,31 @@ const AdminDashboard = () => {
                                 <Link to="/admin/clients">
                                     <Users className="mr-2 h-5 w-5" />
                                     Gerenciar Clientes
+                                </Link>
+                            </Button>
+
+                            <Button
+                                asChild
+                                variant="outline"
+                                size="lg"
+                                className="w-full justify-start"
+                            >
+                                <Link to="/admin/warranties">
+                                    <ShieldCheck className="mr-2 h-5 w-5" />
+                                    Gerenciar Garantias
+                                </Link>
+                            </Button>
+
+                            {/* --- NOVO BOTÃO DE BANNERS --- */}
+                            <Button
+                                asChild
+                                variant="outline"
+                                size="lg"
+                                className="w-full justify-start"
+                            >
+                                <Link to="/admin/banners">
+                                    <ImageIcon className="mr-2 h-5 w-5" />
+                                    Gerenciar Banners
                                 </Link>
                             </Button>
                         </CardContent>

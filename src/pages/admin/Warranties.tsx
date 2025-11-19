@@ -64,6 +64,8 @@ import {
     ShieldCheck,
     Calendar as CalendarIcon,
     Search,
+    MapPin,
+    Smartphone,
 } from "lucide-react";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -75,7 +77,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 
-// Schema do formulário
+// --- SCHEMA DE VALIDAÇÃO ---
 const warrantyFormSchema = z.object({
     client_id: z.string().min(1, "Selecione um cliente."),
     store_id: z.string().min(1, "Selecione uma loja."),
@@ -93,18 +95,18 @@ type WarrantyFormValues = z.infer<typeof warrantyFormSchema>;
 const AdminWarranties = () => {
     const { toast } = useToast();
     const queryClient = useQueryClient();
+
+    // Estados de controle
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [calculatedEndDate, setCalculatedEndDate] = useState<Date | null>(
         null
     );
     const [searchTerm, setSearchTerm] = useState("");
-
-    // Estado para controlar qual garantia está sendo visualizada para impressão
     const [warrantyToPrint, setWarrantyToPrint] = useState<Warranty | null>(
         null
     );
 
-    // Buscas de dados
+    // Buscas de dados (API)
     const { data: clients } = useQuery<CustomerProfile[]>({
         queryKey: ["adminClients"],
         queryFn: fetchClients,
@@ -124,11 +126,11 @@ const AdminWarranties = () => {
             product_model: "",
             serial_number: "",
             invoice_number: "",
-            warranty_months: "3", // Padrão 3 meses
+            warranty_months: "3", // Padrão sugerido
         },
     });
 
-    // Cálculo automático da data final
+    // --- LÓGICA DE DATA AUTOMÁTICA ---
     const purchaseDate = form.watch("purchase_date");
     const months = form.watch("warranty_months");
 
@@ -136,16 +138,27 @@ const AdminWarranties = () => {
         if (purchaseDate && months && !isNaN(Number(months))) {
             const endDate = addMonths(purchaseDate, Number(months));
             setCalculatedEndDate(endDate);
+        } else {
+            setCalculatedEndDate(null);
         }
     }, [purchaseDate, months]);
 
+    // --- MUTAÇÃO DE CRIAÇÃO ---
     const createMutation = useMutation({
         mutationFn: (data: WarrantyInsertPayload) => createWarranty(data),
         onSuccess: () => {
-            toast({ title: "Sucesso", description: "Garantia gerada." });
+            toast({
+                title: "Sucesso",
+                description: "Garantia gerada e salva.",
+            });
             queryClient.invalidateQueries({ queryKey: ["adminWarranties"] });
             setIsDialogOpen(false);
-            form.reset();
+            form.reset({
+                product_model: "",
+                serial_number: "",
+                invoice_number: "",
+                warranty_months: "3",
+            });
             setCalculatedEndDate(null);
         },
         onError: (error) =>
@@ -173,7 +186,7 @@ const AdminWarranties = () => {
         createMutation.mutate(payload);
     };
 
-    // Filtragem de garantias na tabela
+    // Filtragem para a tabela
     const filteredWarranties = warranties?.filter(
         (w) =>
             w.product_model.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -185,18 +198,19 @@ const AdminWarranties = () => {
         <div className="min-h-screen bg-background">
             <Navbar />
             <main className="container py-8">
+                {/* Cabeçalho */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold">
+                        <h1 className="text-3xl font-bold tracking-tight">
                             Gestão de Garantias
                         </h1>
                         <p className="text-muted-foreground">
-                            Emita e imprima certificados de garantia.
+                            Emita certificados oficiais para seus clientes.
                         </p>
                     </div>
                     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button>
+                            <Button className="shadow-lg">
                                 <Plus className="mr-2 h-4 w-4" /> Nova Garantia
                             </Button>
                         </DialogTrigger>
@@ -204,7 +218,8 @@ const AdminWarranties = () => {
                             <DialogHeader>
                                 <DialogTitle>Gerar Nova Garantia</DialogTitle>
                                 <DialogDescription>
-                                    Preencha os dados para gerar o certificado.
+                                    Preencha os dados da venda para gerar o
+                                    certificado.
                                 </DialogDescription>
                             </DialogHeader>
 
@@ -213,7 +228,8 @@ const AdminWarranties = () => {
                                     onSubmit={form.handleSubmit(onSubmit)}
                                     className="space-y-6 mt-4"
                                 >
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Seleção de Cliente e Loja */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <FormField
                                             control={form.control}
                                             name="client_id"
@@ -232,7 +248,7 @@ const AdminWarranties = () => {
                                                     >
                                                         <FormControl>
                                                             <SelectTrigger>
-                                                                <SelectValue placeholder="Selecione o cliente" />
+                                                                <SelectValue placeholder="Buscar cliente cadastrado..." />
                                                             </SelectTrigger>
                                                         </FormControl>
                                                         <SelectContent>
@@ -281,7 +297,7 @@ const AdminWarranties = () => {
                                                     >
                                                         <FormControl>
                                                             <SelectTrigger>
-                                                                <SelectValue placeholder="Selecione a loja" />
+                                                                <SelectValue placeholder="Selecione a loja..." />
                                                             </SelectTrigger>
                                                         </FormControl>
                                                         <SelectContent>
@@ -298,10 +314,9 @@ const AdminWarranties = () => {
                                                                         {
                                                                             store.name
                                                                         }{" "}
-                                                                        -{" "}
-                                                                        {
-                                                                            store.city
-                                                                        }
+                                                                        {store.city
+                                                                            ? `- ${store.city}`
+                                                                            : ""}
                                                                     </SelectItem>
                                                                 )
                                                             )}
@@ -313,7 +328,8 @@ const AdminWarranties = () => {
                                         />
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Dados do Produto */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <FormField
                                             control={form.control}
                                             name="product_model"
@@ -342,7 +358,7 @@ const AdminWarranties = () => {
                                                     </FormLabel>
                                                     <FormControl>
                                                         <Input
-                                                            placeholder="Digite o serial"
+                                                            placeholder="Digite o serial único"
                                                             {...field}
                                                         />
                                                     </FormControl>
@@ -352,7 +368,8 @@ const AdminWarranties = () => {
                                         />
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {/* Datas e Prazo */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                                         <FormField
                                             control={form.control}
                                             name="purchase_date"
@@ -461,11 +478,11 @@ const AdminWarranties = () => {
                                                 </FormItem>
                                             )}
                                         />
-                                        <div className="flex flex-col justify-end pb-2">
-                                            <span className="text-sm font-medium mb-2">
+                                        <div className="flex flex-col gap-2">
+                                            <span className="text-sm font-medium text-muted-foreground">
                                                 Válido até:
                                             </span>
-                                            <div className="h-10 px-3 py-2 rounded-md border bg-muted text-sm font-bold text-primary flex items-center">
+                                            <div className="h-10 px-3 py-2 rounded-md border bg-green-50 text-green-700 font-bold flex items-center text-sm border-green-200">
                                                 {calculatedEndDate
                                                     ? format(
                                                           calculatedEndDate,
@@ -497,12 +514,12 @@ const AdminWarranties = () => {
 
                                     <Button
                                         type="submit"
-                                        className="w-full"
+                                        className="w-full h-12 text-lg"
                                         disabled={createMutation.isPending}
                                     >
                                         {createMutation.isPending
-                                            ? "Gerando..."
-                                            : "Emitir Certificado"}
+                                            ? "Gerando Certificado..."
+                                            : "Emitir Garantia"}
                                     </Button>
                                 </form>
                             </Form>
@@ -510,14 +527,15 @@ const AdminWarranties = () => {
                     </Dialog>
                 </div>
 
+                {/* Barra de Busca e Tabela */}
                 <Card>
                     <CardHeader>
                         <div className="flex flex-col md:flex-row justify-between gap-4">
-                            <CardTitle>Histórico de Garantias</CardTitle>
+                            <CardTitle>Histórico de Emissões</CardTitle>
                             <div className="relative w-full md:w-72">
                                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Buscar cliente, modelo ou serial..."
+                                    placeholder="Buscar por nome, modelo ou serial..."
                                     className="pl-8"
                                     value={searchTerm}
                                     onChange={(e) =>
@@ -528,14 +546,15 @@ const AdminWarranties = () => {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="border rounded-lg">
+                        <div className="border rounded-lg overflow-hidden">
                             <Table>
                                 <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Data Emissão</TableHead>
+                                    <TableRow className="bg-muted/50">
+                                        <TableHead>Emissão</TableHead>
                                         <TableHead>Cliente</TableHead>
                                         <TableHead>Produto</TableHead>
-                                        <TableHead>Validade</TableHead>
+                                        <TableHead>Vencimento</TableHead>
+                                        <TableHead>Loja</TableHead>
                                         <TableHead className="text-right">
                                             Ações
                                         </TableHead>
@@ -545,85 +564,109 @@ const AdminWarranties = () => {
                                     {isLoading ? (
                                         <TableRow>
                                             <TableCell
-                                                colSpan={5}
-                                                className="text-center py-8"
+                                                colSpan={6}
+                                                className="text-center py-12"
                                             >
-                                                <Loader2 className="animate-spin mx-auto h-8 w-8" />
+                                                <Loader2 className="animate-spin mx-auto h-8 w-8 text-primary" />
                                             </TableCell>
                                         </TableRow>
                                     ) : !filteredWarranties ||
                                       filteredWarranties.length === 0 ? (
                                         <TableRow>
                                             <TableCell
-                                                colSpan={5}
-                                                className="text-center py-8 text-muted-foreground"
+                                                colSpan={6}
+                                                className="text-center py-12 text-muted-foreground"
                                             >
                                                 Nenhuma garantia encontrada.
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        filteredWarranties.map((warranty) => (
-                                            <TableRow key={warranty.id}>
-                                                <TableCell>
-                                                    {format(
-                                                        new Date(
-                                                            warranty.created_at
-                                                        ),
-                                                        "dd/MM/yyyy"
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="font-medium">
-                                                        {warranty.Clients?.name}
-                                                    </div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {
-                                                            warranty.Clients
-                                                                ?.phone
-                                                        }
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="font-medium">
-                                                        {warranty.product_model}
-                                                    </div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        S/N:{" "}
-                                                        {warranty.serial_number}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="font-bold text-primary">
+                                        filteredWarranties.map((warranty) => {
+                                            // Verifica se está vencida
+                                            const isExpired =
+                                                new Date(
+                                                    warranty.warranty_end_date
+                                                ) < new Date();
+                                            return (
+                                                <TableRow key={warranty.id}>
+                                                    <TableCell>
                                                         {format(
                                                             new Date(
-                                                                warranty.warranty_end_date
+                                                                warranty.created_at
                                                             ),
                                                             "dd/MM/yyyy"
                                                         )}
-                                                    </div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {
-                                                            warranty.warranty_months
-                                                        }{" "}
-                                                        meses
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            setWarrantyToPrint(
-                                                                warranty
-                                                            )
-                                                        }
-                                                    >
-                                                        <Printer className="h-4 w-4 mr-2" />{" "}
-                                                        Imprimir
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="font-medium">
+                                                            {
+                                                                warranty.Clients
+                                                                    ?.name
+                                                            }
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            {
+                                                                warranty.Clients
+                                                                    ?.phone
+                                                            }
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="font-medium">
+                                                            {
+                                                                warranty.product_model
+                                                            }
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            S/N:{" "}
+                                                            {
+                                                                warranty.serial_number
+                                                            }
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <span
+                                                            className={cn(
+                                                                "font-bold",
+                                                                isExpired
+                                                                    ? "text-red-500"
+                                                                    : "text-green-600"
+                                                            )}
+                                                        >
+                                                            {format(
+                                                                new Date(
+                                                                    warranty.warranty_end_date
+                                                                ),
+                                                                "dd/MM/yyyy"
+                                                            )}
+                                                        </span>
+                                                        {isExpired && (
+                                                            <span className="text-xs text-red-400 block">
+                                                                Vencida
+                                                            </span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {warranty.Stores?.name}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="gap-2"
+                                                            onClick={() =>
+                                                                setWarrantyToPrint(
+                                                                    warranty
+                                                                )
+                                                            }
+                                                        >
+                                                            <Printer className="h-4 w-4" />{" "}
+                                                            Imprimir
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })
                                     )}
                                 </TableBody>
                             </Table>
@@ -632,7 +675,7 @@ const AdminWarranties = () => {
                 </Card>
             </main>
 
-            {/* MODAL DE IMPRESSÃO (Overlay) */}
+            {/* COMPONENTE DE IMPRESSÃO (OVERLAY) */}
             {warrantyToPrint && (
                 <CertificateOverlay
                     warranty={warrantyToPrint}
@@ -643,7 +686,7 @@ const AdminWarranties = () => {
     );
 };
 
-// --- COMPONENTE DO CERTIFICADO PARA IMPRESSÃO ---
+// --- DESIGN DO CERTIFICADO (A4) ---
 const CertificateOverlay = ({
     warranty,
     onClose,
@@ -656,56 +699,67 @@ const CertificateOverlay = ({
     };
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto print:p-0 print:bg-white print:static">
-            {/* Botões de Controle (Somem na impressão) */}
-            <div className="fixed top-4 right-4 flex gap-2 print:hidden">
-                <Button onClick={handlePrint} size="lg" className="shadow-xl">
-                    <Printer className="mr-2 h-5 w-5" /> Imprimir
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto print:p-0 print:bg-white print:static print:block">
+            {/* Botões de Controle (Escondidos na impressão) */}
+            <div className="fixed top-4 right-4 flex gap-2 print:hidden z-50">
+                <Button
+                    onClick={handlePrint}
+                    size="lg"
+                    className="shadow-xl font-bold bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                    <Printer className="mr-2 h-5 w-5" /> Imprimir / Salvar PDF
                 </Button>
                 <Button
                     onClick={onClose}
                     variant="secondary"
                     size="lg"
-                    className="shadow-xl"
+                    className="shadow-xl bg-white text-black hover:bg-gray-100"
                 >
                     Fechar
                 </Button>
             </div>
 
             {/* O CERTIFICADO (Papel A4) */}
-            <div className="bg-white text-black w-full max-w-[210mm] min-h-[297mm] p-12 md:p-16 shadow-2xl print:shadow-none print:w-full print:h-full print:m-0 flex flex-col relative">
+            <div className="bg-white text-black w-full max-w-[210mm] min-h-[297mm] p-12 md:p-16 shadow-2xl print:shadow-none print:w-full print:h-full print:m-0 flex flex-col relative mx-auto my-8 print:my-0 rounded-sm">
+                {/* Marca d'água ou Borda Decorativa (Opcional) */}
+                <div className="absolute inset-0 border-[12px] border-double border-gray-200 pointer-events-none m-4"></div>
+
                 {/* Cabeçalho */}
-                <div className="text-center border-b-2 border-gray-800 pb-8 mb-8">
+                <div className="text-center border-b-2 border-gray-800 pb-6 mb-8 relative z-10">
                     <div className="flex justify-center mb-4">
-                        <div className="h-24 w-24 bg-black text-white rounded-full flex items-center justify-center">
-                            <ShieldCheck className="h-12 w-12" />
+                        {/* LOGO DA LOJA (Placeholder: Smartphone Icon) */}
+                        <div className="h-20 w-20 bg-black text-white rounded-full flex items-center justify-center">
+                            <Smartphone className="h-10 w-10" />
                         </div>
                     </div>
-                    <h1 className="text-4xl font-serif font-bold tracking-widest uppercase">
+                    <h1 className="text-4xl font-serif font-bold tracking-[0.2em] uppercase text-gray-900">
                         Certificado de Garantia
                     </h1>
-                    <p className="text-xl mt-2 font-light">BV Celular</p>
+                    <p className="text-xl mt-2 font-light tracking-wide text-gray-600">
+                        BV Celular
+                    </p>
                 </div>
 
-                {/* Detalhes */}
-                <div className="flex-1 space-y-8">
-                    <div className="grid grid-cols-2 gap-8">
+                {/* Corpo do Documento */}
+                <div className="flex-1 space-y-10 relative z-10 px-4">
+                    {/* Seção 1: Dados Principais */}
+                    <div className="grid grid-cols-2 gap-x-12 gap-y-6">
                         <div>
-                            <h3 className="text-sm uppercase tracking-wider text-gray-500 mb-1">
+                            <h3 className="text-xs uppercase tracking-widest text-gray-500 mb-1">
                                 Cliente
                             </h3>
-                            <p className="text-lg font-bold">
+                            <p className="text-xl font-bold text-gray-900">
                                 {warranty.Clients?.name}
                             </p>
-                            <p className="text-gray-600">
+                            <p className="text-sm text-gray-600">
                                 {warranty.Clients?.phone}
                             </p>
                         </div>
                         <div className="text-right">
-                            <h3 className="text-sm uppercase tracking-wider text-gray-500 mb-1">
+                            <h3 className="text-xs uppercase tracking-widest text-gray-500 mb-1">
                                 Data da Compra
                             </h3>
-                            <p className="text-lg font-bold">
+                            <p className="text-xl font-bold text-gray-900">
                                 {format(
                                     new Date(warranty.purchase_date),
                                     "dd 'de' MMMM 'de' yyyy",
@@ -715,114 +769,139 @@ const CertificateOverlay = ({
                         </div>
                     </div>
 
-                    <div className="bg-gray-50 border border-gray-200 p-6 rounded-xl">
-                        <h3 className="text-sm uppercase tracking-wider text-gray-500 mb-4">
+                    {/* Seção 2: Produto (Destaque) */}
+                    <div className="bg-gray-50 border border-gray-200 p-8 rounded-xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 bg-gray-200 px-4 py-1 rounded-bl-xl text-xs font-bold text-gray-600 uppercase tracking-wider">
                             Dados do Aparelho
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4">
+                        </div>
+                        <div className="grid grid-cols-2 gap-8">
                             <div>
-                                <span className="block text-xs text-gray-400">
+                                <span className="block text-xs text-gray-400 uppercase tracking-wider mb-1">
                                     Modelo
                                 </span>
-                                <span className="text-xl font-bold">
+                                <span className="text-2xl font-bold text-gray-900 block leading-tight">
                                     {warranty.product_model}
                                 </span>
                             </div>
                             <div>
-                                <span className="block text-xs text-gray-400">
+                                <span className="block text-xs text-gray-400 uppercase tracking-wider mb-1">
                                     Serial / IMEI
                                 </span>
-                                <span className="text-xl font-mono tracking-wide">
+                                <span className="text-xl font-mono tracking-widest text-gray-800 block bg-white p-2 rounded border border-gray-200 text-center">
                                     {warranty.serial_number}
                                 </span>
                             </div>
-                            {warranty.invoice_number && (
-                                <div className="col-span-2 pt-2 border-t border-gray-200">
-                                    <span className="block text-xs text-gray-400">
-                                        Nota Fiscal
-                                    </span>
-                                    <span>{warranty.invoice_number}</span>
-                                </div>
-                            )}
                         </div>
+                        {warranty.invoice_number && (
+                            <div className="mt-6 pt-4 border-t border-gray-200 flex gap-2 items-baseline">
+                                <span className="text-xs text-gray-400 uppercase tracking-wider">
+                                    Nota Fiscal:
+                                </span>
+                                <span className="font-medium text-gray-700">
+                                    {warranty.invoice_number}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
+                    {/* Seção 3: Loja e Validade */}
                     <div className="grid grid-cols-2 gap-8 items-center">
                         <div>
-                            <h3 className="text-sm uppercase tracking-wider text-gray-500 mb-1">
-                                Loja Responsável
+                            <h3 className="text-xs uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
+                                <MapPin className="h-3 w-3" /> Loja Responsável
                             </h3>
-                            <p className="font-bold text-lg">
+                            <p className="font-bold text-lg text-gray-900">
                                 {warranty.Stores?.name}
                             </p>
-                            <p className="text-gray-600">
+                            {warranty.Stores?.address ? (
+                                <p className="text-sm text-gray-600 mt-1 max-w-[250px] leading-relaxed">
+                                    {warranty.Stores.address}
+                                </p>
+                            ) : (
+                                <p className="text-sm text-gray-400 italic mt-1">
+                                    Endereço não cadastrado
+                                </p>
+                            )}
+                            <p className="text-sm text-gray-600">
                                 {warranty.Stores?.city}
                             </p>
-                            <p className="text-sm text-gray-500 mt-1">
-                                {warranty.Stores?.address}
-                            </p>
                         </div>
-                        <div className="text-right bg-black text-white p-6 rounded-xl">
-                            <h3 className="text-sm uppercase tracking-wider opacity-80 mb-1">
-                                Garantia Válida Até
-                            </h3>
-                            <p className="text-3xl font-bold">
-                                {format(
-                                    new Date(warranty.warranty_end_date),
-                                    "dd/MM/yyyy"
-                                )}
-                            </p>
-                            <p className="text-sm opacity-80 mt-1">
-                                Prazo de {warranty.warranty_months} meses
-                            </p>
+                        <div className="text-right">
+                            <div className="inline-block bg-black text-white p-6 rounded-xl shadow-sm">
+                                <h3 className="text-xs uppercase tracking-widest opacity-70 mb-1">
+                                    Garantia Válida Até
+                                </h3>
+                                <p className="text-3xl font-bold tracking-tight">
+                                    {format(
+                                        new Date(warranty.warranty_end_date),
+                                        "dd/MM/yyyy"
+                                    )}
+                                </p>
+                                <div className="mt-2 text-xs font-medium px-2 py-1 bg-white/20 rounded inline-block">
+                                    {warranty.warranty_months} Meses de
+                                    Cobertura
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="pt-8">
-                        <h3 className="text-sm uppercase tracking-wider text-gray-500 mb-2">
-                            Termos e Cobertura
+                    {/* Seção 4: Termos */}
+                    <div className="pt-4">
+                        <h3 className="text-xs uppercase tracking-widest text-gray-500 mb-3 flex items-center gap-2">
+                            <ShieldCheck className="h-3 w-3" /> Termos e
+                            Cobertura
                         </h3>
-                        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-2 text-justify">
+                        <ul className="text-[11px] leading-relaxed text-gray-500 list-disc pl-4 space-y-1 text-justify">
                             <li>
-                                A garantia cobre defeitos de fabricação e vícios
+                                Esta garantia cobre exclusivamente{" "}
+                                <strong>defeitos de fabricação</strong> e vícios
                                 ocultos do aparelho pelo período estipulado
-                                acima.
+                                acima, contados a partir da data da compra.
                             </li>
                             <li>
-                                A garantia <strong>NÃO</strong> cobre: danos
-                                físicos (telas quebradas, amassados), danos por
-                                líquidos (oxidação), mau uso, alterações de
-                                software não oficiais ou reparos feitos por
-                                terceiros não autorizados.
+                                A garantia <strong>NÃO COBRE</strong>: danos
+                                físicos (telas quebradas, carcaças amassadas,
+                                riscos), danos causados por líquidos (oxidação),
+                                mau uso, instalação de softwares não oficiais,
+                                ou reparos realizados por terceiros não
+                                autorizados pela BV Celular.
                             </li>
                             <li>
-                                A bateria é considerada um item consumível e
-                                possui garantia de 3 meses, salvo especificação
-                                contrária.
+                                A bateria é um componente consumível e, salvo
+                                especificação contrária na nota fiscal, possui
+                                garantia legal de 90 dias (3 meses).
                             </li>
                             <li>
-                                É obrigatória a apresentação deste certificado
-                                e/ou nota fiscal para solicitação de reparo.
+                                Para acionamento da garantia, é indispensável a
+                                apresentação deste certificado, juntamente com o
+                                aparelho e acessórios originais.
+                            </li>
+                            <li>
+                                O backup de dados é de inteira responsabilidade
+                                do cliente antes do envio para assistência
+                                técnica.
                             </li>
                         </ul>
                     </div>
                 </div>
 
                 {/* Rodapé do Certificado */}
-                <div className="mt-12 pt-8 border-t-2 border-gray-800 flex justify-between items-end">
+                <div className="mt-auto pt-12 flex justify-between items-end relative z-10">
                     <div className="text-center">
                         <div className="w-64 border-b border-black mb-2"></div>
-                        <p className="text-sm font-bold uppercase">
+                        <p className="text-xs font-bold uppercase tracking-wider text-gray-700">
                             Assinatura do Vendedor
                         </p>
                     </div>
                     <div className="text-right">
-                        <p className="font-bold text-lg">BV Celular</p>
-                        <p className="text-xs text-gray-400">
-                            Certificado emitido em{" "}
-                            {format(new Date(), "dd/MM/yyyy HH:mm")}
+                        <p className="font-bold text-lg text-gray-900">
+                            BV Celular
                         </p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-[10px] text-gray-400 mt-1">
+                            Emitido em{" "}
+                            {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}
+                        </p>
+                        <p className="text-[10px] text-gray-400 font-mono">
                             ID: {warranty.id.split("-")[0].toUpperCase()}
                         </p>
                     </div>

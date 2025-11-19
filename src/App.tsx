@@ -28,6 +28,7 @@ import CustomerLogin from "./pages/CustomerLogin";
 import MinhaConta from "./pages/MinhaConta";
 import ProductDetails from "./pages/ProductDetails";
 import AdminWarranties from "./pages/admin/Warranties";
+import AdminBanners from "./pages/admin/Banners";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -109,6 +110,7 @@ const App = () => (
                                 path="warranties"
                                 element={<AdminWarranties />}
                             />
+                            <Route path="banners" element={<AdminBanners />} />
                         </Route>
                     </Route>
                 </Routes>
