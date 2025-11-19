@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import {
     Card,
@@ -16,10 +16,19 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchAllOrders, fetchStores } from "@/lib/api";
-import { Order, Store } from "@/types";
+import { Badge } from "@/components/ui/badge";
+import { fetchAllOrders, fetchStores, updateOrderStatus } from "@/lib/api"; // Import updateOrderStatus
+import { Order, Store, OrderCartItem } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import {
     BarChart,
@@ -40,17 +49,22 @@ import {
     Users,
     ShieldCheck,
     ImageIcon,
-    Building2, // Ícone Loja
-    UserCog, // Ícone Funcionario
-    TicketPercent
+    Building2,
+    UserCog,
+    Eye,
+    Package,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { format, subDays, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Link } from "react-router-dom";
 
 const AdminDashboard = () => {
+    const { toast } = useToast();
+    const queryClient = useQueryClient();
     const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
 
+    // Busca dados (Pedidos e Lojas)
     const { data: orders, isLoading: isLoadingOrders } = useQuery<Order[]>({
         queryKey: ["adminOrders"],
         queryFn: fetchAllOrders,
@@ -60,6 +74,33 @@ const AdminDashboard = () => {
         queryKey: ["stores"],
         queryFn: fetchStores,
     });
+
+    // Mutação para atualizar status (Restaurada)
+    const updateStatusMutation = useMutation({
+        mutationFn: ({
+            orderId,
+            status,
+        }: {
+            orderId: string;
+            status: string;
+        }) => updateOrderStatus(orderId, status),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["adminOrders"] });
+            toast({
+                title: "Status atualizado!",
+                description: "O pedido foi atualizado com sucesso.",
+            });
+        },
+        onError: (error) => {
+            toast({
+                variant: "destructive",
+                title: "Erro ao atualizar",
+                description: error.message,
+            });
+        },
+    });
+
+    // --- LÓGICA DE DADOS ---
 
     const filteredOrders = useMemo(() => {
         if (!orders) return [];
@@ -121,8 +162,8 @@ const AdminDashboard = () => {
                 const storeRevenue = relevantOrders
                     .filter((o) => o.store_id === store.id)
                     .reduce((acc, curr) => acc + Number(curr.total_price), 0);
-                
-                dayData[store.name] = storeRevenue / 100; 
+
+                dayData[store.name] = storeRevenue / 100;
             });
 
             return dayData;
@@ -130,6 +171,18 @@ const AdminDashboard = () => {
     }, [orders, stores, selectedStoreId]);
 
     const colors = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
+
+    // Helper para parsear itens do JSON
+    const parseItems = (items: any): OrderCartItem[] => {
+        if (typeof items === "string") {
+            try {
+                return JSON.parse(items);
+            } catch {
+                return [];
+            }
+        }
+        return items as OrderCartItem[];
+    };
 
     if (isLoadingOrders || isLoadingStores) {
         return <DashboardSkeleton />;
@@ -171,7 +224,6 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                {/* Cards de KPI */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -189,12 +241,67 @@ const AdminDashboard = () => {
                             </p>
                         </CardContent>
                     </Card>
-                    {/* ... Outros Cards (Mantidos iguais para brevidade) ... */}
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">
+                                Pedidos
+                            </CardTitle>
+                            <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">
+                                {metrics.totalOrdersCount}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                {metrics.pendingOrdersCount} pendentes
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">
+                                Ticket Médio
+                            </CardTitle>
+                            <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">
+                                {formatCurrency(metrics.averageTicket)}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Vendas concluídas
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">
+                                Conversão
+                            </CardTitle>
+                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">
+                                {metrics.totalOrdersCount > 0
+                                    ? Math.round(
+                                          (metrics.completedOrdersCount /
+                                              metrics.totalOrdersCount) *
+                                              100
+                                      )
+                                    : 0}
+                                %
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Pedidos concluídos
+                            </p>
+                        </CardContent>
+                    </Card>
                 </div>
 
-                {/* Gráfico */}
                 <Card className="col-span-4">
-                    {/* ... Código do Gráfico (Mantido igual) ... */}
                     <CardHeader>
                         <CardTitle>Vendas (7 dias)</CardTitle>
                     </CardHeader>
@@ -210,7 +317,13 @@ const AdminDashboard = () => {
                                     fontSize={12}
                                     tickFormatter={(val) => `R$${val}`}
                                 />
-                                <Tooltip />
+                                <Tooltip
+                                    formatter={(value: number) => [
+                                        `R$ ${value.toFixed(2)}`,
+                                        "Venda",
+                                    ]}
+                                    labelStyle={{ color: "#000" }}
+                                />
                                 {selectedStoreId === "all" && stores ? (
                                     stores.map((store, index) => (
                                         <Bar
@@ -235,7 +348,6 @@ const AdminDashboard = () => {
                     </CardContent>
                 </Card>
 
-                {/* --- ATALHOS RÁPIDOS (BOTÕES ADICIONADOS) --- */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                     <Card className="col-span-3">
                         <CardHeader>
@@ -265,8 +377,6 @@ const AdminDashboard = () => {
                                     Pedidos
                                 </Link>
                             </Button>
-
-                            {/* BOTÕES RESTAURADOS */}
                             <Button
                                 asChild
                                 variant="outline"
@@ -286,7 +396,6 @@ const AdminDashboard = () => {
                                     Funcionários
                                 </Link>
                             </Button>
-
                             <Button
                                 asChild
                                 variant="outline"
@@ -316,38 +425,162 @@ const AdminDashboard = () => {
                                     Banners
                                 </Link>
                             </Button>
-                            <Button
-                                asChild
-                                variant="outline"
-                                size="lg"
-                                className="w-full justify-start"
-                            >
-                                <Link to="/admin/coupons">
-                                    <TicketPercent className="mr-2 h-5 w-5" />
-                                    Gerenciar Cupons
-                                </Link>
-                            </Button>
                         </CardContent>
                     </Card>
 
-                    {/* Últimos Pedidos (Mantido igual) */}
+                    {/* --- ÚLTIMOS PEDIDOS (INTERATIVO) --- */}
                     <Card className="col-span-4">
                         <CardHeader>
                             <CardTitle>Últimos Pedidos</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            {/* Lista simplificada */}
-                            {filteredOrders.slice(0, 5).map((o) => (
-                                <div
-                                    key={o.id}
-                                    className="flex justify-between py-2 border-b text-sm"
-                                >
-                                    <span>{o.Clients?.name || "Cliente"}</span>
-                                    <span className="font-bold">
-                                        {formatCurrency(o.total_price)}
-                                    </span>
-                                </div>
-                            ))}
+                            <div className="space-y-4">
+                                {filteredOrders.slice(0, 5).map((order) => (
+                                    <div
+                                        key={order.id}
+                                        className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0"
+                                    >
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-medium leading-none">
+                                                {order.Clients?.name ||
+                                                    "Cliente Desconhecido"}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {format(
+                                                    new Date(order.created_at),
+                                                    "dd/MM HH:mm"
+                                                )}{" "}
+                                                • {order.Stores?.name}
+                                            </p>
+                                            <span className="font-bold text-sm text-primary block md:hidden">
+                                                {formatCurrency(
+                                                    order.total_price
+                                                )}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            {/* SELETOR DE STATUS */}
+                                            <Select
+                                                defaultValue={order.status}
+                                                onValueChange={(val) =>
+                                                    updateStatusMutation.mutate(
+                                                        {
+                                                            orderId: order.id,
+                                                            status: val,
+                                                        }
+                                                    )
+                                                }
+                                                disabled={
+                                                    updateStatusMutation.isPending
+                                                }
+                                            >
+                                                <SelectTrigger className="h-8 w-[110px] text-xs">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="pending">
+                                                        Pendente
+                                                    </SelectItem>
+                                                    <SelectItem value="completed">
+                                                        Concluído
+                                                    </SelectItem>
+                                                    <SelectItem value="cancelled">
+                                                        Cancelado
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+
+                                            <span className="font-bold text-sm hidden md:block w-24 text-right">
+                                                {formatCurrency(
+                                                    order.total_price
+                                                )}
+                                            </span>
+
+                                            {/* BOTÃO VER DETALHES */}
+                                            <Dialog>
+                                                <DialogTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader>
+                                                        <DialogTitle>
+                                                            Detalhes do Pedido
+                                                        </DialogTitle>
+                                                        <DialogDescription>
+                                                            ID: {order.id}
+                                                        </DialogDescription>
+                                                    </DialogHeader>
+                                                    <div className="space-y-2 mt-2">
+                                                        {parseItems(
+                                                            order.items
+                                                        ).map((item, idx) => (
+                                                            <div
+                                                                key={idx}
+                                                                className="flex justify-between items-center border-b pb-2"
+                                                            >
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="bg-muted p-2 rounded">
+                                                                        <Package className="h-4 w-4" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="font-medium text-sm">
+                                                                            {
+                                                                                item.name
+                                                                            }
+                                                                        </p>
+                                                                        <p className="text-xs text-muted-foreground">
+                                                                            {
+                                                                                item.quantity
+                                                                            }
+                                                                            x{" "}
+                                                                            {formatCurrency(
+                                                                                item.price
+                                                                            )}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="font-bold text-sm">
+                                                                    {formatCurrency(
+                                                                        item.price *
+                                                                            item.quantity
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        <div className="flex justify-between items-center pt-2 font-bold text-lg">
+                                                            <span>Total</span>
+                                                            <span>
+                                                                {formatCurrency(
+                                                                    order.total_price
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </div>
+                                    </div>
+                                ))}
+                                {filteredOrders.length === 0 && (
+                                    <p className="text-sm text-muted-foreground text-center py-4">
+                                        Nenhum pedido encontrado.
+                                    </p>
+                                )}
+                            </div>
+                            <Button
+                                variant="link"
+                                asChild
+                                className="w-full mt-4"
+                            >
+                                <Link to="/admin/orders">Ver todos</Link>
+                            </Button>
                         </CardContent>
                     </Card>
                 </div>
@@ -356,6 +589,11 @@ const AdminDashboard = () => {
     );
 };
 
-const DashboardSkeleton = () => <div className="min-h-screen bg-background"><Navbar /><div className="container py-8">Carregando...</div></div>;
+const DashboardSkeleton = () => (
+    <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container py-8">Carregando...</div>
+    </div>
+);
 
 export default AdminDashboard;
