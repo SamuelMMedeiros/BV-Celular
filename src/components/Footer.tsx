@@ -145,28 +145,6 @@ export const Footer = () => {
                         </ul>
                     </div>
 
-                    {/* Coluna 4: Contato */}
-                    <div className="space-y-4">
-                        <h3 className="font-semibold text-lg">Contato</h3>
-                        <ul className="space-y-3 text-sm text-muted-foreground">
-                            <li className="flex items-start gap-3">
-                                <MapPin className="h-5 w-5 text-primary shrink-0" />
-                                <span>
-                                    Av. Principal, 1000 - Centro
-                                    <br />
-                                    Uberlândia, MG
-                                </span>
-                            </li>
-                            <li className="flex items-center gap-3">
-                                <Phone className="h-5 w-5 text-primary shrink-0" />
-                                <span>(34) 99999-8888</span>
-                            </li>
-                            <li className="flex items-center gap-3">
-                                <Mail className="h-5 w-5 text-primary shrink-0" />
-                                <span>contato@bvcelular.com.br</span>
-                            </li>
-                        </ul>
-                    </div>
                 </div>
 
                 <Separator className="my-8" />
