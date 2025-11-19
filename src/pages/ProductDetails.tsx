@@ -30,6 +30,7 @@ import {
     Share2,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { SEO } from "@/components/SEO";
 
 const ProductDetails = () => {
     const { productId } = useParams<{ productId: string }>();
@@ -63,6 +64,13 @@ const ProductDetails = () => {
     if (isError || !product) {
         return (
             <div className="min-h-screen bg-background flex flex-col">
+                <SEO
+                    title={product.name}
+                    description={`Compre ${
+                        product.name
+                    } por apenas ${formatCurrency(product.price)}. Confira!`}
+                    image={product.images[0]}
+                />
                 <Navbar />
                 <div className="flex-1 flex flex-col items-center justify-center space-y-4">
                     <h2 className="text-2xl font-bold">

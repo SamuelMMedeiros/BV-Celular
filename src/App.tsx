@@ -29,6 +29,7 @@ import MinhaConta from "./pages/MinhaConta";
 import ProductDetails from "./pages/ProductDetails";
 import AdminWarranties from "./pages/admin/Warranties";
 import AdminBanners from "./pages/admin/Banners";
+import AdminCoupons from "./pages/admin/Coupons";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -79,7 +80,6 @@ const App = () => (
                             path="/produto/:productId"
                             element={<ProductDetails />}
                         />
-                        {/* <-- NOVA ROTA */}
                         <Route path="*" element={<NotFound />} />
                     </Route>
 
@@ -111,6 +111,7 @@ const App = () => (
                                 element={<AdminWarranties />}
                             />
                             <Route path="banners" element={<AdminBanners />} />
+                            <Route path="coupons" element={<AdminCoupons />} />
                         </Route>
                     </Route>
                 </Routes>

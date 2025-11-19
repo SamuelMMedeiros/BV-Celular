@@ -1,11 +1,10 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
     Table,
     TableBody,
@@ -15,24 +14,11 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
     Dialog,
     DialogContent,
-    DialogDescription,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-    DialogFooter,
-    DialogClose,
 } from "@/components/ui/dialog";
 import {
     Form,
@@ -41,6 +27,7 @@ import {
     FormItem,
     FormLabel,
     FormMessage,
+    FormDescription,
 } from "@/components/ui/form";
 import {
     Select,
@@ -49,193 +36,177 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox"; // <-- IMPORTAR
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, ArrowLeft, Edit, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Employee, Store } from "@/types";
 import {
     fetchEmployees,
-    fetchStores, // Precisamos das lojas para o dropdown
     createEmployee,
     updateEmployee,
     deleteEmployee,
+    fetchStores,
     EmployeeInsertPayload,
     EmployeeUpdatePayload,
 } from "@/lib/api";
+import { Edit, Trash2, Plus } from "lucide-react";
 
-// 1. Schema de Validação (Zod) para o formulário de Funcionário
 const employeeSchema = z.object({
-    name: z.string().min(2, { message: "O nome é obrigatório." }),
-    email: z.string().email({ message: "E-mail inválido." }),
-    store_id: z.string().optional().nullable(), // O ID da loja (pode ser nulo)
+    name: z.string().min(2, "Nome é obrigatório."),
+    email: z.string().email("Email inválido."),
+    store_id: z.string().optional(), // Opcional (se vazio = admin geral)
+    can_create: z.boolean().default(false),
+    can_update: z.boolean().default(false),
+    can_delete: z.boolean().default(false),
 });
+
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
 
-export const AdminEmployees = () => {
+const AdminEmployees = () => {
     const { toast } = useToast();
     const queryClient = useQueryClient();
-
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(null);
-    const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editingEmployee, setEditingEmployee] = useState<Employee | null>(
         null
     );
 
-    const form = useForm<EmployeeFormValues>({
-        resolver: zodResolver(employeeSchema),
-        defaultValues: { name: "", email: "", store_id: null },
-    });
-
-    // 3. Efeito para preencher o formulário
-    useEffect(() => {
-        if (employeeToEdit) {
-            form.reset({
-                name: employeeToEdit.name,
-                email: employeeToEdit.email,
-                store_id: employeeToEdit.store_id || null, // Garante que seja nulo ou string
-            });
-            setIsFormOpen(true);
-        } else {
-            form.reset({ name: "", email: "", store_id: null });
-        }
-    }, [employeeToEdit, form]);
-
-    // 4. Query para buscar Funcionários
-    const {
-        data: employees,
-        isLoading: isLoadingEmployees,
-        isError: isErrorEmployees,
-    } = useQuery<Employee[]>({
+    const { data: employees, isLoading } = useQuery<Employee[]>({
         queryKey: ["employees"],
         queryFn: fetchEmployees,
     });
 
-    // 5. Query para buscar Lojas (para o dropdown do formulário)
-    const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
+    const { data: stores } = useQuery<Store[]>({
         queryKey: ["stores"],
         queryFn: fetchStores,
     });
 
-    // 6. Mutações (Create, Update, Delete)
+    const form = useForm<EmployeeFormValues>({
+        resolver: zodResolver(employeeSchema),
+        defaultValues: {
+            name: "",
+            email: "",
+            store_id: "all", // "all" representa sem loja (admin geral)
+            can_create: false,
+            can_update: false,
+            can_delete: false,
+        },
+    });
 
     const createMutation = useMutation({
         mutationFn: (data: EmployeeInsertPayload) => createEmployee(data),
         onSuccess: () => {
-            toast({ title: "Sucesso!", description: "Funcionário criado." });
+            toast({ title: "Sucesso", description: "Funcionário criado." });
             queryClient.invalidateQueries({ queryKey: ["employees"] });
-            setIsFormOpen(false);
+            handleCloseDialog();
         },
-        onError: (error) => {
+        onError: (error) =>
             toast({
                 variant: "destructive",
                 title: "Erro",
                 description: error.message,
-            });
-        },
+            }),
     });
 
     const updateMutation = useMutation({
         mutationFn: (data: EmployeeUpdatePayload) => updateEmployee(data),
         onSuccess: () => {
-            toast({
-                title: "Sucesso!",
-                description: "Funcionário atualizado.",
-            });
+            toast({ title: "Sucesso", description: "Funcionário atualizado." });
             queryClient.invalidateQueries({ queryKey: ["employees"] });
-            setIsFormOpen(false);
-            setEmployeeToEdit(null);
+            handleCloseDialog();
         },
-        onError: (error) => {
+        onError: (error) =>
             toast({
                 variant: "destructive",
                 title: "Erro",
                 description: error.message,
-            });
-        },
+            }),
     });
 
     const deleteMutation = useMutation({
-        mutationFn: (employeeId: string) => deleteEmployee(employeeId),
-        onSuccess: () => {
-            toast({ title: "Sucesso!", description: "Funcionário excluído." });
-            queryClient.invalidateQueries({ queryKey: ["employees"] });
-            setEmployeeToDelete(null);
-        },
-        onError: (error) => {
-            toast({
-                variant: "destructive",
-                title: "Erro",
-                description: error.message,
-            });
-            setEmployeeToDelete(null);
-        },
+        mutationFn: (id: string) => deleteEmployee(id),
+        onSuccess: () =>
+            toast({ title: "Sucesso", description: "Funcionário removido." }),
     });
 
-    // 7. Função de Envio do Formulário
-    const onSubmit = (data: EmployeeFormValues) => {
-        // Garante que o store_id seja nulo se a string estiver vazia
-        const payloadData = { ...data, store_id: data.store_id || null };
-
-        if (employeeToEdit) {
-            const payload: EmployeeUpdatePayload = {
-                ...payloadData,
-                id: employeeToEdit.id,
-            };
-            updateMutation.mutate(payload);
-        } else {
-            const payload: EmployeeInsertPayload = payloadData;
-            createMutation.mutate(payload);
-        }
+    const handleEdit = (emp: Employee) => {
+        setEditingEmployee(emp);
+        form.reset({
+            name: emp.name,
+            email: emp.email,
+            store_id: emp.store_id || "all",
+            can_create: emp.can_create || false,
+            can_update: emp.can_update || false,
+            can_delete: emp.can_delete || false,
+        });
+        setIsDialogOpen(true);
     };
 
-    const isLoading = isLoadingEmployees || isLoadingStores;
-    const isLoadingMutation =
-        createMutation.isPending || updateMutation.isPending;
+    const handleCloseDialog = () => {
+        setIsDialogOpen(false);
+        setEditingEmployee(null);
+        form.reset({
+            name: "",
+            email: "",
+            store_id: "all",
+            can_create: false,
+            can_update: false,
+            can_delete: false,
+        });
+    };
+
+    const onSubmit = (data: EmployeeFormValues) => {
+        // Converte "all" para null (Admin Geral)
+        const payloadStoreId = data.store_id === "all" ? null : data.store_id;
+
+        const payload = {
+            ...data,
+            store_id: payloadStoreId,
+        };
+
+        if (editingEmployee) {
+            updateMutation.mutate({ ...payload, id: editingEmployee.id });
+        } else {
+            // Atenção: O ID do funcionário no CREATE deve ser igual ao ID de Auth (que já deve existir).
+            // Para simplificar aqui, assumimos que você cria o usuário no Auth primeiro e usa o ID dele,
+            // ou usa uma Trigger no banco. Neste form simples, estamos apenas inserindo na tabela.
+            // Se precisar criar o Auth User via código, precisamos da Admin API do Supabase (backend).
+            toast({
+                variant: "warning",
+                title: "Atenção",
+                description:
+                    "Lembre-se que o Email deve corresponder a um usuário já registrado no Auth, ou use uma Trigger para criar.",
+            });
+            createMutation.mutate({ ...payload, id: crypto.randomUUID() }); // Placeholder ID
+        }
+    };
 
     return (
         <div className="min-h-screen bg-background">
             <Navbar />
-
             <main className="container py-8">
-                {/* Cabeçalho da Página */}
-                <div className="mb-6 flex items-center justify-between">
-                    <div>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                            className="mb-2"
-                        >
-                            <Link to="/admin">
-                                <ArrowLeft className="mr-2 h-4 w-4" />
-                                Voltar ao Painel
-                            </Link>
-                        </Button>
-                        <h1 className="text-3xl font-bold text-foreground">
-                            Gerenciar Funcionários
-                        </h1>
-                    </div>
-                    <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold">
+                        Gerenciar Funcionários
+                    </h1>
+                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button onClick={() => setEmployeeToEdit(null)}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Adicionar Novo
+                            <Button
+                                onClick={() => {
+                                    setEditingEmployee(null);
+                                    form.reset();
+                                }}
+                            >
+                                <Plus className="mr-2 h-4 w-4" /> Novo
+                                Funcionário
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px]">
+                        <DialogContent className="max-w-lg">
                             <DialogHeader>
                                 <DialogTitle>
-                                    {employeeToEdit
-                                        ? "Editar Funcionário"
-                                        : "Adicionar Novo Funcionário"}
+                                    {editingEmployee ? "Editar" : "Novo"}{" "}
+                                    Funcionário
                                 </DialogTitle>
-                                <DialogDescription>
-                                    Preencha os dados do funcionário. A senha é
-                                    gerenciada pelo Supabase Auth.
-                                </DialogDescription>
                             </DialogHeader>
-                            {/* 8. Formulário dentro do Modal */}
                             <Form {...form}>
                                 <form
                                     onSubmit={form.handleSubmit(onSubmit)}
@@ -246,16 +217,10 @@ export const AdminEmployees = () => {
                                         name="name"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>
-                                                    Nome Completo
-                                                </FormLabel>
+                                                <FormLabel>Nome</FormLabel>
                                                 <FormControl>
-                                                    <Input
-                                                        placeholder="Nome do Funcionário"
-                                                        {...field}
-                                                    />
+                                                    <Input {...field} />
                                                 </FormControl>
-                                                <FormMessage />
                                             </FormItem>
                                         )}
                                     />
@@ -264,51 +229,39 @@ export const AdminEmployees = () => {
                                         name="email"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>E-mail</FormLabel>
+                                                <FormLabel>
+                                                    Email (Login)
+                                                </FormLabel>
                                                 <FormControl>
-                                                    <Input
-                                                        type="email"
-                                                        placeholder="email@dominio.com"
-                                                        {...field}
-                                                    />
+                                                    <Input {...field} />
                                                 </FormControl>
-                                                <FormMessage />
                                             </FormItem>
                                         )}
                                     />
+
                                     <FormField
                                         control={form.control}
                                         name="store_id"
                                         render={({ field }) => (
                                             <FormItem>
                                                 <FormLabel>
-                                                    Loja (Opcional)
+                                                    Loja Vinculada
                                                 </FormLabel>
                                                 <Select
                                                     onValueChange={
                                                         field.onChange
                                                     }
-                                                    value={field.value || ""}
+                                                    defaultValue={field.value}
                                                 >
                                                     <FormControl>
                                                         <SelectTrigger>
-                                                            <SelectValue placeholder="Selecione uma loja" />
+                                                            <SelectValue placeholder="Selecione..." />
                                                         </SelectTrigger>
                                                     </FormControl>
                                                     <SelectContent>
-                                                        <SelectItem value="">
-                                                            Nenhuma
-                                                            (Admin/Geral)
+                                                        <SelectItem value="all">
+                                                            Todas (Super Admin)
                                                         </SelectItem>
-                                                        {isLoadingStores && (
-                                                            <SelectItem
-                                                                value="loading"
-                                                                disabled
-                                                            >
-                                                                Carregando
-                                                                lojas...
-                                                            </SelectItem>
-                                                        )}
                                                         {stores?.map(
                                                             (store) => (
                                                                 <SelectItem
@@ -325,177 +278,153 @@ export const AdminEmployees = () => {
                                                         )}
                                                     </SelectContent>
                                                 </Select>
-                                                <FormMessage />
+                                                <FormDescription>
+                                                    Se "Todas", ele vê tudo. Se
+                                                    selecionar loja, só vê dados
+                                                    da loja.
+                                                </FormDescription>
                                             </FormItem>
                                         )}
                                     />
-                                    <DialogFooter>
-                                        <DialogClose asChild>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                disabled={isLoadingMutation}
-                                            >
-                                                Cancelar
-                                            </Button>
-                                        </DialogClose>
-                                        <Button
-                                            type="submit"
-                                            disabled={isLoadingMutation}
-                                        >
-                                            {isLoadingMutation
-                                                ? "Salvando..."
-                                                : "Salvar"}
-                                        </Button>
-                                    </DialogFooter>
+
+                                    <div className="space-y-2 border p-4 rounded-md">
+                                        <h4 className="font-medium text-sm">
+                                            Permissões
+                                        </h4>
+                                        <FormField
+                                            control={form.control}
+                                            name="can_create"
+                                            render={({ field }) => (
+                                                <FormItem className="flex items-center space-x-2 space-y-0">
+                                                    <FormControl>
+                                                        <Checkbox
+                                                            checked={
+                                                                field.value
+                                                            }
+                                                            onCheckedChange={
+                                                                field.onChange
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                    <FormLabel className="font-normal">
+                                                        Pode Criar
+                                                    </FormLabel>
+                                                </FormItem>
+                                            )}
+                                        />
+                                        <FormField
+                                            control={form.control}
+                                            name="can_update"
+                                            render={({ field }) => (
+                                                <FormItem className="flex items-center space-x-2 space-y-0">
+                                                    <FormControl>
+                                                        <Checkbox
+                                                            checked={
+                                                                field.value
+                                                            }
+                                                            onCheckedChange={
+                                                                field.onChange
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                    <FormLabel className="font-normal">
+                                                        Pode Editar
+                                                    </FormLabel>
+                                                </FormItem>
+                                            )}
+                                        />
+                                        <FormField
+                                            control={form.control}
+                                            name="can_delete"
+                                            render={({ field }) => (
+                                                <FormItem className="flex items-center space-x-2 space-y-0">
+                                                    <FormControl>
+                                                        <Checkbox
+                                                            checked={
+                                                                field.value
+                                                            }
+                                                            onCheckedChange={
+                                                                field.onChange
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                    <FormLabel className="font-normal">
+                                                        Pode Excluir
+                                                    </FormLabel>
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
+                                    <Button type="submit" className="w-full">
+                                        Salvar
+                                    </Button>
                                 </form>
                             </Form>
                         </DialogContent>
                     </Dialog>
                 </div>
 
-                {/* 9. Tabela de Funcionários */}
-                <div className="rounded-lg border">
+                <div className="border rounded-lg">
                     <Table>
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Nome</TableHead>
-                                <TableHead>E-mail</TableHead>
                                 <TableHead>Loja</TableHead>
-                                <TableHead className="w-[100px]">
+                                <TableHead>Permissões</TableHead>
+                                <TableHead className="text-right">
                                     Ações
                                 </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading &&
-                                Array.from({ length: 3 }).map((_, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell>
-                                            <Skeleton className="h-5 w-1/2" />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Skeleton className="h-5 w-2/3" />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Skeleton className="h-5 w-1/3" />
-                                        </TableCell>
-                                        <TableCell className="flex gap-2">
-                                            <Skeleton className="h-8 w-8" />
-                                            <Skeleton className="h-8 w-8" />
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            {isErrorEmployees && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={4}
-                                        className="text-center text-destructive"
-                                    >
-                                        <AlertTriangle className="mr-2 inline h-4 w-4" />
-                                        Erro ao carregar os funcionários.
+                            {employees?.map((emp) => (
+                                <TableRow key={emp.id}>
+                                    <TableCell>
+                                        <div className="font-medium">
+                                            {emp.name}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {emp.email}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        {emp.Stores?.name || (
+                                            <span className="font-bold text-primary">
+                                                Super Admin
+                                            </span>
+                                        )}
+                                    </TableCell>
+                                    <TableCell className="text-xs text-muted-foreground">
+                                        {emp.can_create && "Criar • "}
+                                        {emp.can_update && "Editar • "}
+                                        {emp.can_delete && "Excluir"}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => handleEdit(emp)}
+                                        >
+                                            <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-destructive"
+                                            onClick={() =>
+                                                deleteMutation.mutate(emp.id)
+                                            }
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
                                     </TableCell>
                                 </TableRow>
-                            )}
-                            {!isLoading &&
-                                !isErrorEmployees &&
-                                employees?.map((employee) => (
-                                    <TableRow key={employee.id}>
-                                        <TableCell className="font-medium">
-                                            {employee.name}
-                                        </TableCell>
-                                        <TableCell>{employee.email}</TableCell>
-                                        <TableCell>
-                                            {employee.Stores ? (
-                                                <Badge variant="secondary">
-                                                    {employee.Stores.name}
-                                                </Badge>
-                                            ) : (
-                                                <span className="text-muted-foreground">
-                                                    N/A
-                                                </span>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={() =>
-                                                    setEmployeeToEdit(employee)
-                                                }
-                                            >
-                                                <Edit className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                variant="destructive"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={() =>
-                                                    setEmployeeToDelete(
-                                                        employee
-                                                    )
-                                                }
-                                                disabled={
-                                                    deleteMutation.isPending
-                                                }
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                            ))}
                         </TableBody>
                     </Table>
                 </div>
-
-                {!isLoading && !isErrorEmployees && employees?.length === 0 && (
-                    <div className="py-20 text-center text-muted-foreground">
-                        Nenhum funcionário cadastrado ainda.
-                    </div>
-                )}
             </main>
-
-            {/* 10. Diálogo de Confirmação de Exclusão */}
-            <AlertDialog
-                open={!!employeeToDelete}
-                onOpenChange={(open) => {
-                    if (!open) setEmployeeToDelete(null);
-                }}
-            >
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Esta ação não pode ser desfeita. Isso irá excluir
-                            permanentemente o funcionário
-                            <span className="font-medium">
-                                {" "}
-                                "{employeeToDelete?.name}"{" "}
-                            </span>
-                            .
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={deleteMutation.isPending}>
-                            Cancelar
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                            className={buttonVariants({
-                                variant: "destructive",
-                            })}
-                            onClick={() =>
-                                deleteMutation.mutate(employeeToDelete!.id)
-                            }
-                            disabled={deleteMutation.isPending}
-                        >
-                            {deleteMutation.isPending
-                                ? "Excluindo..."
-                                : "Excluir"}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div>
     );
 };

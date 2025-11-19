@@ -8,8 +8,48 @@ import {
     useMemo,
     useCallback,
 } from "react";
-import { CartItem } from "@/types";
-// NÃO importamos CartDrawer aqui para evitar ciclo e renderização duplicada
+import { Product, Store, CartItem, Coupon } from "@/types";
+import {
+    ShoppingCart,
+    ArrowLeft,
+    Store as StoreIcon,
+    User,
+    Loader2,
+    AlertTriangle,
+    Minus,
+    Plus,
+    X,
+    TicketPercent,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+    SheetFooter,
+    SheetClose,
+} from "@/components/ui/sheet";
+import { useQuery } from "@tanstack/react-query";
+import { fetchStores, createOrder, upsertClient, fetchCoupon } from "@/lib/api";
+import { useCustomerAuth } from "./CustomerAuthContext";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { formatCurrency } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+
 
 interface CartContextType {
     cartItems: CartItem[];
@@ -18,7 +58,14 @@ interface CartContextType {
     updateQuantity: (itemId: string, quantity: number) => void;
     clearCart: () => void;
     itemCount: number;
+    
+    // Novos campos para Cupom
+    subtotal: number;
+    discountAmount: number;
     totalPrice: number;
+    coupon: Coupon | null;
+    applyCoupon: (code: string) => Promise<boolean>;
+    removeCoupon: () => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -36,6 +83,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         }
     });
 
+    const [coupon, setCoupon] = useState<Coupon | null>(null);
+
     useEffect(() => {
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cartItems));
     }, [cartItems]);
@@ -45,9 +94,20 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         [cartItems]
     );
 
-    const totalPrice = useMemo(() => {
+    // 1. Calcula Subtotal
+    const subtotal = useMemo(() => {
         return cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
     }, [cartItems]);
+
+    // 2. Calcula Desconto
+    const discountAmount = useMemo(() => {
+        if (!coupon) return 0;
+        // Preço em centavos * porcentagem / 100
+        return Math.round(subtotal * (coupon.discount_percent / 100));
+    }, [subtotal, coupon]);
+
+    // 3. Total Final
+    const totalPrice = subtotal - discountAmount;
 
     const addToCart = useCallback((item: CartItem) => {
         setCartItems((prevItems) => {
@@ -95,7 +155,21 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
     const clearCart = useCallback(() => {
         setCartItems([]);
+        setCoupon(null); // Limpa cupom ao limpar carrinho
     }, []);
+
+    // Lógica do Cupom
+    const applyCoupon = async (code: string) => {
+        if (!code) return false;
+        const foundCoupon = await fetchCoupon(code);
+        if (foundCoupon) {
+            setCoupon(foundCoupon);
+            return true;
+        }
+        return false;
+    };
+
+    const removeCoupon = () => setCoupon(null);
 
     const value = {
         cartItems,
@@ -104,14 +178,16 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         updateQuantity,
         clearCart,
         itemCount,
+        subtotal,
+        discountAmount,
         totalPrice,
+        coupon,
+        applyCoupon,
+        removeCoupon,
     };
 
     return (
-        <CartContext.Provider value={value}>
-            {children}
-            {/* REMOVIDO: <CartDrawer /> - Agora ele deve ser renderizado na Navbar */}
-        </CartContext.Provider>
+        <CartContext.Provider value={value}>{children}</CartContext.Provider>
     );
 };
 
@@ -122,3 +198,6 @@ export const useCart = () => {
     }
     return context;
 };
+
+// --- COMPONENTE VISUAL (CART DRAWER) ---
+import { CartDrawer as DrawerComponent } from "@/components/CartDrawer"; 

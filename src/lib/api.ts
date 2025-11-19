@@ -2,7 +2,7 @@
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
-import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, WarrantyInsertPayload } from "@/types";
+import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, WarrantyInsertPayload, Coupon, CouponInsertPayload } from "@/types";
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid'; 
 
@@ -860,6 +860,69 @@ export const fetchClientWarranties = async (clientId: string): Promise<Warranty[
 
     if (error) throw new Error(error.message);
     
-    // CORREÇÃO: Usamos 'as any' para evitar deep instantiation error
+
     return data as any as Warranty[];
+};
+
+// ==================================================================
+// FUNÇÕES DE API (CUPONS)
+// ==================================================================
+
+// Busca um cupom pelo código (usado no carrinho)
+export const fetchCoupon = async (code: string): Promise<Coupon | null> => {
+    const { data, error } = await supabase
+        .from('Coupons')
+        .select('*')
+        .eq('code', code.toUpperCase())
+        .eq('active', true)
+        .maybeSingle();
+
+    if (error) {
+        console.error("Erro ao buscar cupom:", error);
+        return null;
+    }
+    return data as Coupon;
+};
+
+// (Admin) Lista todos os cupons
+export const fetchAllCoupons = async (): Promise<Coupon[]> => {
+    const { data, error } = await supabase
+        .from('Coupons')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data as Coupon[];
+};
+
+// (Admin) Cria cupom
+export const createCoupon = async (payload: CouponInsertPayload): Promise<void> => {
+    const { error } = await supabase
+        .from('Coupons')
+        .insert({
+            ...payload,
+            code: payload.code.toUpperCase() // Sempre maiúsculo
+        });
+
+    if (error) throw new Error(error.message);
+};
+
+// (Admin) Deleta cupom
+export const deleteCoupon = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('Coupons')
+        .delete()
+        .eq('id', id);
+
+    if (error) throw new Error(error.message);
+};
+
+// (Admin) Alterna status do cupom (Ativo/Inativo)
+export const toggleCouponStatus = async (id: string, currentStatus: boolean): Promise<void> => {
+      const { error } = await supabase
+        .from('Coupons')
+        .update({ active: !currentStatus })
+        .eq('id', id);
+
+    if (error) throw new Error(error.message);
 };

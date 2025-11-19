@@ -23,6 +23,7 @@ import {
     CarouselNext,
     CarouselPrevious,
 } from "@/components/ui/carousel";
+import { SEO } from "@/components/SEO";
 
 const Index = () => {
     // Busca Produtos em Promoção
@@ -52,6 +53,7 @@ const Index = () => {
 
     return (
         <div className="min-h-screen bg-background flex flex-col">
+            <SEO title="Início" />
             <Navbar />
 
             <main className="flex-1">

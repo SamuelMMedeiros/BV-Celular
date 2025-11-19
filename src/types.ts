@@ -14,7 +14,10 @@ export type Store = Database['public']['Tables']['Stores']['Row'] & {
 
 export type Employee = Omit<Database['public']['Tables']['Employees']['Row'], 'store_id'> & {
   store_id?: string | null; 
-  Stores?: Pick<Store, 'id' | 'name'> | null; 
+  Stores?: Pick<Store, 'id' | 'name'> | null;
+  can_create?: boolean;
+  can_update?: boolean;
+  can_delete?: boolean;
 };
 
 export type CustomerProfile = {
@@ -90,4 +93,18 @@ export type WarrantyInsertPayload = {
     purchase_date: Date;
     warranty_months: number;
     warranty_end_date: Date;
+};
+
+export type Coupon = {
+    id: string;
+    code: string;
+    discount_percent: number;
+    active: boolean;
+    created_at?: string;
+};
+
+export type CouponInsertPayload = {
+    code: string;
+    discount_percent: number;
+    active?: boolean;
 };
