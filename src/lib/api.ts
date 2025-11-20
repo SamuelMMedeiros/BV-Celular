@@ -1,61 +1,20 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
+//
+// === CÓDIGO COMPLETO PARA: src/lib/api.ts ===
+//
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
-import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, WarrantyInsertPayload, Coupon, CouponInsertPayload } from "@/types";
+// Importamos os tipos de @/types
+import { 
+    Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, Coupon, Address,
+    ProductInsertPayload, ProductUpdatePayload, StoreInsertPayload, StoreUpdatePayload,
+    EmployeeInsertPayload, EmployeeUpdatePayload, CustomerUpdatePayload, OrderInsertPayload,
+    BannerInsertPayload, BannerUpdatePayload, CouponInsertPayload, WarrantyInsertPayload, AddressInsertPayload
+} from "@/types";
+// Importamos o Database para uso nas funções de retorno
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid'; 
-
-// --- DEFINIÇÃO DE PAYLOADS LOCAIS ---
-
-export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
-  store_ids?: string[]; 
-  image_files: File[];
-};
-
-export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
-  id: string;
-  image_files?: File[];
-  images_to_delete?: string[];
-};
-
-export type StoreInsertPayload = Database['public']['Tables']['Stores']['Insert'];
-export type StoreUpdatePayload = Database['public']['Tables']['Stores']['Update'] & {
-  id: string;
-};
-
-export type EmployeeInsertPayload = Database['public']['Tables']['Employees']['Insert'];
-export type EmployeeUpdatePayload = Database['public']['Tables']['Employees']['Update'] & {
-  id: string;
-};
-
-export type CustomerUpdatePayload = {
-  id: string;
-  name: string;
-  phone: string;
-};
-
-export type OrderInsertPayload = {
-  client_id: string;
-  store_id: string;
-  total_price: number;
-  items: OrderCartItem[];
-  status?: string;
-  employee_id?: string | null;
-};
-
-export type BannerInsertPayload = {
-    title: string;
-    subtitle?: string | null;
-    image_url: string; 
-    link_url: string;
-    button_text: string;
-    active?: boolean;
-};
-
-export type BannerUpdatePayload = Partial<BannerInsertPayload> & {
-    id: string;
-};
 
 // ==================================================================
 // FUNÇÕES DE API (PRODUTOS)
@@ -259,7 +218,8 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
       imageUrls.push(publicUrlData.publicUrl);
     }
   }
-  const productData: Database['public']['Tables']['Products']['Insert'] = {
+  // @ts-ignore
+  const productData = {
     name: payload.name,
     description: payload.description,
     price: payload.price,
@@ -273,9 +233,10 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
     promotion_end_date: payload.promotion_end_date, 
     images: imageUrls,
   };
+
   const { data: newProduct, error: productError } = await supabase
     .from('Products')
-    .insert(productData)
+    .insert(productData as any)
     .select('id')
     .single();
   if (productError) throw new Error(productError.message);
@@ -334,7 +295,8 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
   );
   const finalImageUrls = [...remainingImages, ...newImageUrls];
   
-  const productData: Database['public']['Tables']['Products']['Update'] = {
+  // @ts-ignore
+  const productData = {
     name: payload.name,
     description: payload.description,
     price: payload.price,
@@ -351,7 +313,7 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
 
   const { error: productError } = await supabase
     .from('Products')
-    .update(productData)
+    .update(productData as any)
     .eq('id', payload.id);
   if (productError) throw new Error(productError.message);
   
@@ -609,22 +571,79 @@ export const upsertClient = async (profile: { id: string; name: string; phone: s
 };
 
 // ==================================================================
+// FUNÇÕES DE API (ENDEREÇOS E CEP)
+// ==================================================================
+
+export const fetchAddressByCEP = async (cep: string): Promise<Partial<Address> | null> => {
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length !== 8) return null;
+
+    try {
+        const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        const data = await response.json();
+        
+        if (data.erro) return null;
+
+        return {
+            street: data.logradouro,
+            neighborhood: data.bairro,
+            city: data.localidade,
+            state: data.uf,
+        };
+    } catch (error) {
+        console.error("Erro ao buscar CEP:", error);
+        return null;
+    }
+};
+
+export const fetchClientAddresses = async (clientId: string): Promise<Address[]> => {
+    const { data, error } = await supabase
+        .from('Addresses')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data as Address[];
+};
+
+export const createAddress = async (payload: AddressInsertPayload): Promise<void> => {
+    const { error } = await supabase
+        .from('Addresses')
+        .insert(payload);
+
+    if (error) throw new Error(error.message);
+};
+
+export const deleteAddress = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('Addresses')
+        .delete()
+        .eq('id', id);
+
+    if (error) throw new Error(error.message);
+};
+
+// ==================================================================
 // FUNÇÕES DE API (PEDIDOS/ORÇAMENTOS)
 // ==================================================================
 
 export const createOrder = async (payload: OrderInsertPayload): Promise<Database['public']['Tables']['Orders']['Row']> => {
-  const orderData: Database['public']['Tables']['Orders']['Insert'] = {
+  const orderData = {
     client_id: payload.client_id,
     store_id: payload.store_id,
     total_price: payload.total_price,
     items: payload.items, 
     status: payload.status || 'pending',
-    employee_id: payload.employee_id 
+    employee_id: payload.employee_id,
+    delivery_type: payload.delivery_type || 'pickup',
+    address_id: payload.address_id,
+    delivery_fee: payload.delivery_fee || 0,
+    payment_method: payload.payment_method,
+    change_for: payload.change_for
   };
 
-  // CORREÇÃO PARA O ERRO 2353:
-  // Usamos 'as any' para contornar o erro de tipo enquanto a definição 'Database' 
-  // não é atualizada com a coluna 'employee_id' no VSCode.
+  // CORREÇÃO 2353: Usamos 'as any' para o payload de inserção
   const { data, error } = await supabase
     .from('Orders')
     .insert(orderData as any) 
@@ -722,7 +741,7 @@ export const toggleFavorite = async (clientId: string, productId: string): Promi
 };
 
 export const fetchClientFavorites = async (clientId: string): Promise<Product[]> => {
-  // @ts-ignore: Ignora erro de profundidade de tipo temporariamente
+  // @ts-ignore: Ignora erro de profundidade de tipo
   const { data, error } = await (supabase
     .from('Favorites')
     .select(`
