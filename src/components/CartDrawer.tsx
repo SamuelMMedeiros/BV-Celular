@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/rules-of-hooks */
+//
+// === CÓDIGO COMPLETO PARA: src/components/CartDrawer.tsx ===
+//
 import { useState, useRef } from "react";
 import {
     ShoppingCart,
@@ -13,7 +16,8 @@ import {
     X,
     Ticket,
     Trash2,
-    Truck // Importado
+    Truck,
+    CreditCard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,7 +50,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Store, Address } from "@/types";
-import { Separator } from "@radix-ui/react-select";
+import { StripeCheckout } from "./StripeCheckout"; // <-- IMPORTAR NOVO COMPONENTE
 
 export const CartDrawer = () => {
     const {
@@ -61,7 +65,6 @@ export const CartDrawer = () => {
         removeFromCart,
         updateQuantity,
         clearCart,
-        // Novos do Frete
         shippingQuote,
         calculateShipping,
         clearShipping
@@ -72,11 +75,9 @@ export const CartDrawer = () => {
     const location = useLocation();
     const { toast } = useToast();
     const couponInputRef = useRef<HTMLInputElement>(null);
-    const cepInputRef = useRef<HTMLInputElement>(null); // Ref para o CEP
 
     const [isSheetOpen, setIsSheetOpen] = useState(false);
-    const [step, setStep] = useState<"cart" | "stores" | "auth">("cart");
-    const [isStoreSelectOpen, setIsStoreSelectOpen] = useState(false);
+    const [step, setStep] = useState<"cart" | "auth" | "checkout">("cart");
     const [isSavingOrder, setIsSavingOrder] = useState(false);
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
     const [isCalculatingFreight, setIsCalculatingFreight] = useState(false);
@@ -88,21 +89,28 @@ export const CartDrawer = () => {
     const [paymentMethod, setPaymentMethod] = useState<"credit_card" | "pix" | "cash">("credit_card");
     const [changeFor, setChangeFor] = useState<string>("");
 
+    // NOVO: Modo de Pagamento (Híbrido)
+    const [paymentMode, setPaymentMode] = useState<"whatsapp" | "stripe">("whatsapp");
+
     if (location.pathname.startsWith('/admin')) return null;
 
     const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
         queryKey: ["allStores"],
         queryFn: fetchStores,
-        enabled: isSheetOpen && step === "stores",
+        enabled: isSheetOpen && step === "checkout",
     });
 
     const { data: addresses, isLoading: isLoadingAddresses } = useQuery<Address[]>({
         queryKey: ["checkoutAddresses", profile?.id],
         queryFn: () => fetchClientAddresses(profile!.id),
-        enabled: isSheetOpen && step === "stores" && isLoggedIn && !!profile?.id,
+        enabled: isSheetOpen && step === "checkout" && isLoggedIn && !!profile?.id,
     });
 
-    // Se mudarmos para entrega, tentamos calcular o frete automaticamente com o endereço selecionado
+    const selectedStore = stores?.find(s => s.id === selectedStoreId);
+    const deliveryFee = (deliveryType === "delivery" && selectedStore) ? (selectedStore.delivery_fixed_fee || 0) * 100 : 0; 
+    const finalDeliveryFee = (selectedStore?.free_shipping_min_value && subtotal >= selectedStore.free_shipping_min_value * 100) ? 0 : deliveryFee;
+    const finalTotal = totalPrice + finalDeliveryFee;
+
     const handleAddressChange = (addrId: string) => {
         setSelectedAddressId(addrId);
         const addr = addresses?.find(a => a.id === addrId);
@@ -130,14 +138,9 @@ export const CartDrawer = () => {
         } 
     };
 
-    const handleSelectStore = async (storeId: string) => {
-        // Lógica antiga movida para handleFinishOrder (para suportar Delivery)
-        // Aqui apenas setamos o estado se for pickup
-        setSelectedStoreId(storeId);
-    };
-
-    const handleFinishOrder = async () => {
-        // Validações
+    // Função principal de fechar pedido
+    const handleFinishOrder = async (paidOnline = false) => {
+        // Validações básicas
         if (deliveryType === "pickup" && !selectedStoreId) {
             toast({ variant: "destructive", title: "Selecione uma loja", description: "Escolha onde retirar o produto." });
             return;
@@ -146,9 +149,6 @@ export const CartDrawer = () => {
             toast({ variant: "destructive", title: "Selecione um endereço", description: "Escolha onde entregar o produto." });
             return;
         }
-        // Para entrega, precisamos definir uma "loja base" ou usar uma padrão.
-        // Vamos assumir que o admin define quem entrega depois, ou o usuário escolhe a loja mais próxima.
-        // Por simplicidade, vamos obrigar a escolher uma loja de origem mesmo na entrega (para o WhatsApp funcionar).
         if (!selectedStoreId) {
              toast({ variant: "destructive", title: "Selecione a loja de origem", description: "Escolha de qual loja o pedido sairá." });
              return;
@@ -180,43 +180,55 @@ export const CartDrawer = () => {
                 const newOrder = await createOrder({
                     client_id: profile.id,
                     store_id: selectedStoreId,
-                    total_price: totalPrice, // Já inclui o frete se calculado
+                    total_price: finalTotal,
                     items: orderItems,
                     employee_id: employeeRef,
                     delivery_type: deliveryType,
                     address_id: deliveryType === "delivery" ? selectedAddressId : null,
-                    delivery_fee: shippingQuote ? shippingQuote.price : 0,
-                    payment_method: paymentMethod,
-                    change_for: changeFor ? parseFloat(changeFor) * 100 : undefined
+                    delivery_fee: finalDeliveryFee,
+                    payment_method: paidOnline ? 'credit_card_online' : paymentMethod,
+                    change_for: changeFor ? parseFloat(changeFor) * 100 : undefined,
+                    status: paidOnline ? 'completed' : 'pending' // <-- Se pagou online, já entra como completado (ou aguardando envio)
                 });
 
                 if (coupon) await createCouponUsage(profile.id, coupon.id);
 
-                // WhatsApp
-                const itemsText = cartItems.map(item => `${item.quantity}x ${item.name}`).join('%0A');
-                let msg = `Olá, *${store?.name}*!%0A%0AEu sou *${profile.name}* e gostaria de fazer um pedido (Ref: ${newOrder.id.substring(0, 8)}):%0A%0A`;
-                msg += itemsText + '%0A%0A';
-                
-                if (deliveryType === "pickup") {
-                    msg += `📍 *Vou Retirar na Loja*`;
+                // Só abre WhatsApp se NÃO for pagamento online (ou abre apenas como notificação)
+                if (!paidOnline) {
+                    const itemsText = cartItems.map(item => `${item.quantity}x ${item.name}`).join('%0A');
+                    let msg = `Olá, *${store?.name}*!%0A%0AEu sou *${profile.name}* e gostaria de fazer um pedido (Ref: ${newOrder.id.substring(0, 8)}):%0A%0A`;
+                    msg += itemsText + '%0A%0A';
+                    
+                    if (deliveryType === "pickup") {
+                        msg += `📍 *Vou Retirar na Loja*`;
+                    } else {
+                        msg += `🚚 *Entrega* para:%0A${address?.street}, ${address?.number} - ${address?.neighborhood}%0A(${address?.city})%0A`;
+                        if (address?.complement) msg += `Comp: ${address.complement}%0A`;
+                        if (shippingQuote) msg += `Frete: ${formatCurrency(shippingQuote.price)} (${shippingQuote.days} dias)`;
+                    }
+
+                    msg += `%0A💳 Pagamento: ${paymentMethod === 'credit_card' ? 'Cartão' : paymentMethod === 'pix' ? 'Pix' : 'Dinheiro'}`;
+                    if (paymentMethod === 'cash' && changeFor) msg += ` (Troco para ${changeFor})`;
+
+                    msg += `%0A%0A*Total Final: ${formatCurrency(finalTotal)}*`;
+
+                    const whatsappUrl = `https://api.whatsapp.com/send?phone=${store?.whatsapp.replace(/\D/g, '')}&text=${msg}`;
+                    window.open(whatsappUrl, '_blank');
                 } else {
-                    msg += `🚚 *Entrega* para:%0A${address?.street}, ${address?.number} - ${address?.neighborhood}%0A(${address?.city})%0A`;
-                    if (address?.complement) msg += `Comp: ${address.complement}%0A`;
-                    if (shippingQuote) msg += `Frete: ${formatCurrency(shippingQuote.price)} (${shippingQuote.days} dias)`;
+                    // Feedback de sucesso online
+                    toast({ 
+                        title: "Pagamento Confirmado! 🎉", 
+                        description: `Seu pedido #${newOrder.id.substring(0, 8)} foi recebido com sucesso.`,
+                        duration: 5000,
+                        className: "bg-green-600 text-white"
+                    });
                 }
 
-                msg += `%0A💳 Pagamento: ${paymentMethod === 'credit_card' ? 'Cartão' : paymentMethod === 'pix' ? 'Pix' : 'Dinheiro'}`;
-                if (paymentMethod === 'cash' && changeFor) msg += ` (Troco para ${changeFor})`;
-
-                msg += `%0A%0A*Total Final: ${formatCurrency(totalPrice)}*`;
-
-                const whatsappUrl = `https://api.whatsapp.com/send?phone=${store?.whatsapp.replace(/\D/g, '')}&text=${msg}`;
-                window.open(whatsappUrl, '_blank');
-
-                toast({ title: "Pedido realizado!", description: "Acompanhe em 'Meus Pedidos'." });
                 clearCart();
                 setIsSheetOpen(false);
                 setStep("cart");
+                // Redirecionar para Meus Pedidos?
+                navigate('/minha-conta');
 
             } catch (error: any) {
                 console.error("Falha ao salvar pedido:", error);
@@ -230,7 +242,7 @@ export const CartDrawer = () => {
     const handleProceed = () => {
         if (itemCount === 0) return;
         if (!isLoggedIn) setStep("auth");
-        else setStep("stores"); // Agora vai para o passo de checkout/lojas
+        else setStep("checkout");
     };
 
     const renderCartItems = () => (
@@ -290,28 +302,31 @@ export const CartDrawer = () => {
                     </div>
                 )}
                 
-                {step === "stores" && (
+                {step === "checkout" && (
                     <div className="flex-1 flex flex-col gap-6 py-4">
-                        {/* 1. TIPO DE ENTREGA */}
-                        <div className="space-y-3">
-                            <Label className="text-base font-semibold">Como deseja receber?</Label>
-                            <RadioGroup value={deliveryType} onValueChange={(v: "pickup" | "delivery") => { setDeliveryType(v); if(v === 'pickup') clearShipping(); }} className="grid grid-cols-2 gap-4">
+                        
+                        {/* 1. MODO DE PAGAMENTO (HÍBRIDO) */}
+                        <div className="bg-muted/20 p-4 rounded-lg border">
+                            <Label className="text-base font-semibold mb-3 block">Como deseja pagar?</Label>
+                            <RadioGroup value={paymentMode} onValueChange={(v: any) => setPaymentMode(v)} className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <RadioGroupItem value="pickup" id="pickup" className="peer sr-only" />
-                                    <Label htmlFor="pickup" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer">
-                                        <StoreIcon className="mb-2 h-6 w-6" /> Retirada
+                                    <RadioGroupItem value="whatsapp" id="pm_wa" className="peer sr-only" />
+                                    <Label htmlFor="pm_wa" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary cursor-pointer h-full text-center text-sm">
+                                        <ShoppingCart className="mb-2 h-6 w-6 text-green-600" /> 
+                                        Negociar no WhatsApp / Entrega
                                     </Label>
                                 </div>
                                 <div>
-                                    <RadioGroupItem value="delivery" id="delivery" className="peer sr-only" />
-                                    <Label htmlFor="delivery" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer">
-                                        <Truck className="mb-2 h-6 w-6" /> Entrega
+                                    <RadioGroupItem value="stripe" id="pm_stripe" className="peer sr-only" />
+                                    <Label htmlFor="pm_stripe" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary cursor-pointer h-full text-center text-sm">
+                                        <CreditCard className="mb-2 h-6 w-6 text-blue-600" /> 
+                                        Pagar Agora (Online)
                                     </Label>
                                 </div>
                             </RadioGroup>
                         </div>
 
-                        {/* 2. LOJA (Origem) */}
+                        {/* 2. LOJA (Sempre necessário para origem) */}
                         <div className="space-y-3">
                             <Label className="text-base font-semibold">Loja Responsável</Label>
                             {isLoadingStores ? <Loader2 className="animate-spin" /> : 
@@ -322,24 +337,41 @@ export const CartDrawer = () => {
                             }
                         </div>
 
-                        {/* 3. ENDEREÇO (Se Entrega) */}
+                        {/* 3. TIPO DE ENTREGA (Só mostra se não for pagamento online ou se online permitir ambos - simplificando: mostra sempre) */}
+                        <div className="space-y-3">
+                            <Label className="text-base font-semibold">Recebimento</Label>
+                            <RadioGroup value={deliveryType} onValueChange={(v: any) => { setDeliveryType(v); if(v === 'pickup') clearShipping(); }} className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <RadioGroupItem value="pickup" id="pickup" className="peer sr-only" />
+                                    <Label htmlFor="pickup" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 cursor-pointer peer-data-[state=checked]:border-primary">
+                                        <StoreIcon className="mb-1 h-4 w-4" /> <span className="text-sm">Retirada</span>
+                                    </Label>
+                                </div>
+                                <div>
+                                    <RadioGroupItem value="delivery" id="delivery" className="peer sr-only" />
+                                    <Label htmlFor="delivery" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 cursor-pointer peer-data-[state=checked]:border-primary">
+                                        <Truck className="mb-1 h-4 w-4" /> <span className="text-sm">Entrega</span>
+                                    </Label>
+                                </div>
+                            </RadioGroup>
+                        </div>
+
                         {deliveryType === "delivery" && (
-                            <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                            <div className="space-y-3 animate-in fade-in">
                                 <div className="flex justify-between items-center">
-                                    <Label className="text-base font-semibold">Endereço de Entrega</Label>
+                                    <Label className="text-sm font-semibold">Endereço de Entrega</Label>
                                     <Button variant="link" size="sm" className="h-auto p-0" onClick={() => { navigate("/minha-conta"); setIsSheetOpen(false); }}>Gerenciar</Button>
                                 </div>
                                 {isLoadingAddresses ? <Loader2 className="animate-spin" /> : 
                                     (!addresses || addresses.length === 0) ? 
-                                    <div className="text-sm text-muted-foreground border border-dashed p-4 rounded-md text-center">Nenhum endereço cadastrado. <br/><Link to="/minha-conta" className="text-primary underline" onClick={() => setIsSheetOpen(false)}>Cadastrar agora</Link></div> :
+                                    <div className="text-sm text-muted-foreground border border-dashed p-4 rounded-md text-center">Nenhum endereço. <br/><Link to="/minha-conta" className="text-primary underline" onClick={() => setIsSheetOpen(false)}>Cadastrar</Link></div> :
                                     <RadioGroup value={selectedAddressId} onValueChange={handleAddressChange}>
                                         {addresses.map(addr => (
-                                            <div key={addr.id} className="flex items-start space-x-2 border p-3 rounded-md">
+                                            <div key={addr.id} className="flex items-start space-x-2 border p-2 rounded-md">
                                                 <RadioGroupItem value={addr.id} id={addr.id} className="mt-1" />
-                                                <Label htmlFor={addr.id} className="cursor-pointer w-full">
+                                                <Label htmlFor={addr.id} className="cursor-pointer w-full text-sm">
                                                     <span className="font-bold block">{addr.name}</span>
-                                                    <span className="text-xs text-muted-foreground block">{addr.street}, {addr.number}</span>
-                                                    <span className="text-xs text-muted-foreground block">{addr.city} - {addr.cep}</span>
+                                                    <span className="text-muted-foreground block">{addr.street}, {addr.number}</span>
                                                 </Label>
                                             </div>
                                         ))}
@@ -348,24 +380,44 @@ export const CartDrawer = () => {
                             </div>
                         )}
 
-                        {/* 4. PAGAMENTO */}
-                        <div className="space-y-3">
-                            <Label className="text-base font-semibold">Pagamento</Label>
-                            <Select onValueChange={(v: any) => setPaymentMethod(v)} defaultValue="credit_card">
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="credit_card">Cartão de Crédito/Débito</SelectItem>
-                                    <SelectItem value="pix">Pix</SelectItem>
-                                    <SelectItem value="cash">Dinheiro</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            {paymentMethod === 'cash' && (
-                                <div className="mt-2">
-                                    <Label className="text-xs">Troco para quanto?</Label>
-                                    <Input placeholder="R$ 0,00" onChange={(e) => setChangeFor(e.target.value)} />
-                                </div>
-                            )}
-                        </div>
+                        {/* SE FOR WHATSAPP: MOSTRA OPÇÕES DE PGTO MANUAL */}
+                        {paymentMode === 'whatsapp' && (
+                            <div className="space-y-3 animate-in fade-in">
+                                <Label className="text-base font-semibold">Forma de Pagamento</Label>
+                                <Select onValueChange={(v: any) => setPaymentMethod(v)} defaultValue="credit_card">
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="credit_card">Cartão (Maquininha)</SelectItem>
+                                        <SelectItem value="pix">Pix (Chave no WhatsApp)</SelectItem>
+                                        <SelectItem value="cash">Dinheiro</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {paymentMethod === 'cash' && (
+                                    <div className="mt-2">
+                                        <Label className="text-xs">Troco para quanto?</Label>
+                                        <Input placeholder="R$ 0,00" onChange={(e) => setChangeFor(e.target.value)} />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SE FOR ONLINE: RENDERIZA STRIPE SE TIVER LOJA SELECIONADA */}
+                        {paymentMode === 'stripe' && selectedStore && selectedStore.stripe_enabled && selectedStore.stripe_public_key && (
+                            <StripeCheckout 
+                                amount={finalTotal} 
+                                storeId={selectedStoreId} 
+                                storePublicKey={selectedStore.stripe_public_key}
+                                onCancel={() => setPaymentMode('whatsapp')}
+                                onSuccess={() => handleFinishOrder(true)}
+                            />
+                        )}
+
+                        {/* SE FOR ONLINE MAS SEM LOJA OU CHAVE */}
+                        {paymentMode === 'stripe' && selectedStore && !selectedStore.stripe_enabled && (
+                             <div className="p-4 bg-amber-100 text-amber-800 rounded-md text-sm">
+                                 Esta loja não aceita pagamento online no momento. Por favor, escolha "Negociar no WhatsApp".
+                             </div>
+                        )}
                     </div>
                 )}
 
@@ -408,7 +460,8 @@ export const CartDrawer = () => {
                         ) : (
                             <SheetClose asChild><Button variant="outline" className="w-full">Continuar comprando</Button></SheetClose>
                         )
-                    ) : step === "stores" && (
+                    ) : step === "checkout" && paymentMode === 'whatsapp' && (
+                        // Botão "Enviar Zap" só aparece se não for pagamento online (que tem seu próprio botão no StripeCheckout)
                          <>
                             <div className="space-y-1">
                                 {deliveryType === "delivery" && shippingQuote && (
@@ -419,12 +472,12 @@ export const CartDrawer = () => {
                                 )}
                                 <div className="flex justify-between items-center">
                                     <span className="text-base text-muted-foreground">Total Final:</span> 
-                                    <span className="text-xl font-bold text-primary">{formatCurrency(totalPrice)}</span>
+                                    <span className="text-xl font-bold text-primary">{formatCurrency(finalTotal)}</span>
                                 </div>
                             </div>
-                            <Button size="lg" className="w-full" onClick={handleFinishOrder} disabled={isSavingOrder}>
+                            <Button size="lg" className="w-full bg-green-600 hover:bg-green-700" onClick={() => handleFinishOrder(false)} disabled={isSavingOrder}>
                                 {isSavingOrder ? <Loader2 className="animate-spin mr-2" /> : <ShoppingCart className="mr-2 h-5 w-5" />}
-                                Enviar Pedido no WhatsApp
+                                Finalizar no WhatsApp
                             </Button>
                          </>
                     )}

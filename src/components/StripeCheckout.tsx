@@ -8,20 +8,15 @@ import {
     useElements,
 } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
-import { Loader2, Lock } from "lucide-react";
+import { Loader2, Lock, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { createPaymentIntent } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 
-// OBS: Em produção, você usaria sua chave pública principal ou buscaria do banco se for multi-tenant real no front.
-// Para o MVP white-label, podemos usar uma chave pública genérica ou passar via props se já tiver carregado a loja.
-// Mas o ideal é carregar o stripePromise dinamicamente com a chave pública da loja.
-// Para simplificar este passo, vamos assumir que passamos a chave pública da loja selecionada.
-
 interface StripeCheckoutProps {
     amount: number; // Em centavos
     storeId: string;
-    storePublicKey: string; // A chave pública da loja selecionada
+    storePublicKey: string;
     onSuccess: (paymentIntentId: string) => void;
     onCancel: () => void;
 }
@@ -47,35 +42,42 @@ const CheckoutForm = ({
 
         setIsProcessing(true);
 
-        const { error, paymentIntent } = await stripe.confirmPayment({
-            elements,
-            confirmParams: {
-                // Em caso de redirecionamento (ex: 3DSecure), para onde voltar?
-                return_url: window.location.href,
-            },
-            redirect: "if_required", // Tenta não redirecionar se não precisar
-        });
+        try {
+            const { error, paymentIntent } = await stripe.confirmPayment({
+                elements,
+                confirmParams: {
+                    return_url: window.location.origin, // Retorna pra home em caso de redirect
+                },
+                redirect: "if_required",
+            });
 
-        if (error) {
-            toast({
-                variant: "destructive",
-                title: "Erro no pagamento",
-                description: error.message,
-            });
-            setIsProcessing(false);
-        } else if (paymentIntent && paymentIntent.status === "succeeded") {
-            toast({
-                title: "Pagamento Aprovado!",
-                description: "Seu pedido foi confirmado.",
-            });
-            onSuccess(paymentIntent.id);
-        } else {
+            if (error) {
+                toast({
+                    variant: "destructive",
+                    title: "Erro no pagamento",
+                    description: error.message,
+                });
+                setIsProcessing(false);
+            } else if (paymentIntent && paymentIntent.status === "succeeded") {
+                onSuccess(paymentIntent.id);
+            } else {
+                setIsProcessing(false);
+            }
+        } catch (e) {
+            console.error(e);
             setIsProcessing(false);
         }
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-6 p-1">
+        <form
+            onSubmit={handleSubmit}
+            className="space-y-4 p-4 border rounded-lg bg-white mt-4 shadow-sm animate-in fade-in"
+        >
+            <div className="flex items-center gap-2 text-sm font-medium mb-2 text-blue-600">
+                <CreditCard className="h-4 w-4" /> Pagamento Seguro
+            </div>
+
             <PaymentElement />
 
             <div className="flex gap-3 pt-4">
@@ -90,22 +92,17 @@ const CheckoutForm = ({
                 </Button>
                 <Button
                     type="submit"
-                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                     disabled={isProcessing || !stripe}
                 >
                     {isProcessing ? (
-                        <Loader2 className="animate-spin mr-2" />
+                        <Loader2 className="animate-spin mr-2 h-4 w-4" />
                     ) : (
                         <Lock className="mr-2 h-4 w-4" />
                     )}
-                    Pagar {formatCurrency(amount / 100)}
+                    Pagar {formatCurrency(amount)}
                 </Button>
             </div>
-
-            <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-1">
-                <Lock className="h-3 w-3" /> Pagamento processado de forma
-                segura pelo Stripe.
-            </p>
         </form>
     );
 };
@@ -117,16 +114,18 @@ export const StripeCheckout = ({
     onSuccess,
     onCancel,
 }: StripeCheckoutProps) => {
-    const [clientSecret, setClientSecret] = useState<string | null>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [stripePromise, setStripePromise] = useState<any>(null);
+    const [clientSecret, setClientSecret] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        // 1. Carrega o Stripe com a chave pública da loja
         if (storePublicKey) {
             setStripePromise(loadStripe(storePublicKey));
         }
+    }, [storePublicKey]);
 
-        // 2. Pede ao backend (Edge Function) para criar a intenção
+    useEffect(() => {
         const initPayment = async () => {
             try {
                 const { clientSecret } = await createPaymentIntent(
@@ -134,16 +133,29 @@ export const StripeCheckout = ({
                     storeId
                 );
                 setClientSecret(clientSecret);
-            } catch (error) {
-                console.error(error);
+            } catch (err: any) {
+                console.error("Erro ao iniciar pagamento:", err);
+                setError(
+                    "Não foi possível iniciar o pagamento. Verifique as configurações da loja."
+                );
             }
         };
-        initPayment();
-    }, [amount, storeId, storePublicKey]);
+
+        if (amount > 0 && storeId) {
+            initPayment();
+        }
+    }, [amount, storeId]);
+
+    if (error)
+        return (
+            <div className="text-destructive text-sm p-4 border border-destructive/20 rounded-md bg-destructive/10">
+                {error}
+            </div>
+        );
 
     if (!clientSecret || !stripePromise) {
         return (
-            <div className="flex justify-center py-10">
+            <div className="flex justify-center py-8">
                 <Loader2 className="animate-spin h-8 w-8 text-primary" />
             </div>
         );
