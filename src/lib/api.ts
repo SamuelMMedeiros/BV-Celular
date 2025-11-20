@@ -1,16 +1,13 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-//
-// === CÓDIGO COMPLETO PARA: src/lib/api.ts ===
-//
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
 // Importamos os tipos de @/types
 import { 
-    Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, Coupon, Address,
+    Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, Coupon, Address, ShippingQuote, Driver,
     ProductInsertPayload, ProductUpdatePayload, StoreInsertPayload, StoreUpdatePayload,
     EmployeeInsertPayload, EmployeeUpdatePayload, CustomerUpdatePayload, OrderInsertPayload,
-    BannerInsertPayload, BannerUpdatePayload, CouponInsertPayload, WarrantyInsertPayload, AddressInsertPayload
+    BannerInsertPayload, BannerUpdatePayload, CouponInsertPayload, CouponUpdatePayload, WarrantyInsertPayload, AddressInsertPayload, DriverInsertPayload
 } from "@/types";
 // Importamos o Database para uso nas funções de retorno
 import { Database } from "@/integrations/supabase/types";
@@ -42,7 +39,7 @@ export const fetchProducts = async (params: { q?: string; category?: 'aparelho' 
   let query = supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -76,7 +73,7 @@ export const fetchPromotions = async (params: { q?: string; isPromotion?: boolea
   let query = supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -105,13 +102,11 @@ export const fetchPromotions = async (params: { q?: string; isPromotion?: boolea
 };
 
 export const fetchAllProducts = async (): Promise<Product[]> => {
-  console.log("Iniciando fetchAllProducts..."); 
-  
   try {
     let query = supabase
       .from('Products')
       .select(`
-        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
+        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
         ProductStores (
           Stores (
             id, name, whatsapp, city
@@ -122,15 +117,8 @@ export const fetchAllProducts = async (): Promise<Product[]> => {
 
     const { data: rawProducts, error } = await query;
     
-    if (error) {
-      console.error("Erro no fetchAllProducts (Supabase):", error); 
-      throw new Error(error.message);
-    }
-    
-    if (!rawProducts) {
-        console.warn("fetchAllProducts retornou dados vazios/nulos.");
-        return [];
-    }
+    if (error) throw new Error(error.message);
+    if (!rawProducts) return [];
 
     const products = rawProducts.map(product => {
       const productStores = product.ProductStores || [];
@@ -147,7 +135,6 @@ export const fetchAllProducts = async (): Promise<Product[]> => {
       } as unknown as Product;
     });
     
-    console.log("fetchAllProducts sucesso. Itens:", products.length); 
     return products;
     
   } catch (e) {
@@ -160,7 +147,7 @@ export const fetchProductById = async (productId: string): Promise<Product> => {
   let { data: rawProduct, error } = await supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -184,6 +171,32 @@ export const fetchProductById = async (productId: string): Promise<Product> => {
     images: parseArrayData(rawProduct.images),
   } as unknown as Product;
   return product;
+};
+
+// Função nova para buscar produtos relacionados
+export const fetchRelatedProducts = async (category: string, currentProductId: string): Promise<Product[]> => {
+  const { data, error } = await supabase
+    .from('Products')
+    .select(`
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
+      ProductStores (
+        Stores (
+          id, name, whatsapp, city
+        )
+      )
+    `)
+    .eq('category', category)
+    .neq('id', currentProductId) 
+    .limit(4); 
+
+  if (error) throw new Error(error.message);
+
+  return data.map((p: any) => ({
+      ...p, 
+      stores: p.ProductStores.map((ps: any) => ps.Stores), 
+      colors: parseArrayData(p.colors), 
+      images: parseArrayData(p.images)
+  })) as Product[];
 };
 
 const getFileNameFromUrl = (url: string): string => {
@@ -218,6 +231,7 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
       imageUrls.push(publicUrlData.publicUrl);
     }
   }
+  
   // @ts-ignore
   const productData = {
     name: payload.name,
@@ -230,7 +244,9 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
     isPromotion: payload.isPromotion,
     category: payload.category,
     brand: payload.brand,
+    subcategory: payload.subcategory,
     promotion_end_date: payload.promotion_end_date, 
+    quantity: payload.quantity || 0,
     images: imageUrls,
   };
 
@@ -307,7 +323,9 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     isPromotion: payload.isPromotion,
     category: payload.category,
     brand: payload.brand,
+    subcategory: payload.subcategory,
     promotion_end_date: payload.promotion_end_date, 
+    quantity: payload.quantity,
     images: finalImageUrls,
   };
 
@@ -379,7 +397,6 @@ export const createStore = async (payload: StoreInsertPayload) => {
 };
 export const updateStore = async (payload: StoreUpdatePayload) => {
   const { id, ...updateData } = payload;
-  if (!id) throw new Error("ID da loja é obrigatório para atualizar.");
   const { error } = await supabase
     .from('Stores')
     .update(updateData)
@@ -470,6 +487,41 @@ export const deleteEmployee = async (employeeId: string) => {
     .delete()
     .eq('id', employeeId);
   if (error) throw new Error(error.message);
+};
+
+// ==================================================================
+// FUNÇÕES DE API (ENTREGADORES)
+// ==================================================================
+
+export const fetchDrivers = async (): Promise<Driver[]> => {
+    const { data, error } = await supabase
+        .from('Drivers')
+        .select('*')
+        .order('name');
+    if (error) throw new Error(error.message);
+    return data as Driver[];
+};
+
+export const fetchDriverProfile = async (): Promise<Driver | null> => {
+    // @ts-ignore
+    const { data, error } = await supabase.rpc('get_driver_profile');
+    if (error || !data) return null;
+    return data as unknown as Driver;
+};
+
+export const createDriver = async (payload: DriverInsertPayload): Promise<void> => {
+    const { error } = await supabase
+        .from('Drivers')
+        .insert({
+            id: uuidv4(),
+            ...payload
+        });
+    if (error) throw new Error(error.message);
+};
+
+export const deleteDriver = async (id: string): Promise<void> => {
+    const { error } = await supabase.from('Drivers').delete().eq('id', id);
+    if (error) throw new Error(error.message);
 };
 
 // ==================================================================
@@ -596,6 +648,25 @@ export const fetchAddressByCEP = async (cep: string): Promise<Partial<Address> |
     }
 };
 
+export const calculateFreight = async (cep: string): Promise<ShippingQuote> => {
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length !== 8) throw new Error("CEP Inválido");
+
+    const address = await fetchAddressByCEP(cleanCep);
+    if (!address) throw new Error("CEP não encontrado");
+
+    const state = address.state;
+    
+    // Simulação de frete
+    if (state === 'MG') {
+        return { price: 1500, days: 3, type: 'SEDEX (Local)' };
+    } else if (['SP', 'RJ', 'ES'].includes(state)) {
+        return { price: 2500, days: 5, type: 'PAC' };
+    } else {
+        return { price: 4500, days: 10, type: 'PAC' };
+    }
+};
+
 export const fetchClientAddresses = async (clientId: string): Promise<Address[]> => {
     const { data, error } = await supabase
         .from('Addresses')
@@ -643,7 +714,7 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
     change_for: payload.change_for
   };
 
-  // CORREÇÃO 2353: Usamos 'as any' para o payload de inserção
+  // @ts-ignore: Contorna erro de tipo até update
   const { data, error } = await supabase
     .from('Orders')
     .insert(orderData as any) 
@@ -655,6 +726,18 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
     throw new Error(error.message);
   }
 
+  // --- BAIXA DE ESTOQUE AUTOMÁTICA ---
+  for (const item of payload.items) {
+    try {
+        await supabase.rpc('decrement_stock', { 
+            product_id: item.id, 
+            amount: item.quantity 
+        });
+    } catch (stockError) {
+        console.error("Erro ao baixar estoque do item:", item.name, stockError);
+    }
+  }
+
   return data;
 };
 
@@ -664,12 +747,16 @@ export const fetchAllOrders = async (): Promise<Order[]> => {
     .select(`
       *,
       Clients ( name, phone, email ),
-      Stores ( name, city ),
-      Employees ( name ) 
+      Stores ( name, city, address, cnpj ), 
+      Employees ( name ),
+      Addresses ( * )
     `)
     .order('created_at', { ascending: false });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error("Erro fetchAllOrders:", error);
+    throw new Error(error.message);
+  }
   // @ts-ignore
   return data as unknown as Order[];
 };
@@ -741,13 +828,13 @@ export const toggleFavorite = async (clientId: string, productId: string): Promi
 };
 
 export const fetchClientFavorites = async (clientId: string): Promise<Product[]> => {
-  // @ts-ignore: Ignora erro de profundidade de tipo
+  // @ts-ignore: Ignora erro de profundidade de tipo temporariamente
   const { data, error } = await (supabase
     .from('Favorites')
     .select(`
       product_id,
       Products (
-        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
+        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
         ProductStores ( Stores ( id, name, whatsapp, city ) )
       )
     `)
@@ -935,6 +1022,22 @@ export const createCoupon = async (payload: CouponInsertPayload): Promise<void> 
     if (error) throw new Error(error.message);
 };
 
+export const updateCoupon = async (payload: CouponUpdatePayload): Promise<void> => {
+    const { id, ...updateData } = payload;
+    const updatePayload = {
+        ...updateData,
+        code: updateData.code?.toUpperCase(),
+        valid_until: updateData.valid_until ? updateData.valid_until.toISOString() : null
+    };
+    
+    const { error } = await supabase
+        .from('Coupons')
+        .update(updatePayload)
+        .eq('id', id);
+
+    if (error) throw new Error(error.message);
+};
+
 export const deleteCoupon = async (id: string): Promise<void> => {
     const { error } = await supabase
         .from('Coupons')
@@ -983,4 +1086,20 @@ export const createCouponUsage = async (clientId: string, couponId: string): Pro
     if (error) {
         console.error("Erro ao registrar uso do cupom:", error);
     }
+};
+
+// ==================================================================
+// FUNÇÕES DE PAGAMENTO (STRIPE)
+// ==================================================================
+
+export const createPaymentIntent = async (amount: number, storeId: string): Promise<string> => {
+  // Chama a Edge Function que criei
+  const { data, error } = await supabase.functions.invoke('create-payment-intent', {
+    body: { amount, storeId }
+  });
+
+  if (error) throw new Error(error.message);
+  if (data.error) throw new Error(data.error);
+
+  return data.clientSecret; // Retorna o segredo para o componente do Stripe
 };

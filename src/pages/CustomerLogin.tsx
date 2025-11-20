@@ -1,33 +1,86 @@
+import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { Navbar } from "@/components/Navbar";
 import { CustomerAuthForm } from "@/components/CustomerAuthForm";
-import { Card, CardContent } from "@/components/ui/card";
-import { Smartphone } from "lucide-react";
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { fetchEmployeeProfile } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 
 const CustomerLogin = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { isLoggedIn, isLoadingSession } = useCustomerAuth();
 
-    // 1. Tenta pegar a página anterior (de onde o usuário veio, ex: o carrinho)
-    // Se não houver, o padrão é a página inicial "/"
-    const from = location.state?.from?.pathname || "/";
+    // Pega a rota de origem, mas com segurança
+    const from = location.state?.from?.pathname;
 
-    // 2. Função de sucesso que redireciona o usuário de volta
-    const handleLoginSuccess = () => {
-        navigate(from, { replace: true });
-    };
+    useEffect(() => {
+        const checkRedirect = async () => {
+            if (!isLoadingSession && isLoggedIn) {
+                const {
+                    data: { session },
+                } = await supabase.auth.getSession();
+
+                if (session?.user) {
+                    try {
+                        // Busca perfil administrativo/entregador
+                        const employee = await fetchEmployeeProfile(
+                            session.user.id
+                        );
+
+                        if (employee?.is_driver) {
+                            navigate("/entregador", { replace: true });
+                            return;
+                        }
+
+                        if (employee) {
+                            navigate("/admin", { replace: true });
+                            return;
+                        }
+                    } catch (e) {
+                        console.error("Erro ao verificar perfil:", e);
+                    }
+                }
+
+                // SEGURO CONTRA LOOP:
+                // Se tentou acessar /entregador ou /admin mas a verificação acima falhou (employee é null),
+                // FORÇAMOS o redirecionamento para a Home (/) para não ficar num loop infinito de login.
+                if (from === "/entregador" || from?.startsWith("/admin")) {
+                    navigate("/", { replace: true });
+                } else {
+                    navigate(from || "/", { replace: true });
+                }
+            }
+        };
+
+        checkRedirect();
+    }, [isLoggedIn, isLoadingSession, navigate, from]);
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gradient-hero p-4">
-            <Card className="w-full max-w-md p-6">
-                <CardContent className="p-0">
-                    <div className="flex justify-center mb-6">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-primary">
-                            <Smartphone className="h-6 w-6 text-primary-foreground" />
-                        </div>
-                    </div>
-                    <CustomerAuthForm onSuccess={handleLoginSuccess} />
-                </CardContent>
-            </Card>
+        <div className="min-h-screen bg-background flex flex-col">
+            <Navbar />
+            <div className="flex-1 flex items-center justify-center p-4">
+                <Card className="w-full max-w-md">
+                    <CardHeader className="text-center">
+                        <CardTitle className="text-2xl">
+                            Acesso Restrito
+                        </CardTitle>
+                        <CardDescription>
+                            Faça login para continuar.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <CustomerAuthForm />
+                    </CardContent>
+                </Card>
+            </div>
         </div>
     );
 };

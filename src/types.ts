@@ -1,4 +1,6 @@
-
+//
+// === CÓDIGO COMPLETO PARA: src/types.ts ===
+//
 import { Database } from "@/integrations/supabase/types";
 
 // --- ENTIDADES ---
@@ -10,12 +12,18 @@ export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'col
   category: 'aparelho' | 'acessorio'; 
   brand?: string | null;
   promotion_end_date?: string | null;
+  quantity?: number;
 };
 
 export type Store = Database['public']['Tables']['Stores']['Row'] & {
     address?: string | null;
+    cnpj?: string | null; 
     delivery_fixed_fee?: number;
     free_shipping_min_value?: number;
+    // Novos campos Stripe
+    stripe_public_key?: string | null;
+    stripe_secret_key?: string | null;
+    stripe_enabled?: boolean;
 };
 
 export type Employee = Omit<Database['public']['Tables']['Employees']['Row'], 'store_id'> & {
@@ -24,6 +32,15 @@ export type Employee = Omit<Database['public']['Tables']['Employees']['Row'], 's
   can_create?: boolean;
   can_update?: boolean;
   can_delete?: boolean;
+};
+
+export type Driver = {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    active: boolean;
+    created_at?: string;
 };
 
 export type CustomerProfile = {
@@ -53,6 +70,7 @@ export type CartItem = {
   images: string[];
   quantity: number;
   category: 'aparelho' | 'acessorio'; 
+  isPromotion?: boolean;
 };
 
 export type OrderCartItem = {
@@ -78,9 +96,15 @@ export type Order = {
   payment_method?: string;
   change_for?: number;
   Clients?: { name: string; phone: string; email: string; } | null;
-  Stores?: { name: string; city: string | null; } | null;
+  Stores?: { name: string; city: string | null; address?: string | null; cnpj?: string | null; } | null;
   Employees?: { name: string; } | null;
   Addresses?: Address | null;
+};
+
+export type ShippingQuote = {
+    price: number;
+    days: number;
+    type: string;
 };
 
 export type Banner = {
@@ -118,15 +142,18 @@ export type Coupon = {
     created_at?: string;
     valid_until?: string | null;
     min_purchase_value?: number;
+    valid_for_categories?: string[]; 
+    allow_with_promotion?: boolean;  
 };
 
-// --- PAYLOADS (Tipos para Inserção/Atualização) ---
+// --- PAYLOADS ---
 
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
   store_ids?: string[]; 
   image_files?: File[];
   brand?: string;
   promotion_end_date?: string | null;
+  quantity?: number;
 };
 
 export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
@@ -135,14 +162,30 @@ export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
   images_to_delete?: string[];
 };
 
-export type StoreInsertPayload = Database['public']['Tables']['Stores']['Insert'];
+export type StoreInsertPayload = Database['public']['Tables']['Stores']['Insert'] & {
+    cnpj?: string; 
+    stripe_public_key?: string;
+    stripe_secret_key?: string;
+    stripe_enabled?: boolean;
+};
+
 export type StoreUpdatePayload = Database['public']['Tables']['Stores']['Update'] & {
   id: string;
+  cnpj?: string;
+  stripe_public_key?: string;
+  stripe_secret_key?: string;
+  stripe_enabled?: boolean;
 };
 
 export type EmployeeInsertPayload = Database['public']['Tables']['Employees']['Insert'];
 export type EmployeeUpdatePayload = Database['public']['Tables']['Employees']['Update'] & {
   id: string;
+};
+
+export type DriverInsertPayload = {
+    name: string;
+    email: string;
+    phone: string;
 };
 
 export type CustomerUpdatePayload = {
@@ -184,6 +227,12 @@ export type CouponInsertPayload = {
     active?: boolean;
     valid_until?: Date | null;
     min_purchase_value?: number;
+    valid_for_categories?: string[]; 
+    allow_with_promotion?: boolean;  
+};
+
+export type CouponUpdatePayload = Partial<CouponInsertPayload> & {
+    id: string;
 };
 
 export type BannerInsertPayload = {

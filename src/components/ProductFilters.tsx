@@ -8,12 +8,6 @@ import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/lib/utils";
 import { X } from "lucide-react";
 
-interface FilterState {
-    priceRange: [number, number];
-    selectedBrands: string[];
-    selectedColors: string[];
-}
-
 interface ProductFiltersProps {
     products: Product[];
     onFilterChange: (filteredProducts: Product[]) => void;
@@ -29,13 +23,14 @@ export const ProductFilters = ({
     isMobileOpen,
     onMobileClose,
 }: ProductFiltersProps) => {
-    // 1. Analisar os dados disponíveis (Marcas, Cores, Preços)
+    // 1. Analisar os dados disponíveis para criar opções dinâmicas
     const options = useMemo(() => {
+        // Extrai marcas únicas
         const brands = Array.from(
             new Set(products.map((p) => p.brand).filter(Boolean) as string[])
         ).sort();
 
-        // Cores podem vir como array ou string, normalizamos
+        // Extrai cores únicas (normalizando strings e arrays)
         const colors = Array.from(
             new Set(
                 products
@@ -51,41 +46,44 @@ export const ProductFilters = ({
             )
         ).sort();
 
+        // Define range de preços real
         const prices = products.map((p) => p.price);
         const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
-        const maxPrice = prices.length > 0 ? Math.max(...prices) : 1000000; // 10k default
+        const maxPrice = prices.length > 0 ? Math.max(...prices) : 1000000;
 
         return { brands, colors, minPrice, maxPrice };
     }, [products]);
 
     // Estados dos Filtros
+    // Inicializa com o range total detectado
     const [priceRange, setPriceRange] = useState<[number, number]>([
         0, 1000000,
     ]);
     const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
     const [selectedColors, setSelectedColors] = useState<string[]>([]);
 
-    // Inicializa o range de preço com os valores reais quando carregarem
+    // Atualiza o slider quando os dados carregam
     useEffect(() => {
         if (options.maxPrice > 0) {
+            // Se o range atual for o padrão ou maior que o novo max, ajusta
             setPriceRange([options.minPrice, options.maxPrice]);
         }
     }, [options.minPrice, options.maxPrice]);
 
-    // Aplica os filtros sempre que o estado mudar
+    // Lógica de Filtragem
     useEffect(() => {
         const filtered = products.filter((product) => {
-            // Filtro de Preço
+            // 1. Preço
             if (product.price < priceRange[0] || product.price > priceRange[1])
                 return false;
 
-            // Filtro de Marca
+            // 2. Marca (se houver seleção)
             if (selectedBrands.length > 0) {
                 if (!product.brand || !selectedBrands.includes(product.brand))
                     return false;
             }
 
-            // Filtro de Cor
+            // 3. Cor (se houver seleção)
             if (selectedColors.length > 0) {
                 const productColors = Array.isArray(product.colors)
                     ? product.colors
@@ -93,14 +91,16 @@ export const ProductFilters = ({
                 const hasColor = productColors.some((c) =>
                     selectedColors.includes(c)
                 );
-                if (!hasColor) return false;
+                // Se o produto não tem cor definida, não mostramos se o filtro de cor estiver ativo
+                if (!hasColor && productColors.length > 0) return false;
             }
 
             return true;
         });
 
         onFilterChange(filtered);
-    }, [priceRange, selectedBrands, selectedColors, products]); // Remove onFilterChange da dependência para evitar loop se não for memoizado
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [priceRange, selectedBrands, selectedColors, products]);
 
     const toggleBrand = (brand: string) => {
         setSelectedBrands((prev) =>
@@ -124,10 +124,9 @@ export const ProductFilters = ({
         setSelectedColors([]);
     };
 
-    // Renderização da Interface
     return (
         <div
-            className={`bg-background p-6 border-r h-full overflow-y-auto ${className} ${
+            className={`bg-background p-6 border-r h-full overflow-y-auto scrollbar-thin ${className} ${
                 isMobileOpen
                     ? "fixed inset-0 z-50 w-full md:w-auto md:static md:block"
                     : "hidden md:block"
@@ -148,22 +147,21 @@ export const ProductFilters = ({
                 <div className="flex justify-between items-center">
                     <h3 className="font-semibold text-lg">Filtrar por</h3>
                     {(selectedBrands.length > 0 ||
-                        selectedColors.length > 0 ||
-                        priceRange[0] > options.minPrice ||
-                        priceRange[1] < options.maxPrice) && (
+                        selectedColors.length > 0) && (
                         <Button
                             variant="link"
-                            className="h-auto p-0 text-xs"
+                            className="h-auto p-0 text-xs text-destructive"
                             onClick={clearFilters}
                         >
-                            Limpar
+                            Limpar tudo
                         </Button>
                     )}
                 </div>
 
-                {/* FILTRO DE PREÇO */}
+                {/* FILTRO DE PREÇO (Slider Duplo) */}
                 <div className="space-y-4">
                     <h4 className="font-medium text-sm">Faixa de Preço</h4>
+                    {/* Slider aceita array [min, max] para renderizar duas bolinhas */}
                     <Slider
                         value={priceRange}
                         min={options.minPrice}
@@ -186,7 +184,7 @@ export const ProductFilters = ({
                 {options.brands.length > 0 && (
                     <div className="space-y-4">
                         <h4 className="font-medium text-sm">Marcas</h4>
-                        <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
+                        <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2">
                             {options.brands.map((brand) => (
                                 <div
                                     key={brand}
@@ -201,7 +199,7 @@ export const ProductFilters = ({
                                     />
                                     <Label
                                         htmlFor={`brand-${brand}`}
-                                        className="text-sm cursor-pointer leading-none"
+                                        className="text-sm cursor-pointer leading-none font-normal"
                                     >
                                         {brand}
                                     </Label>
@@ -211,7 +209,9 @@ export const ProductFilters = ({
                     </div>
                 )}
 
-                {options.brands.length > 0 && <Separator />}
+                {options.brands.length > 0 && options.colors.length > 0 && (
+                    <Separator />
+                )}
 
                 {/* FILTRO DE COR (Dinâmico) */}
                 {options.colors.length > 0 && (
@@ -230,12 +230,15 @@ export const ProductFilters = ({
                                             toggleColor(color)
                                         }
                                     />
-                                    <Label
-                                        htmlFor={`color-${color}`}
-                                        className="text-sm cursor-pointer leading-none capitalize"
-                                    >
-                                        {color}
-                                    </Label>
+                                    <div className="flex items-center gap-2 cursor-pointer">
+                                        {/* Pequena bolinha de cor se possível, ou apenas texto */}
+                                        <Label
+                                            htmlFor={`color-${color}`}
+                                            className="text-sm leading-none font-normal capitalize"
+                                        >
+                                            {color}
+                                        </Label>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -245,7 +248,11 @@ export const ProductFilters = ({
                 {/* Botão Aplicar Mobile */}
                 {isMobileOpen && (
                     <div className="pt-4 md:hidden">
-                        <Button className="w-full" onClick={onMobileClose}>
+                        <Button
+                            className="w-full"
+                            size="lg"
+                            onClick={onMobileClose}
+                        >
                             Ver Resultados
                         </Button>
                     </div>

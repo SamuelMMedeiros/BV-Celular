@@ -13,10 +13,7 @@ import {
     X,
     Ticket,
     Trash2,
-    Truck,
-    MapPin,
-    CreditCard,
-    Banknote
+    Truck // Importado
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,7 +52,7 @@ export const CartDrawer = () => {
     const {
         cartItems,
         itemCount,
-        totalPrice, // Preço dos produtos com desconto do cupom
+        totalPrice,
         subtotal,
         discountAmount,
         coupon,
@@ -64,6 +61,10 @@ export const CartDrawer = () => {
         removeFromCart,
         updateQuantity,
         clearCart,
+        // Novos do Frete
+        shippingQuote,
+        calculateShipping,
+        clearShipping
     } = useCart();
     
     const { isLoggedIn, profile } = useCustomerAuth();
@@ -71,11 +72,14 @@ export const CartDrawer = () => {
     const location = useLocation();
     const { toast } = useToast();
     const couponInputRef = useRef<HTMLInputElement>(null);
+    const cepInputRef = useRef<HTMLInputElement>(null); // Ref para o CEP
 
     const [isSheetOpen, setIsSheetOpen] = useState(false);
-    const [step, setStep] = useState<"cart" | "auth" | "checkout">("cart");
+    const [step, setStep] = useState<"cart" | "stores" | "auth">("cart");
+    const [isStoreSelectOpen, setIsStoreSelectOpen] = useState(false);
     const [isSavingOrder, setIsSavingOrder] = useState(false);
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+    const [isCalculatingFreight, setIsCalculatingFreight] = useState(false);
 
     // Estados do Checkout
     const [deliveryType, setDeliveryType] = useState<"pickup" | "delivery">("pickup");
@@ -86,26 +90,33 @@ export const CartDrawer = () => {
 
     if (location.pathname.startsWith('/admin')) return null;
 
-    // Queries
     const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
         queryKey: ["allStores"],
         queryFn: fetchStores,
-        enabled: isSheetOpen && step === "checkout",
+        enabled: isSheetOpen && step === "stores",
     });
 
     const { data: addresses, isLoading: isLoadingAddresses } = useQuery<Address[]>({
         queryKey: ["checkoutAddresses", profile?.id],
         queryFn: () => fetchClientAddresses(profile!.id),
-        enabled: isSheetOpen && step === "checkout" && isLoggedIn && !!profile?.id,
+        enabled: isSheetOpen && step === "stores" && isLoggedIn && !!profile?.id,
     });
 
-    // Cálculos Finais
-    const selectedStore = stores?.find(s => s.id === selectedStoreId);
-    const deliveryFee = (deliveryType === "delivery" && selectedStore) ? (selectedStore.delivery_fixed_fee || 0) * 100 : 0; // Em centavos
-    // Regra de Frete Grátis (se existir)
-    const finalDeliveryFee = (selectedStore?.free_shipping_min_value && subtotal >= selectedStore.free_shipping_min_value * 100) ? 0 : deliveryFee;
-    
-    const finalTotal = totalPrice + finalDeliveryFee;
+    // Se mudarmos para entrega, tentamos calcular o frete automaticamente com o endereço selecionado
+    const handleAddressChange = (addrId: string) => {
+        setSelectedAddressId(addrId);
+        const addr = addresses?.find(a => a.id === addrId);
+        if (addr) {
+            handleCalculateFreight(addr.cep);
+        }
+    };
+
+    const handleCalculateFreight = async (cep: string) => {
+        if (!cep) return;
+        setIsCalculatingFreight(true);
+        await calculateShipping(cep);
+        setIsCalculatingFreight(false);
+    };
 
     const handleApplyCoupon = async () => {
         const code = couponInputRef.current?.value;
@@ -119,7 +130,14 @@ export const CartDrawer = () => {
         } 
     };
 
+    const handleSelectStore = async (storeId: string) => {
+        // Lógica antiga movida para handleFinishOrder (para suportar Delivery)
+        // Aqui apenas setamos o estado se for pickup
+        setSelectedStoreId(storeId);
+    };
+
     const handleFinishOrder = async () => {
+        // Validações
         if (deliveryType === "pickup" && !selectedStoreId) {
             toast({ variant: "destructive", title: "Selecione uma loja", description: "Escolha onde retirar o produto." });
             return;
@@ -128,12 +146,14 @@ export const CartDrawer = () => {
             toast({ variant: "destructive", title: "Selecione um endereço", description: "Escolha onde entregar o produto." });
             return;
         }
-        if (deliveryType === "delivery" && !selectedStoreId) {
+        // Para entrega, precisamos definir uma "loja base" ou usar uma padrão.
+        // Vamos assumir que o admin define quem entrega depois, ou o usuário escolhe a loja mais próxima.
+        // Por simplicidade, vamos obrigar a escolher uma loja de origem mesmo na entrega (para o WhatsApp funcionar).
+        if (!selectedStoreId) {
              toast({ variant: "destructive", title: "Selecione a loja de origem", description: "Escolha de qual loja o pedido sairá." });
              return;
         }
 
-        // Dados Finais
         const store = stores?.find(s => s.id === selectedStoreId);
         const address = addresses?.find(a => a.id === selectedAddressId);
 
@@ -160,19 +180,19 @@ export const CartDrawer = () => {
                 const newOrder = await createOrder({
                     client_id: profile.id,
                     store_id: selectedStoreId,
-                    total_price: finalTotal,
+                    total_price: totalPrice, // Já inclui o frete se calculado
                     items: orderItems,
                     employee_id: employeeRef,
                     delivery_type: deliveryType,
                     address_id: deliveryType === "delivery" ? selectedAddressId : null,
-                    delivery_fee: finalDeliveryFee,
+                    delivery_fee: shippingQuote ? shippingQuote.price : 0,
                     payment_method: paymentMethod,
-                    change_for: changeFor ? parseFloat(changeFor) * 100 : undefined // Centavos
+                    change_for: changeFor ? parseFloat(changeFor) * 100 : undefined
                 });
 
                 if (coupon) await createCouponUsage(profile.id, coupon.id);
 
-                // Enviar WhatsApp
+                // WhatsApp
                 const itemsText = cartItems.map(item => `${item.quantity}x ${item.name}`).join('%0A');
                 let msg = `Olá, *${store?.name}*!%0A%0AEu sou *${profile.name}* e gostaria de fazer um pedido (Ref: ${newOrder.id.substring(0, 8)}):%0A%0A`;
                 msg += itemsText + '%0A%0A';
@@ -182,12 +202,13 @@ export const CartDrawer = () => {
                 } else {
                     msg += `🚚 *Entrega* para:%0A${address?.street}, ${address?.number} - ${address?.neighborhood}%0A(${address?.city})%0A`;
                     if (address?.complement) msg += `Comp: ${address.complement}%0A`;
+                    if (shippingQuote) msg += `Frete: ${formatCurrency(shippingQuote.price)} (${shippingQuote.days} dias)`;
                 }
 
                 msg += `%0A💳 Pagamento: ${paymentMethod === 'credit_card' ? 'Cartão' : paymentMethod === 'pix' ? 'Pix' : 'Dinheiro'}`;
                 if (paymentMethod === 'cash' && changeFor) msg += ` (Troco para ${changeFor})`;
 
-                msg += `%0A%0A*Total Final: ${formatCurrency(finalTotal)}*`;
+                msg += `%0A%0A*Total Final: ${formatCurrency(totalPrice)}*`;
 
                 const whatsappUrl = `https://api.whatsapp.com/send?phone=${store?.whatsapp.replace(/\D/g, '')}&text=${msg}`;
                 window.open(whatsappUrl, '_blank');
@@ -209,7 +230,7 @@ export const CartDrawer = () => {
     const handleProceed = () => {
         if (itemCount === 0) return;
         if (!isLoggedIn) setStep("auth");
-        else setStep("checkout");
+        else setStep("stores"); // Agora vai para o passo de checkout/lojas
     };
 
     const renderCartItems = () => (
@@ -269,12 +290,12 @@ export const CartDrawer = () => {
                     </div>
                 )}
                 
-                {step === "checkout" && (
+                {step === "stores" && (
                     <div className="flex-1 flex flex-col gap-6 py-4">
                         {/* 1. TIPO DE ENTREGA */}
                         <div className="space-y-3">
                             <Label className="text-base font-semibold">Como deseja receber?</Label>
-                            <RadioGroup value={deliveryType} onValueChange={(v: "pickup" | "delivery") => setDeliveryType(v)} className="grid grid-cols-2 gap-4">
+                            <RadioGroup value={deliveryType} onValueChange={(v: "pickup" | "delivery") => { setDeliveryType(v); if(v === 'pickup') clearShipping(); }} className="grid grid-cols-2 gap-4">
                                 <div>
                                     <RadioGroupItem value="pickup" id="pickup" className="peer sr-only" />
                                     <Label htmlFor="pickup" className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer">
@@ -311,14 +332,14 @@ export const CartDrawer = () => {
                                 {isLoadingAddresses ? <Loader2 className="animate-spin" /> : 
                                     (!addresses || addresses.length === 0) ? 
                                     <div className="text-sm text-muted-foreground border border-dashed p-4 rounded-md text-center">Nenhum endereço cadastrado. <br/><Link to="/minha-conta" className="text-primary underline" onClick={() => setIsSheetOpen(false)}>Cadastrar agora</Link></div> :
-                                    <RadioGroup value={selectedAddressId} onValueChange={setSelectedAddressId}>
+                                    <RadioGroup value={selectedAddressId} onValueChange={handleAddressChange}>
                                         {addresses.map(addr => (
                                             <div key={addr.id} className="flex items-start space-x-2 border p-3 rounded-md">
                                                 <RadioGroupItem value={addr.id} id={addr.id} className="mt-1" />
                                                 <Label htmlFor={addr.id} className="cursor-pointer w-full">
                                                     <span className="font-bold block">{addr.name}</span>
-                                                    <span className="text-xs text-muted-foreground block">{addr.street}, {addr.number} - {addr.neighborhood}</span>
-                                                    <span className="text-xs text-muted-foreground block">{addr.city}</span>
+                                                    <span className="text-xs text-muted-foreground block">{addr.street}, {addr.number}</span>
+                                                    <span className="text-xs text-muted-foreground block">{addr.city} - {addr.cep}</span>
                                                 </Label>
                                             </div>
                                         ))}
@@ -387,18 +408,18 @@ export const CartDrawer = () => {
                         ) : (
                             <SheetClose asChild><Button variant="outline" className="w-full">Continuar comprando</Button></SheetClose>
                         )
-                    ) : step === "checkout" && (
+                    ) : step === "stores" && (
                          <>
                             <div className="space-y-1">
-                                {deliveryType === "delivery" && deliveryFee > 0 && (
+                                {deliveryType === "delivery" && shippingQuote && (
                                     <div className="flex justify-between text-sm text-muted-foreground">
-                                        <span>Taxa de Entrega:</span>
-                                        <span>{formatCurrency(finalDeliveryFee)}</span>
+                                        <span>Frete ({shippingQuote.type}):</span>
+                                        <span>{formatCurrency(shippingQuote.price)}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between items-center">
                                     <span className="text-base text-muted-foreground">Total Final:</span> 
-                                    <span className="text-xl font-bold text-primary">{formatCurrency(finalTotal)}</span>
+                                    <span className="text-xl font-bold text-primary">{formatCurrency(totalPrice)}</span>
                                 </div>
                             </div>
                             <Button size="lg" className="w-full" onClick={handleFinishOrder} disabled={isSavingOrder}>

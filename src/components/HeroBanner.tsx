@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchBanners, fetchPromotions } from "@/lib/api";
 import { Banner, Product } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, ArrowRight, Tag } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Link } from "react-router-dom";
 
@@ -21,7 +21,7 @@ type CarouselItemData =
     | { type: "product"; data: Product };
 
 export const HeroBanner = () => {
-    const plugin = useRef(Autoplay({ delay: 5000, stopOnInteraction: true }));
+    const plugin = useRef(Autoplay({ delay: 6000, stopOnInteraction: true }));
 
     const { data: manualBanners, isLoading: loadingBanners } = useQuery<
         Banner[]
@@ -39,8 +39,8 @@ export const HeroBanner = () => {
 
     if (loadingBanners || loadingPromos) {
         return (
-            <div className="w-full py-6">
-                <Skeleton className="w-full max-w-7xl mx-auto h-[400px] rounded-2xl" />
+            <div className="w-full py-4">
+                <Skeleton className="w-full max-w-[1400px] mx-auto h-[350px] rounded-3xl" />
             </div>
         );
     }
@@ -64,10 +64,10 @@ export const HeroBanner = () => {
     if (items.length === 0) return null;
 
     return (
-        <div className="w-full py-4 md:py-6">
+        <div className="w-full pt-2 pb-6">
             <Carousel
                 plugins={[plugin.current]}
-                className="w-full max-w-7xl mx-auto md:rounded-2xl overflow-hidden shadow-xl"
+                className="w-full max-w-[1440px] mx-auto md:rounded-3xl overflow-hidden shadow-xl"
                 onMouseEnter={plugin.current.stop}
                 onMouseLeave={plugin.current.reset}
                 opts={{ loop: true }}
@@ -75,15 +75,17 @@ export const HeroBanner = () => {
                 <CarouselContent>
                     {items.map((item, index) => (
                         <CarouselItem key={index}>
+                            {/* AJUSTE DE ALTURA AQUI: min-h-[400px] mobile / h-[350px] desktop */}
                             <div
-                                className="relative min-h-[500px] md:h-[500px] w-full flex items-center overflow-hidden"
+                                className="relative min-h-[400px] md:h-[350px] w-full flex items-center overflow-hidden bg-slate-950"
                                 style={
-                                    item.type === "banner"
+                                    item.type === "banner" &&
+                                    item.data.background_color
                                         ? {
                                               backgroundColor:
                                                   item.data.background_color,
                                           }
-                                        : { backgroundColor: "#0f172a" }
+                                        : {}
                                 }
                             >
                                 {item.type === "banner" ? (
@@ -93,43 +95,44 @@ export const HeroBanner = () => {
                                             <img
                                                 src={item.data.image_url}
                                                 alt={item.data.title}
-                                                className="absolute inset-0 w-full h-full object-cover opacity-40"
+                                                className="absolute inset-0 w-full h-full object-cover opacity-60 md:opacity-100"
                                             />
                                         )}
 
-                                        {/* Overlay sutil se tiver imagem */}
-                                        {item.data.image_url && (
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                                        )}
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent md:bg-gradient-to-r md:from-black/80 md:via-black/40 md:to-transparent" />
 
-                                        <div className="container mx-auto px-6 py-12 flex flex-col items-center justify-center text-center relative z-10 h-full">
-                                            <div className="space-y-4 md:space-y-6 max-w-3xl">
+                                        <div className="container mx-auto px-6 py-8 flex flex-col items-center md:items-start justify-end md:justify-center relative z-10 h-full text-center md:text-left pb-16 md:pb-0">
+                                            <div className="space-y-4 max-w-2xl animate-fade-in">
                                                 <h2
-                                                    className="text-3xl sm:text-4xl md:text-6xl font-extrabold tracking-tight drop-shadow-md leading-tight"
+                                                    className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-tight drop-shadow-xl"
                                                     style={{
-                                                        color: item.data
-                                                            .text_color,
+                                                        color:
+                                                            item.data
+                                                                .text_color ||
+                                                            "white",
                                                     }}
                                                 >
                                                     {item.data.title}
                                                 </h2>
                                                 {item.data.subtitle && (
                                                     <p
-                                                        className="text-base sm:text-lg md:text-2xl drop-shadow-md font-light"
+                                                        className="text-base sm:text-lg md:text-xl font-light drop-shadow-md line-clamp-2"
                                                         style={{
-                                                            color: item.data
-                                                                .text_color,
+                                                            color:
+                                                                item.data
+                                                                    .text_color ||
+                                                                "white",
                                                             opacity: 0.9,
                                                         }}
                                                     >
                                                         {item.data.subtitle}
                                                     </p>
                                                 )}
-                                                <div className="pt-4">
+                                                <div className="pt-2">
                                                     <Button
                                                         asChild
                                                         size="lg"
-                                                        className="text-base md:text-lg px-8 h-12 rounded-full shadow-lg hover:scale-105 transition-transform bg-white text-black hover:bg-gray-100 border-none"
+                                                        className="text-sm md:text-base h-12 px-8 rounded-full shadow-xl hover:scale-105 transition-transform bg-white text-black hover:bg-gray-100 border-none font-bold"
                                                     >
                                                         <a
                                                             href={
@@ -151,8 +154,10 @@ export const HeroBanner = () => {
                                                             }
                                                             {item.data.link_url.includes(
                                                                 "wa.me"
-                                                            ) && (
+                                                            ) ? (
                                                                 <ExternalLink className="ml-2 h-4 w-4" />
+                                                            ) : (
+                                                                <ArrowRight className="ml-2 h-4 w-4" />
                                                             )}
                                                         </a>
                                                     </Button>
@@ -161,51 +166,52 @@ export const HeroBanner = () => {
                                         </div>
                                     </>
                                 ) : (
-                                    // --- PRODUTO EM PROMOÇÃO ---
+                                    // --- PRODUTO EM PROMOÇÃO (VITRINE) ---
                                     <>
                                         <img
                                             src={
                                                 item.data.images[0] ||
                                                 "/placeholder.svg"
                                             }
-                                            alt={item.data.name}
-                                            className="absolute inset-0 w-full h-full object-cover opacity-30 blur-md scale-110"
+                                            alt=""
+                                            className="absolute inset-0 w-full h-full object-cover opacity-20 blur-3xl scale-125"
                                         />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent md:bg-gradient-to-r md:from-black/90 md:to-transparent" />
+                                        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/60 to-black/90" />
 
-                                        <div className="container mx-auto px-6 py-12 flex flex-col-reverse md:flex-row items-center gap-6 md:gap-12 relative z-10 h-full justify-center md:justify-between">
-                                            <div className="flex-1 text-center md:text-left space-y-4 md:space-y-6">
-                                                <div className="inline-block bg-red-600 text-white text-xs md:text-sm font-bold px-3 py-1 rounded-full mb-2 animate-pulse uppercase tracking-wider">
+                                        <div className="container mx-auto px-6 h-full flex flex-col md:flex-row items-center justify-center md:justify-between relative z-10 gap-6 py-8">
+                                            <div className="flex-1 text-center md:text-left space-y-3 order-2 md:order-1 animate-slide-up">
+                                                <div className="inline-flex items-center gap-2 bg-red-600/90 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-lg backdrop-blur-sm mb-1">
+                                                    <Tag className="h-3 w-3" />{" "}
                                                     Oferta Relâmpago
                                                 </div>
-                                                <h2 className="text-2xl sm:text-3xl md:text-5xl font-extrabold tracking-tight text-white drop-shadow-md line-clamp-2 leading-tight">
+                                                <h2 className="text-3xl md:text-5xl font-black tracking-tight text-white leading-none drop-shadow-2xl line-clamp-2">
                                                     {item.data.name}
                                                 </h2>
 
-                                                <div className="space-y-1">
+                                                <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4 pt-1">
                                                     {item.data.originalPrice &&
                                                         item.data
                                                             .originalPrice >
                                                             item.data.price && (
-                                                            <p className="text-lg md:text-xl text-gray-400 line-through">
+                                                            <span className="text-lg text-gray-400 line-through decoration-red-500/50 decoration-2">
                                                                 {formatCurrency(
                                                                     item.data
                                                                         .originalPrice
                                                                 )}
-                                                            </p>
+                                                            </span>
                                                         )}
-                                                    <p className="text-4xl md:text-6xl font-bold text-yellow-400 drop-shadow-lg">
+                                                    <span className="text-4xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-amber-500 drop-shadow-sm">
                                                         {formatCurrency(
                                                             item.data.price
                                                         )}
-                                                    </p>
+                                                    </span>
                                                 </div>
 
-                                                <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start pt-4 w-full">
+                                                <div className="pt-4">
                                                     <Button
                                                         asChild
                                                         size="lg"
-                                                        className="w-full md:w-auto text-base md:text-lg px-8 h-12 rounded-full shadow-lg bg-white text-black hover:bg-gray-100"
+                                                        className="text-base px-10 h-12 rounded-full bg-white text-black hover:bg-gray-200 shadow-[0_0_30px_rgba(255,255,255,0.3)] transition-all hover:scale-105 font-bold"
                                                     >
                                                         <Link
                                                             to={`/produto/${item.data.id}`}
@@ -216,14 +222,15 @@ export const HeroBanner = () => {
                                                 </div>
                                             </div>
 
-                                            <div className="flex-1 flex justify-center md:justify-end items-center w-full">
+                                            <div className="flex-1 flex justify-center md:justify-end items-center order-1 md:order-2 relative h-full">
+                                                <div className="absolute w-[250px] h-[250px] md:w-[400px] md:h-[400px] bg-white/5 rounded-full blur-3xl animate-pulse" />
                                                 <img
                                                     src={
                                                         item.data.images[0] ||
                                                         "/placeholder.svg"
                                                     }
                                                     alt={item.data.name}
-                                                    className="h-48 sm:h-64 md:max-h-[420px] w-auto object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)] hover:scale-105 transition-transform duration-500"
+                                                    className="h-[200px] sm:h-[250px] md:h-[320px] w-auto object-contain drop-shadow-[0_35px_60px_-15px_rgba(0,0,0,0.8)] hover:scale-105 transition-transform duration-700 z-10"
                                                 />
                                             </div>
                                         </div>
@@ -234,8 +241,10 @@ export const HeroBanner = () => {
                     ))}
                 </CarouselContent>
 
-                <CarouselPrevious className="left-4 bg-white/20 hover:bg-white/40 text-white border-none hidden md:flex" />
-                <CarouselNext className="right-4 bg-white/20 hover:bg-white/40 text-white border-none hidden md:flex" />
+                <div className="hidden md:block">
+                    <CarouselPrevious className="left-8 h-10 w-10 border-none bg-white/10 hover:bg-white/30 text-white backdrop-blur-md" />
+                    <CarouselNext className="right-8 h-10 w-10 border-none bg-white/10 hover:bg-white/30 text-white backdrop-blur-md" />
+                </div>
             </Carousel>
         </div>
     );

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -39,24 +40,21 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Employee, Store } from "@/types";
+// --- CORREÇÃO AQUI: Importando tipos de @/types ---
+import {
+    Employee,
+    Store,
+    EmployeeInsertPayload,
+    EmployeeUpdatePayload,
+} from "@/types";
 import {
     fetchEmployees,
     createEmployee,
     updateEmployee,
     deleteEmployee,
     fetchStores,
-    EmployeeInsertPayload,
-    EmployeeUpdatePayload,
 } from "@/lib/api";
-import {
-    Edit,
-    Trash2,
-    Plus,
-    Link as LinkIcon,
-    Copy,
-    Check,
-} from "lucide-react";
+import { Edit, Trash2, Plus, Link as LinkIcon, Check } from "lucide-react";
 
 const employeeSchema = z.object({
     name: z.string().min(2, "Nome é obrigatório."),
@@ -65,6 +63,7 @@ const employeeSchema = z.object({
     can_create: z.boolean().default(false),
     can_update: z.boolean().default(false),
     can_delete: z.boolean().default(false),
+    is_driver: z.boolean().default(false), // Adicionado campo de entregador
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
@@ -76,8 +75,6 @@ const AdminEmployees = () => {
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(
         null
     );
-
-    // Estado para feedback visual de cópia
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
     const { data: employees, isLoading } = useQuery<Employee[]>({
@@ -99,6 +96,7 @@ const AdminEmployees = () => {
             can_create: false,
             can_update: false,
             can_delete: false,
+            is_driver: false,
         },
     });
 
@@ -147,6 +145,7 @@ const AdminEmployees = () => {
             can_create: emp.can_create || false,
             can_update: emp.can_update || false,
             can_delete: emp.can_delete || false,
+            is_driver: emp.is_driver || false,
         });
         setIsDialogOpen(true);
     };
@@ -161,6 +160,7 @@ const AdminEmployees = () => {
             can_create: false,
             can_update: false,
             can_delete: false,
+            is_driver: false,
         });
     };
 
@@ -175,23 +175,21 @@ const AdminEmployees = () => {
         if (editingEmployee) {
             updateMutation.mutate({ ...payload, id: editingEmployee.id });
         } else {
-            // Nota: Em produção, o ID deve ser o UID do Auth do Supabase
+            // Nota: Idealmente o ID viria da criação do Auth user
             createMutation.mutate({ ...payload, id: crypto.randomUUID() });
         }
     };
 
-    // --- FUNÇÃO DE COPIAR LINK ---
     const copyLink = (employeeId: string) => {
         const link = `${window.location.origin}/?ref=${employeeId}`;
         navigator.clipboard.writeText(link);
 
         setCopiedId(employeeId);
-        setTimeout(() => setCopiedId(null), 2000); // Reseta ícone após 2s
+        setTimeout(() => setCopiedId(null), 2000);
 
         toast({
             title: "Link copiado!",
-            description:
-                "Link de vendedor copiado para a área de transferência.",
+            description: "Link de vendedor copiado.",
         });
     };
 
@@ -294,9 +292,7 @@ const AdminEmployees = () => {
                                                     </SelectContent>
                                                 </Select>
                                                 <FormDescription>
-                                                    Se "Todas", ele vê tudo. Se
-                                                    selecionar loja, só vê dados
-                                                    da loja.
+                                                    Se "Todas", ele vê tudo.
                                                 </FormDescription>
                                             </FormItem>
                                         )}
@@ -306,7 +302,7 @@ const AdminEmployees = () => {
                                         <h4 className="font-medium text-sm">
                                             Permissões
                                         </h4>
-                                        <div className="flex gap-4">
+                                        <div className="grid grid-cols-2 gap-4">
                                             <FormField
                                                 control={form.control}
                                                 name="can_create"
@@ -366,6 +362,27 @@ const AdminEmployees = () => {
                                                         </FormControl>
                                                         <FormLabel className="font-normal">
                                                             Excluir
+                                                        </FormLabel>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="is_driver"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex items-center space-x-2 space-y-0">
+                                                        <FormControl>
+                                                            <Checkbox
+                                                                checked={
+                                                                    field.value
+                                                                }
+                                                                onCheckedChange={
+                                                                    field.onChange
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                        <FormLabel className="font-normal">
+                                                            É Entregador
                                                         </FormLabel>
                                                     </FormItem>
                                                 )}

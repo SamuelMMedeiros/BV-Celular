@@ -1,224 +1,213 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Phone, PersonStanding, Mail, Lock } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
-import { CardDescription } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from "@/components/ui/form";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom"; // <-- Importar
+import { fetchEmployeeProfile } from "@/lib/api"; // <-- Importar API
+import { supabase } from "@/integrations/supabase/client"; // <-- Importar Supabase
 
-// --- Schemas de Validação ---
-const signUpSchema = z.object({
-    name: z.string().min(2, "Nome completo é obrigatório"),
-    phone: z
-        .string()
-        .regex(
-            /^\d{10,11}$/,
-            "Telefone inválido (10 ou 11 dígitos, apenas números)"
-        ),
+const authSchema = z.object({
     email: z.string().email("Email inválido"),
     password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres"),
+    name: z.string().optional(),
+    phone: z.string().optional(),
 });
-type SignUpValues = z.infer<typeof signUpSchema>;
 
-const signInSchema = z.object({
-    email: z.string().email("Email inválido"),
-    password: z.string().min(1, "Senha é obrigatória"),
-});
-type SignInValues = z.infer<typeof signInSchema>;
+type AuthFormValues = z.infer<typeof authSchema>;
 
-// --- Props do Componente ---
 interface CustomerAuthFormProps {
-    onSuccess: () => void; // Função a ser chamada após login/cadastro
+    onSuccess?: () => void;
 }
 
-// --- Componente Principal ---
 export const CustomerAuthForm = ({ onSuccess }: CustomerAuthFormProps) => {
-    const { profile, signUp, signIn } = useCustomerAuth();
-    const { toast } = useToast();
-    const [view, setView] = useState<"login" | "signup">("login");
+    const { signIn, signUp } = useCustomerAuth();
     const [isLoading, setIsLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+    const navigate = useNavigate(); // Hook de navegação
 
-    const form = useForm<SignUpValues | SignInValues>({
-        resolver: zodResolver(view === "login" ? signInSchema : signUpSchema),
+    const form = useForm<AuthFormValues>({
+        resolver: zodResolver(authSchema),
         defaultValues: {
             email: "",
             password: "",
-            name: profile?.name || "",
-            phone: profile?.phone || "",
-        } as SignUpValues | SignInValues,
+            name: "",
+            phone: "",
+        },
     });
 
-    useEffect(() => {
-        form.reset({
-            email: "",
-            password: "",
-            name: view === "signup" ? profile?.name || "" : "",
-            phone: view === "signup" ? profile?.phone || "" : "",
-        });
-        form.clearErrors();
-    }, [view, form, profile]);
-
-    const onSubmit = async (data: SignUpValues | SignInValues) => {
+    const onSubmit = async (data: AuthFormValues) => {
         setIsLoading(true);
         try {
-            if (view === "signup") {
-                const { name, phone, email, password } = data as SignUpValues;
-                await signUp(email, password, name, phone);
-                // Após o signUp, o Supabase envia email, então o usuário precisa logar
-                toast({
-                    title: "Cadastro enviado!",
-                    description:
-                        "Verifique seu email para confirmar e depois faça o login.",
-                });
-                setView("login"); // Muda para a tela de login
+            if (activeTab === "login") {
+                await signIn(data.email, data.password);
+
+                // --- LÓGICA DE REDIRECIONAMENTO PÓS-LOGIN ---
+                const {
+                    data: { session },
+                } = await supabase.auth.getSession();
+                if (session?.user) {
+                    const employee = await fetchEmployeeProfile(
+                        session.user.id
+                    );
+                    if (employee && employee.is_driver) {
+                        navigate("/entregador");
+                        return; // Para aqui se redirecionar
+                    }
+                }
+                // ----------------------------------------------
             } else {
-                const { email, password } = data as SignInValues;
-                await signIn(email, password);
-                // Chama o callback de sucesso (fechar popover ou redirecionar)
-                onSuccess();
+                if (!data.name || data.name.length < 2) {
+                    form.setError("name", {
+                        message: "Nome é obrigatório para cadastro",
+                    });
+                    setIsLoading(false);
+                    return;
+                }
+                if (!data.phone || data.phone.length < 10) {
+                    form.setError("phone", { message: "Telefone inválido" });
+                    setIsLoading(false);
+                    return;
+                }
+                await signUp(data.email, data.password, data.name, data.phone);
+
+                // Verifica se o novo cadastro é um entregador (vínculo automático)
+                const {
+                    data: { session },
+                } = await supabase.auth.getSession();
+                if (session?.user) {
+                    const employee = await fetchEmployeeProfile(
+                        session.user.id
+                    );
+                    if (employee?.is_driver) {
+                        navigate("/entregador");
+                        return;
+                    }
+                }
             }
-        } catch (e) {
-            // O toast de erro já é tratado no context
+
+            if (onSuccess) onSuccess();
+        } catch (error) {
+            console.error("Erro de autenticação:", error);
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <div className="w-full">
-            {/* Título e Descrição */}
-            <div className="space-y-2 text-center">
-                <h4 className="font-bold text-xl">
-                    {view === "login" ? "Acesso Cliente" : "Criar Conta"}
-                </h4>
-                <CardDescription>
-                    {view === "login"
-                        ? "Faça login com seu email e senha."
-                        : "Crie sua conta para finalizar o pedido."}
-                </CardDescription>
-            </div>
+        <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as "login" | "register")}
+            className="w-full"
+        >
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="login">Entrar</TabsTrigger>
+                <TabsTrigger value="register">Cadastrar</TabsTrigger>
+            </TabsList>
 
-            {/* Formulário */}
-            <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="mt-4 space-y-4"
-            >
-                {view === "signup" && (
-                    <>
-                        <div className="space-y-2">
-                            <Label
-                                htmlFor="customer-name"
-                                className="flex items-center gap-1"
-                            >
-                                <PersonStanding className="h-4 w-4 text-muted-foreground" />{" "}
-                                Nome
-                            </Label>
-                            <Input
-                                id="customer-name"
-                                placeholder="Nome Completo"
-                                {...form.register("name")}
-                                disabled={isLoading}
+            <Form {...form}>
+                <form
+                    onSubmit={form.handleSubmit(onSubmit)}
+                    className="space-y-4"
+                >
+                    {activeTab === "register" && (
+                        <>
+                            <FormField
+                                control={form.control}
+                                name="name"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Nome Completo</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                placeholder="Seu nome"
+                                                {...field}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
                             />
-                            {form.formState.errors.name && (
-                                <p className="text-xs text-destructive">
-                                    {form.formState.errors.name.message}
-                                </p>
-                            )}
-                        </div>
-                        <div className="space-y-2">
-                            <Label
-                                htmlFor="customer-phone"
-                                className="flex items-center gap-1"
-                            >
-                                <Phone className="h-4 w-4 text-muted-foreground" />{" "}
-                                Telefone
-                            </Label>
-                            <Input
-                                id="customer-phone"
-                                type="tel"
-                                placeholder="34999998888"
-                                {...form.register("phone")}
-                                disabled={isLoading}
+                            <FormField
+                                control={form.control}
+                                name="phone"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>WhatsApp</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                placeholder="(00) 00000-0000"
+                                                {...field}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
                             />
-                            {form.formState.errors.phone && (
-                                <p className="text-xs text-destructive">
-                                    {form.formState.errors.phone.message}
-                                </p>
-                            )}
-                        </div>
-                    </>
-                )}
-
-                <div className="space-y-2">
-                    <Label
-                        htmlFor="customer-email"
-                        className="flex items-center gap-1"
-                    >
-                        <Mail className="h-4 w-4 text-muted-foreground" /> Email
-                    </Label>
-                    <Input
-                        id="customer-email"
-                        placeholder="seu@email.com"
-                        {...form.register("email")}
-                        disabled={isLoading}
-                    />
-                    {form.formState.errors.email && (
-                        <p className="text-xs text-destructive">
-                            {form.formState.errors.email.message}
-                        </p>
+                        </>
                     )}
-                </div>
 
-                <div className="space-y-2">
-                    <Label
-                        htmlFor="customer-password"
-                        className="flex items-center gap-1"
-                    >
-                        <Lock className="h-4 w-4 text-muted-foreground" /> Senha
-                    </Label>
-                    <Input
-                        id="customer-password"
-                        type="password"
-                        placeholder="••••••"
-                        {...form.register("password")}
-                        disabled={isLoading}
+                    <FormField
+                        control={form.control}
+                        name="email"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Email</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        placeholder="seu@email.com"
+                                        {...field}
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
                     />
-                    {form.formState.errors.password && (
-                        <p className="text-xs text-destructive">
-                            {form.formState.errors.password.message}
-                        </p>
-                    )}
-                </div>
+                    <FormField
+                        control={form.control}
+                        name="password"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Senha</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        type="password"
+                                        placeholder="******"
+                                        {...field}
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading
-                        ? "Processando..."
-                        : view === "login"
-                        ? "Entrar"
-                        : "Cadastrar"}
-                </Button>
-            </form>
-
-            {/* Switcher Login/Cadastro */}
-            <Separator className="my-4" />
-            <Button
-                variant="link"
-                size="sm"
-                className="w-full text-xs text-muted-foreground"
-                onClick={() => {
-                    setView(view === "login" ? "signup" : "login");
-                    form.clearErrors();
-                }}
-            >
-                {view === "login"
-                    ? "Novo por aqui? Crie sua conta agora."
-                    : "Já tem conta? Clique para fazer Login."}
-            </Button>
-        </div>
+                    <Button
+                        type="submit"
+                        className="w-full"
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : activeTab === "login" ? (
+                            "Entrar"
+                        ) : (
+                            "Criar Conta"
+                        )}
+                    </Button>
+                </form>
+            </Form>
+        </Tabs>
     );
 };

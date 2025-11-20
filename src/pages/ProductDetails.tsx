@@ -1,8 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//
+// === CÓDIGO COMPLETO PARA: src/pages/ProductDetails.tsx ===
+//
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchProductById } from "@/lib/api";
+import { fetchProductById, fetchRelatedProducts } from "@/lib/api"; 
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
@@ -11,8 +14,9 @@ import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FavoriteButton } from "@/components/FavoriteButton";
-import { SEO } from "@/components/SEO";
+import { FavoriteButton } from "@/components/FavoriteButton"; 
+import { SEO } from "@/components/SEO"; 
+import { ProductCard } from "@/components/ProductCard"; // <-- IMPORT NOVO
 import {
     Select,
     SelectContent,
@@ -20,6 +24,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    Carousel,
+    CarouselContent,
+    CarouselItem,
+    CarouselNext,
+    CarouselPrevious,
+    type CarouselApi, // <-- IMPORT NOVO
+} from "@/components/ui/carousel";
 import {
     ArrowLeft,
     ShoppingCart,
@@ -29,8 +41,12 @@ import {
     HardDrive,
     Palette,
     Share2,
+    Clock,
+    Timer
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { format, isBefore } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 const ProductDetails = () => {
     const { productId } = useParams<{ productId: string }>();
@@ -38,24 +54,41 @@ const ProductDetails = () => {
     const { addToCart } = useCart();
     const { toast } = useToast();
 
-    const [selectedImage, setSelectedImage] = useState<string>("");
+    // Estado para controlar o carrossel principal
+    const [api, setApi] = useState<CarouselApi>();
+    const [currentSlide, setCurrentSlide] = useState(0);
     const [selectedStore, setSelectedStore] = useState<Store | null>(null);
 
-    const {
-        data: product,
-        isLoading,
-        isError,
-    } = useQuery({
+    // 1. Busca Produto Principal
+    const { data: product, isLoading, isError } = useQuery({
         queryKey: ["product", productId],
         queryFn: () => fetchProductById(productId!),
         enabled: !!productId,
     });
 
+    // 2. Busca Relacionados (Só executa quando tivermos o produto principal)
+    const { data: relatedProducts } = useQuery({
+        queryKey: ["related", product?.category, productId],
+        queryFn: () => fetchRelatedProducts(product!.category, productId!),
+        enabled: !!product,
+    });
+
+    // Atualiza o slide atual quando o carrossel muda
     useEffect(() => {
-        if (product?.images && product.images.length > 0) {
-            setSelectedImage(product.images[0]);
+        if (!api) {
+            return;
         }
-    }, [product]);
+        
+        // Sincroniza o estado com o evento de slide
+        api.on("select", () => {
+            setCurrentSlide(api.selectedScrollSnap());
+        });
+    }, [api]);
+
+    // Reseta o slide quando muda de produto
+    useEffect(() => {
+        if (api) api.scrollTo(0);
+    }, [productId, api]);
 
     if (isLoading) {
         return <ProductDetailsSkeleton />;
@@ -66,28 +99,30 @@ const ProductDetails = () => {
             <div className="min-h-screen bg-background flex flex-col">
                 <Navbar />
                 <div className="flex-1 flex flex-col items-center justify-center space-y-4">
-                    <h2 className="text-2xl font-bold">
-                        Produto não encontrado
-                    </h2>
+                    <h2 className="text-2xl font-bold">Produto não encontrado</h2>
                     <p className="text-muted-foreground">
                         O produto que você procura não existe ou foi removido.
                     </p>
-                    <Button onClick={() => navigate("/")}>
-                        Voltar para o Início
-                    </Button>
+                    <Button onClick={() => navigate("/")}>Voltar para o Início</Button>
                 </div>
             </div>
         );
     }
 
-    const discount =
-        product.originalPrice && product.originalPrice > product.price
-            ? Math.round(
-                  ((product.originalPrice - product.price) /
-                      product.originalPrice) *
-                      100
-              )
-            : 0;
+    // Validações de Promoção e Dados
+    const isPromoValid = product.isPromotion && (!product.promotion_end_date || !isBefore(new Date(product.promotion_end_date), new Date()));
+    const discount = isPromoValid && product.originalPrice && product.originalPrice > product.price
+            ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100) : 0;
+    
+    const hasSpecs = product.storage || product.ram || (product.colors && product.colors.length > 0);
+    
+    // Garante array de imagens válido
+    const images = product.images && product.images.length > 0 ? product.images : ["/placeholder.svg"];
+
+    const formatArrayData = (data: any): string => {
+        if (Array.isArray(data)) return data.join(", ");
+        return data || "";
+    };
 
     const handleAddToCart = () => {
         const cartItem: CartItem = {
@@ -97,309 +132,235 @@ const ProductDetails = () => {
             images: product.images,
             quantity: 1,
             category: product.category,
+            isPromotion: product.isPromotion
         };
-
         addToCart(cartItem);
-
         toast({
             title: "Adicionado ao Carrinho",
-            description: (
-                <div className="flex items-center gap-2">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span>"{product.name}" foi adicionado.</span>
-                </div>
-            ),
+            description: <div className="flex items-center gap-2"><CheckCircle className="h-5 w-5 text-green-500" /><span>"{product.name}" adicionado.</span></div>,
         });
     };
 
-    // Lógica de compartilhamento
     const handleShare = async () => {
-        const shareData = {
-            title: product.name,
-            text: `Confira ${product.name} na BV Celular!`,
-            url: window.location.href,
-        };
-
+        const shareData = { title: product.name, text: `Confira ${product.name} na BV Celular!`, url: window.location.href };
         if (navigator.share) {
-            try {
-                await navigator.share(shareData);
-            } catch (err) {
-                console.log("Compartilhamento cancelado ou erro:", err);
-            }
+            try { await navigator.share(shareData); } catch (err) { console.log(err); }
         } else {
             navigator.clipboard.writeText(window.location.href);
-            toast({
-                title: "Link copiado!",
-                description:
-                    "Link do produto copiado para a área de transferência.",
-            });
+            toast({ title: "Link copiado!" });
         }
     };
 
-    const formatArrayData = (data: any): string => {
-        if (Array.isArray(data)) return data.join(", ");
-        return data || "";
-    };
-
-    const seoDescription = product.description
-        ? product.description.substring(0, 150) + "..."
-        : `Compre ${product.name} por ${formatCurrency(
-              product.price
-          )} na BV Celular.`;
-
-    const seoImage =
-        product.images && product.images.length > 0
-            ? product.images[0]
-            : undefined;
-
-    // Verifica se tem specs
-    const hasSpecs =
-        product.storage ||
-        product.ram ||
-        (product.colors && product.colors.length > 0);
+    const seoDescription = product.description ? product.description.substring(0, 150) + "..." : `Compre ${product.name}.`;
 
     return (
-        <div className="min-h-screen bg-background flex flex-col">
-            <SEO
-                title={product.name}
-                description={seoDescription}
-                image={seoImage}
-            />
-
+        <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
+            <SEO title={product.name} description={seoDescription} image={images[0]} />
             <Navbar />
-
-            <main className="container py-8 flex-1">
-                <div className="mb-6">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="pl-0 hover:bg-transparent hover:text-primary"
-                        onClick={() => navigate(-1)}
-                    >
-                        <ArrowLeft className="mr-2 h-4 w-4" />
-                        Voltar
+            
+            <main className="container py-8 flex-1 animate-fade-in">
+                <div className="mb-4">
+                    <Button variant="ghost" size="sm" className="pl-0 hover:bg-transparent hover:text-primary" onClick={() => navigate(-1)}>
+                        <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
                     </Button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
-                    {/* Imagens */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 xl:gap-16 mb-16">
+                    {/* COLUNA 1: CARROSSEL DE IMAGENS */}
                     <div className="space-y-4">
-                        <div className="aspect-square w-full bg-muted rounded-xl overflow-hidden border relative">
-                            <img
-                                src={selectedImage || "/placeholder.svg"}
-                                alt={product.name}
-                                className="w-full h-full object-contain p-4"
-                            />
-                            {product.isPromotion && discount > 0 && (
-                                <Badge className="absolute top-4 right-4 text-lg px-3 py-1 bg-destructive text-destructive-foreground">
-                                    -{discount}%
-                                </Badge>
-                            )}
-                        </div>
+                        <div className="relative aspect-square w-full bg-muted/30 rounded-2xl overflow-hidden border">
+                            <Carousel setApi={setApi} className="w-full h-full">
+                                <CarouselContent>
+                                    {images.map((img, index) => (
+                                        <CarouselItem key={index} className="flex items-center justify-center h-full">
+                                            <img 
+                                                src={img} 
+                                                alt={`${product.name} - Imagem ${index + 1}`} 
+                                                className="w-full h-full object-contain p-4"
+                                            />
+                                        </CarouselItem>
+                                    ))}
+                                </CarouselContent>
+                                {/* Setas apenas no Desktop, Mobile usa swipe */}
+                                {images.length > 1 && (
+                                    <>
+                                        <CarouselPrevious className="left-4 hidden md:flex" />
+                                        <CarouselNext className="right-4 hidden md:flex" />
+                                    </>
+                                )}
+                            </Carousel>
 
-                        {product.images && product.images.length > 1 && (
-                            <div className="flex gap-4 overflow-x-auto pb-2">
-                                {product.images.map((img, idx) => (
+                            {/* Badges Flutuantes sobre o Carrossel */}
+                            <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+                                {isPromoValid && discount > 0 && (
+                                    <Badge className="bg-destructive text-destructive-foreground text-lg px-3 py-1 shadow-md w-fit">-{discount}%</Badge>
+                                )}
+                                {isPromoValid && product.promotion_end_date && (
+                                    <Badge variant="secondary" className="bg-black/70 text-white backdrop-blur-md border-none shadow-md w-fit flex items-center gap-1">
+                                        <Clock className="h-3 w-3" /> Até {format(new Date(product.promotion_end_date), "dd/MM")}
+                                    </Badge>
+                                )}
+                            </div>
+                            
+                            {/* Botão de Favorito Flutuante */}
+                            <div className="absolute top-4 right-4 z-10">
+                                <FavoriteButton productId={product.id} className="bg-white/80 backdrop-blur-md shadow-md hover:bg-white" />
+                            </div>
+                        </div>
+                        
+                        {/* Miniaturas (Controle do Carrossel) */}
+                        {images.length > 1 && (
+                            <div className="flex gap-3 overflow-x-auto pb-2 px-1">
+                                {images.map((img, idx) => (
                                     <button
                                         key={idx}
-                                        onClick={() => setSelectedImage(img)}
+                                        onClick={() => api?.scrollTo(idx)}
                                         className={`relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${
-                                            selectedImage === img
-                                                ? "border-primary ring-2 ring-primary/20"
-                                                : "border-transparent hover:border-muted-foreground/50"
+                                            currentSlide === idx
+                                                ? "border-primary ring-2 ring-primary/20 opacity-100"
+                                                : "border-transparent hover:border-muted-foreground/30 opacity-60 hover:opacity-100"
                                         }`}
                                     >
-                                        <img
-                                            src={img}
-                                            alt={`View ${idx}`}
-                                            className="w-full h-full object-cover"
-                                        />
+                                        <img src={img} alt={`Thumb ${idx}`} className="w-full h-full object-cover" />
                                     </button>
                                 ))}
                             </div>
                         )}
                     </div>
 
-                    {/* Detalhes */}
+                    {/* COLUNA 2: INFORMAÇÕES */}
                     <div className="flex flex-col space-y-6">
                         <div>
-                            <div className="flex justify-between items-start">
-                                <h1 className="text-3xl md:text-4xl font-bold text-foreground max-w-[80%]">
+                            <div className="flex justify-between items-start gap-4">
+                                <h1 className="text-3xl md:text-4xl font-bold text-foreground leading-tight">
                                     {product.name}
                                 </h1>
-                                <div className="flex gap-2">
-                                    <FavoriteButton productId={product.id} />
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={handleShare}
-                                    >
-                                        <Share2 className="h-5 w-5 text-muted-foreground" />
-                                    </Button>
-                                </div>
+                                <Button variant="ghost" size="icon" onClick={handleShare} className="shrink-0">
+                                    <Share2 className="h-5 w-5 text-muted-foreground" />
+                                </Button>
                             </div>
-
-                            <div className="mt-2 flex flex-wrap gap-2">
-                                <Badge variant="outline" className="text-sm">
-                                    {product.category === "aparelho"
-                                        ? "Aparelho"
-                                        : "Acessório"}
-                                </Badge>
-                                {/* Só mostra badge de armazenamento se existir */}
-                                {product.storage && (
-                                    <Badge
-                                        variant="secondary"
-                                        className="text-sm"
-                                    >
-                                        {product.storage}
-                                    </Badge>
-                                )}
+                            
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                <Badge variant="outline" className="text-sm capitalize">{product.category}</Badge>
+                                {product.storage && <Badge variant="secondary" className="text-sm">{product.storage}</Badge>}
+                                {product.brand && <Badge variant="secondary" className="text-sm">{product.brand}</Badge>}
                             </div>
                         </div>
 
-                        <div className="space-y-1">
-                            {product.originalPrice &&
-                                product.originalPrice > product.price && (
-                                    <span className="text-lg text-muted-foreground line-through block">
+                        <div className="p-6 bg-card border rounded-xl shadow-sm space-y-4">
+                            <div>
+                                {isPromoValid && product.originalPrice && product.originalPrice > product.price && (
+                                    <span className="text-lg text-muted-foreground line-through">
                                         {formatCurrency(product.originalPrice)}
                                     </span>
                                 )}
-                            <span className="text-4xl font-bold text-primary block">
-                                {formatCurrency(product.price)}
-                            </span>
-                            <span className="text-sm text-muted-foreground">
-                                À vista ou parcelado conforme condições da loja.
-                            </span>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-5xl font-bold text-primary tracking-tight">
+                                        {formatCurrency(product.price)}
+                                    </span>
+                                </div>
+                                <span className="text-sm text-muted-foreground block mt-1">
+                                    À vista no PIX ou em até 12x no cartão (consulte condições).
+                                </span>
+                            </div>
+
+                            {isPromoValid && product.promotion_end_date && (
+                                <div className="flex items-center gap-2 text-amber-700 bg-amber-50 p-3 rounded-lg text-sm font-medium">
+                                    <Timer className="h-5 w-5" />
+                                    <span>Aproveite! Oferta encerra em {format(new Date(product.promotion_end_date), "dd 'de' MMMM", { locale: ptBR })}.</span>
+                                </div>
+                            )}
+
+                            <div className="space-y-3 pt-4 border-t">
+                                <div className="flex items-center gap-2 font-medium text-sm">
+                                    <StoreIcon className="h-4 w-4 text-primary" />
+                                    <span>Disponibilidade:</span>
+                                </div>
+                                {product.stores && product.stores.length > 0 ? (
+                                    <>
+                                        <Select onValueChange={(val) => setSelectedStore(product.stores.find(s => s.id === val) || null)}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Selecione uma loja..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {product.stores.map(store => (
+                                                    <SelectItem key={store.id} value={store.id}>
+                                                        {store.name} ({store.city})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        {selectedStore && (
+                                            <div className="text-xs text-muted-foreground bg-muted p-3 rounded-md">
+                                                <p><strong>{selectedStore.name}</strong></p>
+                                                <p>{selectedStore.address || selectedStore.city}</p>
+                                                <p className="mt-1">Tel: {selectedStore.whatsapp}</p>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground italic">Consulte disponibilidade online.</p>
+                                )}
+                            </div>
+
+                            <Button size="lg" className="w-full h-14 text-lg font-bold shadow-lg hover:scale-[1.02] transition-transform" onClick={handleAddToCart}>
+                                <ShoppingCart className="mr-2 h-6 w-6" />
+                                Adicionar ao Carrinho
+                            </Button>
                         </div>
 
-                        <Separator />
-
-                        {/* SÓ MOSTRA ESPECIFICAÇÕES SE TIVER ALGUMA */}
+                        {/* Especificações (Condicional) */}
                         {hasSpecs && (
                             <div className="space-y-4">
-                                <h3 className="font-semibold text-lg">
-                                    Especificações
-                                </h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                                <h3 className="font-semibold text-lg">Detalhes Técnicos</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                     {product.storage && (
-                                        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border">
                                             <HardDrive className="h-5 w-5 text-primary" />
-                                            <div>
-                                                <p className="font-medium">
-                                                    Armazenamento
-                                                </p>
-                                                <p className="text-muted-foreground">
-                                                    {product.storage}
-                                                </p>
-                                            </div>
+                                            <div><p className="font-medium">Armazenamento</p><p className="text-muted-foreground">{product.storage}</p></div>
                                         </div>
                                     )}
                                     {product.ram && (
-                                        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border">
                                             <Cpu className="h-5 w-5 text-primary" />
-                                            <div>
-                                                <p className="font-medium">
-                                                    Memória RAM
-                                                </p>
-                                                <p className="text-muted-foreground">
-                                                    {product.ram}
-                                                </p>
-                                            </div>
+                                            <div><p className="font-medium">Memória RAM</p><p className="text-muted-foreground">{product.ram}</p></div>
                                         </div>
                                     )}
-                                    {product.colors &&
-                                        product.colors.length > 0 && (
-                                            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 sm:col-span-2">
-                                                <Palette className="h-5 w-5 text-primary" />
-                                                <div>
-                                                    <p className="font-medium">
-                                                        Cores Disponíveis
-                                                    </p>
-                                                    <p className="text-muted-foreground">
-                                                        {formatArrayData(
-                                                            product.colors
-                                                        )}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        )}
+                                    {product.colors && product.colors.length > 0 && (
+                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border sm:col-span-2">
+                                            <Palette className="h-5 w-5 text-primary" />
+                                            <div><p className="font-medium">Cores</p><p className="text-muted-foreground">{formatArrayData(product.colors)}</p></div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
 
                         {product.description && (
                             <div className="space-y-2">
-                                <h3 className="font-semibold text-lg">
-                                    Descrição
-                                </h3>
-                                <p className="text-muted-foreground leading-relaxed">
+                                <h3 className="font-semibold text-lg">Sobre o Produto</h3>
+                                <p className="text-muted-foreground leading-relaxed whitespace-pre-line">
                                     {product.description}
                                 </p>
                             </div>
                         )}
-
-                        <div className="space-y-3 p-4 border rounded-xl bg-card">
-                            <div className="flex items-center gap-2 font-medium">
-                                <StoreIcon className="h-5 w-5 text-primary" />
-                                <span>Disponibilidade nas Lojas</span>
-                            </div>
-
-                            {product.stores && product.stores.length > 0 ? (
-                                <>
-                                    <Select
-                                        onValueChange={(val) =>
-                                            setSelectedStore(
-                                                product.stores.find(
-                                                    (s) => s.id === val
-                                                ) || null
-                                            )
-                                        }
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Selecione uma loja para ver detalhes" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {product.stores.map((store) => (
-                                                <SelectItem
-                                                    key={store.id}
-                                                    value={store.id}
-                                                >
-                                                    {store.name} ({store.city})
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-
-                                    {selectedStore && (
-                                        <div className="text-sm text-muted-foreground bg-muted p-3 rounded-md mt-2">
-                                            <p className="font-medium text-foreground">
-                                                {selectedStore.name}
-                                            </p>
-                                            <p>Cidade: {selectedStore.city}</p>
-                                            <p className="mt-1">
-                                                WhatsApp:{" "}
-                                                {selectedStore.whatsapp}
-                                            </p>
-                                        </div>
-                                    )}
-                                </>
-                            ) : (
-                                <p className="text-sm text-muted-foreground italic">
-                                    Consulte disponibilidade online.
-                                </p>
-                            )}
-                        </div>
-
-                        <Button
-                            size="lg"
-                            className="w-full text-lg h-14"
-                            onClick={handleAddToCart}
-                        >
-                            <ShoppingCart className="mr-2 h-6 w-6" />
-                            Adicionar ao Carrinho
-                        </Button>
                     </div>
                 </div>
+
+                {/* SEÇÃO 3: PRODUTOS RELACIONADOS */}
+                {relatedProducts && relatedProducts.length > 0 && (
+                    <div className="mt-16 space-y-6 animate-slide-up">
+                        <div className="flex items-center gap-4">
+                            <h2 className="text-2xl font-bold tracking-tight">Quem viu este, viu também</h2>
+                            <Separator className="flex-1" />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                            {relatedProducts.map((related) => (
+                                <ProductCard key={related.id} product={related} />
+                            ))}
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );
@@ -409,21 +370,13 @@ const ProductDetailsSkeleton = () => (
     <div className="min-h-screen bg-background flex flex-col">
         <Navbar />
         <main className="container py-8 flex-1">
-            <div className="mb-6">
-                <Skeleton className="h-10 w-24" />
-            </div>
+            <Skeleton className="h-10 w-24 mb-6" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                <Skeleton className="aspect-square w-full rounded-xl" />
+                <Skeleton className="aspect-square w-full rounded-2xl" />
                 <div className="space-y-6">
-                    <Skeleton className="h-10 w-3/4" />
-                    <Skeleton className="h-12 w-1/2" />
-                    <Skeleton className="h-px w-full" />
-                    <div className="grid grid-cols-2 gap-4">
-                        <Skeleton className="h-20 w-full" />
-                        <Skeleton className="h-20 w-full" />
-                    </div>
-                    <Skeleton className="h-32 w-full" />
-                    <Skeleton className="h-14 w-full" />
+                    <Skeleton className="h-12 w-3/4" />
+                    <Skeleton className="h-40 w-full rounded-xl" />
+                    <Skeleton className="h-20 w-full" />
                 </div>
             </div>
         </main>

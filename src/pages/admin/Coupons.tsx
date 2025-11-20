@@ -30,16 +30,24 @@ import {
     FormDescription,
 } from "@/components/ui/form";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
     fetchAllCoupons,
     createCoupon,
+    updateCoupon,
     deleteCoupon,
     toggleCouponStatus,
 } from "@/lib/api";
-import { Coupon, CouponInsertPayload } from "@/types"; // <-- IMPORT CORRETO
-import { Loader2, Plus, Trash2, Calendar as CalendarIcon } from "lucide-react";
+import { Coupon, CouponInsertPayload, CouponUpdatePayload } from "@/types";
+import {
+    Loader2,
+    Plus,
+    Trash2,
+    Edit,
+    Calendar as CalendarIcon,
+} from "lucide-react";
 import {
     Popover,
     PopoverContent,
@@ -61,6 +69,9 @@ const couponSchema = z.object({
     min_purchase_value: z.string().optional(),
     valid_until: z.date().optional(),
     active: z.boolean().default(true),
+    allow_with_promotion: z.boolean().default(false),
+    valid_for_aparelho: z.boolean().default(true),
+    valid_for_acessorio: z.boolean().default(true),
 });
 
 type CouponFormValues = z.infer<typeof couponSchema>;
@@ -69,6 +80,7 @@ const AdminCoupons = () => {
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
 
     const { data: coupons, isLoading } = useQuery<Coupon[]>({
         queryKey: ["adminCoupons"],
@@ -82,6 +94,9 @@ const AdminCoupons = () => {
             discount_percent: "10",
             min_purchase_value: "",
             active: true,
+            allow_with_promotion: false,
+            valid_for_aparelho: true,
+            valid_for_acessorio: true,
         },
     });
 
@@ -90,8 +105,22 @@ const AdminCoupons = () => {
         onSuccess: () => {
             toast({ title: "Sucesso", description: "Cupom criado." });
             queryClient.invalidateQueries({ queryKey: ["adminCoupons"] });
-            setIsDialogOpen(false);
-            form.reset();
+            handleCloseDialog();
+        },
+        onError: (error) =>
+            toast({
+                variant: "destructive",
+                title: "Erro",
+                description: error.message,
+            }),
+    });
+
+    const updateMutation = useMutation({
+        mutationFn: (data: CouponUpdatePayload) => updateCoupon(data),
+        onSuccess: () => {
+            toast({ title: "Sucesso", description: "Cupom atualizado." });
+            queryClient.invalidateQueries({ queryKey: ["adminCoupons"] });
+            handleCloseDialog();
         },
         onError: (error) =>
             toast({
@@ -121,24 +150,93 @@ const AdminCoupons = () => {
         },
     });
 
+    const handleEdit = (coupon: Coupon) => {
+        setEditingCoupon(coupon);
+
+        // --- CORREÇÃO DO BUG ---
+        // O valor no banco já está em Reais (ex: 50).
+        // Não multiplicamos por 100 aqui. Apenas formatamos para string.
+        // 50 -> "50,00"
+        const minValueFormatted = coupon.min_purchase_value
+            ? coupon.min_purchase_value.toLocaleString("pt-BR", {
+                  minimumFractionDigits: 2,
+              })
+            : "";
+
+        form.reset({
+            code: coupon.code,
+            discount_percent: String(coupon.discount_percent),
+            min_purchase_value: minValueFormatted,
+            valid_until: coupon.valid_until
+                ? new Date(coupon.valid_until)
+                : undefined,
+            active: coupon.active,
+            allow_with_promotion: coupon.allow_with_promotion || false,
+            valid_for_aparelho:
+                coupon.valid_for_categories?.includes("aparelho") ?? true,
+            valid_for_acessorio:
+                coupon.valid_for_categories?.includes("acessorio") ?? true,
+        });
+        setIsDialogOpen(true);
+    };
+
+    const handleCloseDialog = () => {
+        setIsDialogOpen(false);
+        setEditingCoupon(null);
+        form.reset({
+            code: "",
+            discount_percent: "10",
+            min_purchase_value: "",
+            active: true,
+            allow_with_promotion: false,
+            valid_for_aparelho: true,
+            valid_for_acessorio: true,
+        });
+    };
+
     const onSubmit = (values: CouponFormValues) => {
+        // O parseCurrency retorna CENTAVOS (ex: "50,00" -> 5000)
         const minValueCents = values.min_purchase_value
             ? parseCurrency(values.min_purchase_value)
             : undefined;
 
-        createMutation.mutate({
+        const categories = [];
+        if (values.valid_for_aparelho) categories.push("aparelho");
+        if (values.valid_for_acessorio) categories.push("acessorio");
+
+        if (categories.length === 0) {
+            toast({
+                variant: "destructive",
+                title: "Erro",
+                description: "Selecione pelo menos uma categoria.",
+            });
+            return;
+        }
+
+        const payload = {
             code: values.code,
             discount_percent: Number(values.discount_percent),
             active: values.active,
             valid_until: values.valid_until,
+            // O banco espera REAIS (Numeric), então dividimos por 100
+            // Ex: 5000 centavos -> 50.00 Reais
             min_purchase_value: minValueCents ? minValueCents / 100 : undefined,
-        });
+            valid_for_categories: categories,
+            allow_with_promotion: values.allow_with_promotion,
+        };
+
+        if (editingCoupon) {
+            updateMutation.mutate({ ...payload, id: editingCoupon.id });
+        } else {
+            createMutation.mutate(payload);
+        }
     };
 
     const handleValueBlur = (e: React.FocusEvent<HTMLInputElement>) => {
         const value = e.target.value;
         const cents = parseCurrency(value);
         if (cents !== undefined) {
+            // Exibe de volta como Reais (ex: "50,00")
             const formatted = (cents / 100).toLocaleString("pt-BR", {
                 minimumFractionDigits: 2,
             });
@@ -157,15 +255,22 @@ const AdminCoupons = () => {
                             Crie códigos de desconto com regras.
                         </p>
                     </div>
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <Dialog
+                        open={isDialogOpen}
+                        onOpenChange={(open) => !open && handleCloseDialog()}
+                    >
                         <DialogTrigger asChild>
                             <Button>
                                 <Plus className="mr-2 h-4 w-4" /> Novo Cupom
                             </Button>
                         </DialogTrigger>
-                        <DialogContent>
+                        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
-                                <DialogTitle>Criar Cupom</DialogTitle>
+                                <DialogTitle>
+                                    {editingCoupon
+                                        ? "Editar Cupom"
+                                        : "Criar Cupom"}
+                                </DialogTitle>
                             </DialogHeader>
                             <Form {...form}>
                                 <form
@@ -300,32 +405,128 @@ const AdminCoupons = () => {
                                         )}
                                     />
 
-                                    <FormField
-                                        control={form.control}
-                                        name="active"
-                                        render={({ field }) => (
-                                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                                <div className="space-y-0.5">
-                                                    <FormLabel>Ativo</FormLabel>
-                                                </div>
-                                                <FormControl>
-                                                    <Switch
-                                                        checked={field.value}
-                                                        onCheckedChange={
-                                                            field.onChange
-                                                        }
-                                                    />
-                                                </FormControl>
-                                            </FormItem>
-                                        )}
-                                    />
+                                    {/* REGRAS DE CATEGORIA */}
+                                    <div className="space-y-3 border p-4 rounded-md">
+                                        <h4 className="text-sm font-medium">
+                                            Válido para:
+                                        </h4>
+                                        <div className="flex gap-4">
+                                            <FormField
+                                                control={form.control}
+                                                name="valid_for_aparelho"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex items-center space-x-2 space-y-0">
+                                                        <FormControl>
+                                                            <Checkbox
+                                                                checked={
+                                                                    field.value
+                                                                }
+                                                                onCheckedChange={
+                                                                    field.onChange
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                        <FormLabel className="font-normal">
+                                                            Aparelhos
+                                                        </FormLabel>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="valid_for_acessorio"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex items-center space-x-2 space-y-0">
+                                                        <FormControl>
+                                                            <Checkbox
+                                                                checked={
+                                                                    field.value
+                                                                }
+                                                                onCheckedChange={
+                                                                    field.onChange
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                        <FormLabel className="font-normal">
+                                                            Acessórios
+                                                        </FormLabel>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* OPÇÕES EXTRAS */}
+                                    <div className="space-y-3">
+                                        <FormField
+                                            control={form.control}
+                                            name="allow_with_promotion"
+                                            render={({ field }) => (
+                                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                                    <div className="space-y-0.5">
+                                                        <FormLabel>
+                                                            Acumular com
+                                                            Promoção?
+                                                        </FormLabel>
+                                                        <FormDescription>
+                                                            Se marcado, aplica
+                                                            desconto mesmo em
+                                                            itens já
+                                                            promocionais.
+                                                        </FormDescription>
+                                                    </div>
+                                                    <FormControl>
+                                                        <Switch
+                                                            checked={
+                                                                field.value
+                                                            }
+                                                            onCheckedChange={
+                                                                field.onChange
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                </FormItem>
+                                            )}
+                                        />
+
+                                        <FormField
+                                            control={form.control}
+                                            name="active"
+                                            render={({ field }) => (
+                                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                                    <div className="space-y-0.5">
+                                                        <FormLabel>
+                                                            Ativo
+                                                        </FormLabel>
+                                                    </div>
+                                                    <FormControl>
+                                                        <Switch
+                                                            checked={
+                                                                field.value
+                                                            }
+                                                            onCheckedChange={
+                                                                field.onChange
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
                                     <Button
                                         type="submit"
                                         className="w-full"
-                                        disabled={createMutation.isPending}
+                                        disabled={
+                                            createMutation.isPending ||
+                                            updateMutation.isPending
+                                        }
                                     >
-                                        {createMutation.isPending
-                                            ? "Criando..."
+                                        {createMutation.isPending ||
+                                        updateMutation.isPending
+                                            ? "Salvando..."
+                                            : editingCoupon
+                                            ? "Atualizar Cupom"
                                             : "Criar Cupom"}
                                     </Button>
                                 </form>
@@ -379,8 +580,7 @@ const AdminCoupons = () => {
                                         <TableCell>
                                             {coupon.min_purchase_value
                                                 ? formatCurrency(
-                                                      coupon.min_purchase_value *
-                                                          100
+                                                      coupon.min_purchase_value
                                                   )
                                                 : "-"}
                                         </TableCell>
@@ -413,6 +613,15 @@ const AdminCoupons = () => {
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() =>
+                                                    handleEdit(coupon)
+                                                }
+                                            >
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
