@@ -1089,17 +1089,17 @@ export const createCouponUsage = async (clientId: string, couponId: string): Pro
 };
 
 // ==================================================================
-// FUNÇÕES DE PAGAMENTO (STRIPE)
+// FUNÇÕES DE PAGAMENTO (STRIPE EDGE FUNCTION)
 // ==================================================================
 
-export const createPaymentIntent = async (amount: number, storeId: string): Promise<string> => {
-  // Chama a Edge Function que criei
+export const createPaymentIntent = async (amount: number, storeId: string): Promise<{ clientSecret: string }> => {
+  // Chama a Edge Function 'create-payment-intent'
   const { data, error } = await supabase.functions.invoke('create-payment-intent', {
     body: { amount, storeId }
   });
 
-  if (error) throw new Error(error.message);
-  if (data.error) throw new Error(data.error);
+  if (error) throw new Error(`Erro na função de pagamento: ${error.message}`);
+  if (data?.error) throw new Error(data.error);
 
-  return data.clientSecret; // Retorna o segredo para o componente do Stripe
+  return data; 
 };
