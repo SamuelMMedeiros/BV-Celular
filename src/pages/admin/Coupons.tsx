@@ -38,8 +38,16 @@ import {
     deleteCoupon,
     toggleCouponStatus,
 } from "@/lib/api";
-import { Coupon, CouponInsertPayload } from "@/types";
-import { Loader2, Plus, Trash2, TicketPercent } from "lucide-react";
+import { Coupon, CouponInsertPayload } from "@/types"; // <-- IMPORT CORRETO
+import { Loader2, Plus, Trash2, Calendar as CalendarIcon } from "lucide-react";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn, formatCurrency, parseCurrency } from "@/lib/utils";
+import { format } from "date-fns";
 
 const couponSchema = z.object({
     code: z
@@ -50,6 +58,8 @@ const couponSchema = z.object({
         const n = Number(val);
         return !isNaN(n) && n > 0 && n <= 100;
     }, "Desconto deve ser entre 1% e 100%"),
+    min_purchase_value: z.string().optional(),
+    valid_until: z.date().optional(),
     active: z.boolean().default(true),
 });
 
@@ -70,6 +80,7 @@ const AdminCoupons = () => {
         defaultValues: {
             code: "",
             discount_percent: "10",
+            min_purchase_value: "",
             active: true,
         },
     });
@@ -111,11 +122,28 @@ const AdminCoupons = () => {
     });
 
     const onSubmit = (values: CouponFormValues) => {
+        const minValueCents = values.min_purchase_value
+            ? parseCurrency(values.min_purchase_value)
+            : undefined;
+
         createMutation.mutate({
             code: values.code,
             discount_percent: Number(values.discount_percent),
             active: values.active,
+            valid_until: values.valid_until,
+            min_purchase_value: minValueCents ? minValueCents / 100 : undefined,
         });
+    };
+
+    const handleValueBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        const cents = parseCurrency(value);
+        if (cents !== undefined) {
+            const formatted = (cents / 100).toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+            });
+            form.setValue("min_purchase_value", formatted);
+        }
     };
 
     return (
@@ -126,7 +154,7 @@ const AdminCoupons = () => {
                     <div>
                         <h1 className="text-3xl font-bold">Gerenciar Cupons</h1>
                         <p className="text-muted-foreground">
-                            Crie códigos de desconto para seus clientes.
+                            Crie códigos de desconto com regras.
                         </p>
                     </div>
                     <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -137,9 +165,7 @@ const AdminCoupons = () => {
                         </DialogTrigger>
                         <DialogContent>
                             <DialogHeader>
-                                <DialogTitle>
-                                    Criar Cupom de Desconto
-                                </DialogTitle>
+                                <DialogTitle>Criar Cupom</DialogTitle>
                             </DialogHeader>
                             <Form {...form}>
                                 <form
@@ -151,12 +177,10 @@ const AdminCoupons = () => {
                                         name="code"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>
-                                                    Código (Ex: NATAL10)
-                                                </FormLabel>
+                                                <FormLabel>Código</FormLabel>
                                                 <FormControl>
                                                     <Input
-                                                        placeholder="CÓDIGO"
+                                                        placeholder="NATAL10"
                                                         {...field}
                                                         onChange={(e) =>
                                                             field.onChange(
@@ -169,25 +193,113 @@ const AdminCoupons = () => {
                                             </FormItem>
                                         )}
                                     />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <FormField
+                                            control={form.control}
+                                            name="discount_percent"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>
+                                                        Desconto (%)
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            type="number"
+                                                            placeholder="10"
+                                                            {...field}
+                                                        />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                        <FormField
+                                            control={form.control}
+                                            name="min_purchase_value"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>
+                                                        Valor Mínimo (R$)
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            placeholder="0,00"
+                                                            {...field}
+                                                            onBlur={
+                                                                handleValueBlur
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                        Opcional
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+
                                     <FormField
                                         control={form.control}
-                                        name="discount_percent"
+                                        name="valid_until"
                                         render={({ field }) => (
-                                            <FormItem>
+                                            <FormItem className="flex flex-col">
                                                 <FormLabel>
-                                                    Porcentagem de Desconto (%)
+                                                    Validade (Opcional)
                                                 </FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="number"
-                                                        placeholder="10"
-                                                        {...field}
-                                                    />
-                                                </FormControl>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <FormControl>
+                                                            <Button
+                                                                variant={
+                                                                    "outline"
+                                                                }
+                                                                className={cn(
+                                                                    "pl-3 text-left font-normal",
+                                                                    !field.value &&
+                                                                        "text-muted-foreground"
+                                                                )}
+                                                            >
+                                                                {field.value ? (
+                                                                    format(
+                                                                        field.value,
+                                                                        "dd/MM/yyyy"
+                                                                    )
+                                                                ) : (
+                                                                    <span>
+                                                                        Sem
+                                                                        validade
+                                                                    </span>
+                                                                )}
+                                                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                            </Button>
+                                                        </FormControl>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent
+                                                        className="w-auto p-0"
+                                                        align="start"
+                                                    >
+                                                        <Calendar
+                                                            mode="single"
+                                                            selected={
+                                                                field.value
+                                                            }
+                                                            onSelect={
+                                                                field.onChange
+                                                            }
+                                                            disabled={(date) =>
+                                                                date <
+                                                                new Date()
+                                                            }
+                                                            initialFocus
+                                                        />
+                                                    </PopoverContent>
+                                                </Popover>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
                                     />
+
                                     <FormField
                                         control={form.control}
                                         name="active"
@@ -195,10 +307,6 @@ const AdminCoupons = () => {
                                             <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                                                 <div className="space-y-0.5">
                                                     <FormLabel>Ativo</FormLabel>
-                                                    <FormDescription>
-                                                        Cupom pode ser usado
-                                                        imediatamente?
-                                                    </FormDescription>
                                                 </div>
                                                 <FormControl>
                                                     <Switch
@@ -232,6 +340,8 @@ const AdminCoupons = () => {
                             <TableRow>
                                 <TableHead>Código</TableHead>
                                 <TableHead>Desconto</TableHead>
+                                <TableHead>Mínimo</TableHead>
+                                <TableHead>Validade</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="text-right">
                                     Ações
@@ -242,7 +352,7 @@ const AdminCoupons = () => {
                             {isLoading ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={4}
+                                        colSpan={6}
                                         className="text-center py-8"
                                     >
                                         <Loader2 className="animate-spin mx-auto" />
@@ -251,7 +361,7 @@ const AdminCoupons = () => {
                             ) : !coupons || coupons.length === 0 ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={4}
+                                        colSpan={6}
                                         className="text-center py-8 text-muted-foreground"
                                     >
                                         Nenhum cupom criado.
@@ -265,6 +375,24 @@ const AdminCoupons = () => {
                                         </TableCell>
                                         <TableCell>
                                             {coupon.discount_percent}%
+                                        </TableCell>
+                                        <TableCell>
+                                            {coupon.min_purchase_value
+                                                ? formatCurrency(
+                                                      coupon.min_purchase_value *
+                                                          100
+                                                  )
+                                                : "-"}
+                                        </TableCell>
+                                        <TableCell>
+                                            {coupon.valid_until
+                                                ? format(
+                                                      new Date(
+                                                          coupon.valid_until
+                                                      ),
+                                                      "dd/MM/yyyy"
+                                                  )
+                                                : "Ilimitado"}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center space-x-2">

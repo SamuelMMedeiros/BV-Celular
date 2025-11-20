@@ -1,3 +1,7 @@
+/* eslint-disable react-refresh/only-export-components */
+//
+// === CÓDIGO COMPLETO PARA: src/contexts/CartContext.tsx ===
+//
 import {
     createContext,
     useContext,
@@ -8,9 +12,10 @@ import {
     useCallback,
 } from "react";
 import { CartItem, Coupon } from "@/types";
-import { fetchCoupon, checkCouponUsage } from "@/lib/api"; // Importar verificação
-import { useCustomerAuth } from "./CustomerAuthContext"; // Importar Auth
+import { fetchCoupon, checkCouponUsage } from "@/lib/api";
+import { useCustomerAuth } from "./CustomerAuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { isBefore } from "date-fns"; // <-- IMPORT NECESSÁRIO (npm install date-fns se não tiver)
 
 interface CartContextType {
     cartItems: CartItem[];
@@ -46,7 +51,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
     const [coupon, setCoupon] = useState<Coupon | null>(null);
 
-    // Acesso ao perfil do usuário para validação
     const { profile, isLoggedIn } = useCustomerAuth();
     const { toast } = useToast();
 
@@ -66,6 +70,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         );
     }, [cartItems]);
 
+    // Calcula Desconto
     const discountAmount = useMemo(() => {
         if (!coupon) return 0;
         return Math.round(subtotal * (coupon.discount_percent / 100));
@@ -118,11 +123,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         setCoupon(null);
     }, []);
 
-    // --- LÓGICA DE APLICAÇÃO DE CUPOM ATUALIZADA ---
+    // --- LÓGICA DE APLICAÇÃO DE CUPOM COM VALIDAÇÃO ---
     const applyCoupon = async (code: string) => {
         if (!code) return false;
 
-        // 1. Verifica se está logado
         if (!isLoggedIn || !profile) {
             toast({
                 variant: "destructive",
@@ -132,11 +136,38 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
             return false;
         }
 
-        // 2. Busca o cupom
+        // Busca o cupom
         const foundCoupon = await fetchCoupon(code);
 
         if (foundCoupon) {
-            // 3. Verifica se já usou
+            // 1. Validade de Data
+            if (
+                foundCoupon.valid_until &&
+                isBefore(new Date(foundCoupon.valid_until), new Date())
+            ) {
+                toast({
+                    variant: "destructive",
+                    title: "Cupom expirado",
+                    description: "A data de validade deste cupom já passou.",
+                });
+                return false;
+            }
+
+            // 2. Valor Mínimo
+            if (
+                foundCoupon.min_purchase_value &&
+                subtotal < foundCoupon.min_purchase_value * 100
+            ) {
+                // *100 pois subtotal é centavos
+                toast({
+                    variant: "destructive",
+                    title: "Valor mínimo não atingido",
+                    description: `Este cupom requer uma compra mínima.`,
+                });
+                return false;
+            }
+
+            // 3. Uso Único
             const alreadyUsed = await checkCouponUsage(
                 profile.id,
                 foundCoupon.id
@@ -155,6 +186,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
             setCoupon(foundCoupon);
             return true;
         }
+
+        toast({
+            variant: "destructive",
+            title: "Cupom inválido",
+            description: "Código não encontrado.",
+        });
         return false;
     };
 
@@ -176,10 +213,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <CartContext.Provider value={value}>
-            {children}
-            {/* O CartDrawer é renderizado na Navbar, não aqui, para evitar duplicidade visual */}
-        </CartContext.Provider>
+        <CartContext.Provider value={value}>{children}</CartContext.Provider>
     );
 };
 

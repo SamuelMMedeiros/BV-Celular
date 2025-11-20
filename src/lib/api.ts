@@ -6,10 +6,11 @@ import { Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid'; 
 
+// --- DEFINIÇÃO DE PAYLOADS LOCAIS ---
+
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
   store_ids?: string[]; 
   image_files: File[];
-  brand?: string;
 };
 
 export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
@@ -40,8 +41,21 @@ export type OrderInsertPayload = {
   total_price: number;
   items: OrderCartItem[];
   status?: string;
+  employee_id?: string | null;
 };
 
+export type BannerInsertPayload = {
+    title: string;
+    subtitle?: string | null;
+    image_url: string; 
+    link_url: string;
+    button_text: string;
+    active?: boolean;
+};
+
+export type BannerUpdatePayload = Partial<BannerInsertPayload> & {
+    id: string;
+};
 
 // ==================================================================
 // FUNÇÕES DE API (PRODUTOS)
@@ -69,7 +83,7 @@ export const fetchProducts = async (params: { q?: string; category?: 'aparelho' 
   let query = supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -103,7 +117,7 @@ export const fetchPromotions = async (params: { q?: string; isPromotion?: boolea
   let query = supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -138,7 +152,7 @@ export const fetchAllProducts = async (): Promise<Product[]> => {
     let query = supabase
       .from('Products')
       .select(`
-        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images,
+        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
         ProductStores (
           Stores (
             id, name, whatsapp, city
@@ -187,7 +201,7 @@ export const fetchProductById = async (productId: string): Promise<Product> => {
   let { data: rawProduct, error } = await supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -255,7 +269,8 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
     colors: payload.colors || [],
     isPromotion: payload.isPromotion,
     category: payload.category,
-    brand: payload.brand, 
+    brand: payload.brand,
+    promotion_end_date: payload.promotion_end_date, 
     images: imageUrls,
   };
   const { data: newProduct, error: productError } = await supabase
@@ -329,7 +344,8 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     colors: payload.colors || [],
     isPromotion: payload.isPromotion,
     category: payload.category,
-    brand: payload.brand, 
+    brand: payload.brand,
+    promotion_end_date: payload.promotion_end_date, 
     images: finalImageUrls,
   };
 
@@ -602,12 +618,16 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
     store_id: payload.store_id,
     total_price: payload.total_price,
     items: payload.items, 
-    status: payload.status || 'pending'
+    status: payload.status || 'pending',
+    employee_id: payload.employee_id 
   };
 
+  // CORREÇÃO PARA O ERRO 2353:
+  // Usamos 'as any' para contornar o erro de tipo enquanto a definição 'Database' 
+  // não é atualizada com a coluna 'employee_id' no VSCode.
   const { data, error } = await supabase
     .from('Orders')
-    .insert(orderData)
+    .insert(orderData as any) 
     .select() 
     .single();
 
@@ -625,7 +645,8 @@ export const fetchAllOrders = async (): Promise<Order[]> => {
     .select(`
       *,
       Clients ( name, phone, email ),
-      Stores ( name, city )
+      Stores ( name, city ),
+      Employees ( name ) 
     `)
     .order('created_at', { ascending: false });
 
@@ -701,13 +722,13 @@ export const toggleFavorite = async (clientId: string, productId: string): Promi
 };
 
 export const fetchClientFavorites = async (clientId: string): Promise<Product[]> => {
-  // @ts-ignore
+  // @ts-ignore: Ignora erro de profundidade de tipo temporariamente
   const { data, error } = await (supabase
     .from('Favorites')
     .select(`
       product_id,
       Products (
-        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images,
+        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date,
         ProductStores ( Stores ( id, name, whatsapp, city ) )
       )
     `)
@@ -738,17 +759,6 @@ export const fetchClientFavorites = async (clientId: string): Promise<Product[]>
 // ==================================================================
 // FUNÇÕES DE API (BANNERS)
 // ==================================================================
-
-export const fetchBanners = async (): Promise<Banner[]> => {
-    const { data, error } = await supabase
-        .from('Banners')
-        .select('*')
-        .eq('active', true)
-        .order('created_at', { ascending: false });
-
-    if (error) throw new Error(error.message);
-    return data as Banner[];
-};
 
 export const fetchAllBannersAdmin = async (): Promise<Banner[]> => {
     const { data, error } = await supabase
@@ -791,7 +801,7 @@ export const uploadBannerImage = async (file: File): Promise<string> => {
     const fileName = `${uuidv4()}-${file.name}`;
     const { data, error } = await supabase
         .storage
-        .from('product-images') // Reutiliza bucket
+        .from('product-images') 
         .upload(`banners/${fileName}`, file);
 
     if (error) throw new Error(error.message);
@@ -802,6 +812,17 @@ export const uploadBannerImage = async (file: File): Promise<string> => {
         .getPublicUrl(data.path);
         
     return publicUrlData.publicUrl;
+};
+
+export const fetchBanners = async (): Promise<Banner[]> => {
+    const { data, error } = await supabase
+        .from('Banners')
+        .select('*')
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data as Banner[];
 };
 
 // ==================================================================
@@ -888,7 +909,8 @@ export const createCoupon = async (payload: CouponInsertPayload): Promise<void> 
         .from('Coupons')
         .insert({
             ...payload,
-            code: payload.code.toUpperCase()
+            code: payload.code.toUpperCase(),
+            valid_until: payload.valid_until ? payload.valid_until.toISOString() : null
         });
 
     if (error) throw new Error(error.message);
@@ -913,12 +935,10 @@ export const toggleCouponStatus = async (id: string, currentStatus: boolean): Pr
 };
 
 // ==================================================================
-// FUNÇÕES DE API (CONTROLE DE USO DE CUPOM) - NOVAS
+// FUNÇÕES DE API (CONTROLE DE USO DE CUPOM)
 // ==================================================================
 
-// Verifica se o cliente já usou o cupom
 export const checkCouponUsage = async (clientId: string, couponId: string): Promise<boolean> => {
-  //@ts-ignore
     const { data, error } = await supabase
         .from('CouponUsages')
         .select('id')
@@ -930,10 +950,9 @@ export const checkCouponUsage = async (clientId: string, couponId: string): Prom
         console.error("Erro ao verificar uso do cupom:", error);
         return false;
     }
-    return !!data; // Retorna true se já usou
+    return !!data;
 };
 
-// Registra o uso do cupom
 export const createCouponUsage = async (clientId: string, couponId: string): Promise<void> => {
     const { error } = await supabase
         .from('CouponUsages')
@@ -944,8 +963,5 @@ export const createCouponUsage = async (clientId: string, couponId: string): Pro
 
     if (error) {
         console.error("Erro ao registrar uso do cupom:", error);
-        // Não lançamos erro aqui para não bloquear o pedido caso o log de cupom falhe,
-        // mas num sistema rígido, deveríamos lançar.
     }
 };
-

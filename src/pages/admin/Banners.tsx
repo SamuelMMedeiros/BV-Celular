@@ -57,16 +57,18 @@ import {
     Trash2,
     Image as ImageIcon,
     ExternalLink,
+    Palette,
 } from "lucide-react";
 
-// Schema de Validação
 const bannerSchema = z.object({
     title: z.string().min(3, "Título é obrigatório"),
     subtitle: z.string().optional(),
-    image_url: z.string().min(1, "Imagem é obrigatória (URL ou Upload)"),
+    image_url: z.string().optional(), // Agora opcional
     link_url: z.string().min(1, "Link de destino é obrigatório"),
     button_text: z.string().min(1, "Texto do botão é obrigatório"),
     active: z.boolean().default(true),
+    background_color: z.string().default("#0f172a"),
+    text_color: z.string().default("#ffffff"),
 });
 
 type BannerFormValues = z.infer<typeof bannerSchema>;
@@ -94,6 +96,8 @@ const AdminBanners = () => {
             link_url: "/aparelhos",
             button_text: "Ver Oferta",
             active: true,
+            background_color: "#0f172a",
+            text_color: "#ffffff",
         },
     });
 
@@ -142,10 +146,12 @@ const AdminBanners = () => {
         form.reset({
             title: banner.title,
             subtitle: banner.subtitle || "",
-            image_url: banner.image_url,
+            image_url: banner.image_url || "",
             link_url: banner.link_url,
             button_text: banner.button_text,
             active: banner.active,
+            background_color: banner.background_color || "#0f172a",
+            text_color: banner.text_color || "#ffffff",
         });
         setIsDialogOpen(true);
     };
@@ -166,18 +172,25 @@ const AdminBanners = () => {
             link_url: "/aparelhos",
             button_text: "Ver Oferta",
             active: true,
+            background_color: "#0f172a",
+            text_color: "#ffffff",
         });
     };
 
     const onSubmit = (values: BannerFormValues) => {
+        // Se image_url for vazio, manda null
+        const payload = {
+            ...values,
+            image_url: values.image_url || null,
+        };
+
         if (editingBanner) {
-            updateMutation.mutate({ ...values, id: editingBanner.id });
+            updateMutation.mutate({ ...payload, id: editingBanner.id });
         } else {
-            createMutation.mutate(values);
+            createMutation.mutate(payload);
         }
     };
 
-    // Handler de Upload de Imagem
     const handleImageUpload = async (
         e: React.ChangeEvent<HTMLInputElement>
     ) => {
@@ -226,7 +239,7 @@ const AdminBanners = () => {
                                 <Plus className="mr-2 h-4 w-4" /> Novo Banner
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
                                 <DialogTitle>
                                     {editingBanner
@@ -238,56 +251,115 @@ const AdminBanners = () => {
                             <Form {...form}>
                                 <form
                                     onSubmit={form.handleSubmit(onSubmit)}
-                                    className="space-y-4"
+                                    className="space-y-6"
                                 >
-                                    {/* Títulos */}
-                                    <div className="grid grid-cols-1 gap-4">
-                                        <FormField
-                                            control={form.control}
-                                            name="title"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Título Principal
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            placeholder="Ex: Ofertas de Natal"
-                                                            {...field}
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="subtitle"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Subtítulo (Opcional)
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            placeholder="Ex: Descontos de até 50%"
-                                                            {...field}
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-4">
+                                            <FormField
+                                                control={form.control}
+                                                name="title"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>
+                                                            Título Principal
+                                                        </FormLabel>
+                                                        <FormControl>
+                                                            <Input
+                                                                placeholder="Ex: Ofertas de Natal"
+                                                                {...field}
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="subtitle"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>
+                                                            Subtítulo (Opcional)
+                                                        </FormLabel>
+                                                        <FormControl>
+                                                            <Input
+                                                                placeholder="Ex: Descontos de até 50%"
+                                                                {...field}
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </div>
+
+                                        {/* Seletor de Cores */}
+                                        <div className="space-y-4 border p-4 rounded-lg bg-muted/30">
+                                            <h3 className="font-medium flex items-center gap-2">
+                                                <Palette className="h-4 w-4" />{" "}
+                                                Estilo
+                                            </h3>
+                                            <FormField
+                                                control={form.control}
+                                                name="background_color"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex items-center gap-4 space-y-0">
+                                                        <FormControl>
+                                                            <div className="flex gap-2 items-center w-full">
+                                                                <Input
+                                                                    type="color"
+                                                                    className="w-12 h-12 p-1 cursor-pointer"
+                                                                    {...field}
+                                                                />
+                                                                <span className="text-sm text-muted-foreground w-20">
+                                                                    {
+                                                                        field.value
+                                                                    }
+                                                                </span>
+                                                            </div>
+                                                        </FormControl>
+                                                        <FormLabel className="font-normal">
+                                                            Cor de Fundo
+                                                        </FormLabel>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="text_color"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex items-center gap-4 space-y-0">
+                                                        <FormControl>
+                                                            <div className="flex gap-2 items-center w-full">
+                                                                <Input
+                                                                    type="color"
+                                                                    className="w-12 h-12 p-1 cursor-pointer"
+                                                                    {...field}
+                                                                />
+                                                                <span className="text-sm text-muted-foreground w-20">
+                                                                    {
+                                                                        field.value
+                                                                    }
+                                                                </span>
+                                                            </div>
+                                                        </FormControl>
+                                                        <FormLabel className="font-normal">
+                                                            Cor do Texto
+                                                        </FormLabel>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </div>
                                     </div>
 
-                                    {/* Imagem */}
+                                    {/* Imagem (Opcional) */}
                                     <FormField
                                         control={form.control}
                                         name="image_url"
                                         render={({ field }) => (
                                             <FormItem>
                                                 <FormLabel>
-                                                    Imagem de Fundo
+                                                    Imagem de Fundo (Opcional)
                                                 </FormLabel>
                                                 <div className="flex gap-2 items-center">
                                                     <FormControl>
@@ -296,7 +368,6 @@ const AdminBanners = () => {
                                                             {...field}
                                                         />
                                                     </FormControl>
-                                                    {/* Input de arquivo escondido mas funcional */}
                                                     <div className="relative">
                                                         <Input
                                                             type="file"
@@ -326,8 +397,8 @@ const AdminBanners = () => {
                                                     </div>
                                                 </div>
                                                 <FormDescription>
-                                                    Cole a URL ou clique no
-                                                    ícone para subir um arquivo.
+                                                    Se deixar em branco, usará
+                                                    apenas a cor de fundo.
                                                 </FormDescription>
                                                 {field.value && (
                                                     <img
@@ -341,7 +412,6 @@ const AdminBanners = () => {
                                         )}
                                     />
 
-                                    {/* Links e Botão */}
                                     <div className="grid grid-cols-2 gap-4">
                                         <FormField
                                             control={form.control}
@@ -381,7 +451,6 @@ const AdminBanners = () => {
                                         />
                                     </div>
 
-                                    {/* Ativo Switch */}
                                     <FormField
                                         control={form.control}
                                         name="active"
@@ -391,10 +460,6 @@ const AdminBanners = () => {
                                                     <FormLabel>
                                                         Banner Ativo
                                                     </FormLabel>
-                                                    <FormDescription>
-                                                        Exibir na página
-                                                        inicial.
-                                                    </FormDescription>
                                                 </div>
                                                 <FormControl>
                                                     <Switch
@@ -407,6 +472,37 @@ const AdminBanners = () => {
                                             </FormItem>
                                         )}
                                     />
+
+                                    {/* Preview em Tempo Real */}
+                                    <div
+                                        className="rounded-xl p-6 flex flex-col justify-center items-center text-center min-h-[150px] border-2 border-dashed mt-4"
+                                        style={{
+                                            backgroundColor:
+                                                form.watch("background_color"),
+                                            backgroundImage: form.watch(
+                                                "image_url"
+                                            )
+                                                ? `url(${form.watch(
+                                                      "image_url"
+                                                  )})`
+                                                : "none",
+                                            backgroundSize: "cover",
+                                            backgroundPosition: "center",
+                                            color: form.watch("text_color"),
+                                        }}
+                                    >
+                                        <h3 className="text-2xl font-bold drop-shadow-md">
+                                            {form.watch("title") ||
+                                                "Título do Banner"}
+                                        </h3>
+                                        <p className="text-lg opacity-90 drop-shadow-md">
+                                            {form.watch("subtitle") ||
+                                                "Subtítulo do Banner"}
+                                        </p>
+                                        <Button className="mt-4 bg-white text-black hover:bg-gray-100 border-none pointer-events-none">
+                                            {form.watch("button_text")}
+                                        </Button>
+                                    </div>
 
                                     <Button
                                         type="submit"
@@ -466,17 +562,21 @@ const AdminBanners = () => {
                                     banners.map((banner) => (
                                         <TableRow key={banner.id}>
                                             <TableCell>
-                                                <img
-                                                    src={banner.image_url}
-                                                    alt="Miniatura"
-                                                    className="w-16 h-10 object-cover rounded bg-muted"
+                                                <div
+                                                    className="w-16 h-10 rounded border"
+                                                    style={{
+                                                        backgroundColor:
+                                                            banner.background_color,
+                                                        backgroundImage:
+                                                            banner.image_url
+                                                                ? `url(${banner.image_url})`
+                                                                : "none",
+                                                        backgroundSize: "cover",
+                                                    }}
                                                 />
                                             </TableCell>
                                             <TableCell className="font-medium">
                                                 {banner.title}
-                                                <div className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                                    {banner.subtitle}
-                                                </div>
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-1 text-xs text-blue-600">

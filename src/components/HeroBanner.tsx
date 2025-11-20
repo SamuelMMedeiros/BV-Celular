@@ -16,7 +16,6 @@ import { ExternalLink } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Link } from "react-router-dom";
 
-// Tipo unificado para o Carrossel
 type CarouselItemData =
     | { type: "banner"; data: Banner }
     | { type: "product"; data: Product };
@@ -24,7 +23,6 @@ type CarouselItemData =
 export const HeroBanner = () => {
     const plugin = useRef(Autoplay({ delay: 5000, stopOnInteraction: true }));
 
-    // 1. Busca Banners Manuais
     const { data: manualBanners, isLoading: loadingBanners } = useQuery<
         Banner[]
     >({
@@ -32,7 +30,6 @@ export const HeroBanner = () => {
         queryFn: fetchBanners,
     });
 
-    // 2. Busca Produtos em Promoção
     const { data: promoProducts, isLoading: loadingPromos } = useQuery<
         Product[]
     >({
@@ -48,7 +45,6 @@ export const HeroBanner = () => {
         );
     }
 
-    // 3. Mescla e Limita os itens
     const items: CarouselItemData[] = [];
 
     if (manualBanners) {
@@ -79,38 +75,61 @@ export const HeroBanner = () => {
                 <CarouselContent>
                     {items.map((item, index) => (
                         <CarouselItem key={index}>
-                            {/* ALTERAÇÃO MOBILE: 
-                                - Mudamos h-[400px] para min-h-[500px] no mobile para caber o conteúdo empilhado.
-                                - No desktop mantém h-[500px].
-                            */}
-                            <div className="relative min-h-[500px] md:h-[500px] w-full flex items-center bg-slate-900 overflow-hidden">
+                            <div
+                                className="relative min-h-[500px] md:h-[500px] w-full flex items-center overflow-hidden"
+                                style={
+                                    item.type === "banner"
+                                        ? {
+                                              backgroundColor:
+                                                  item.data.background_color,
+                                          }
+                                        : { backgroundColor: "#0f172a" }
+                                }
+                            >
                                 {item.type === "banner" ? (
                                     // --- BANNER MANUAL ---
                                     <>
-                                        <img
-                                            src={item.data.image_url}
-                                            alt={item.data.title}
-                                            className="absolute inset-0 w-full h-full object-cover opacity-40"
-                                        />
-                                        {/* Overlay Gradiente para legibilidade */}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent md:bg-gradient-to-r md:from-black/80 md:to-transparent" />
+                                        {item.data.image_url && (
+                                            <img
+                                                src={item.data.image_url}
+                                                alt={item.data.title}
+                                                className="absolute inset-0 w-full h-full object-cover opacity-40"
+                                            />
+                                        )}
 
-                                        <div className="container mx-auto px-6 py-12 flex flex-col-reverse md:flex-row items-center gap-8 relative z-10 h-full justify-center md:justify-between">
-                                            {/* Texto */}
-                                            <div className="flex-1 text-center md:text-left space-y-4 md:space-y-6">
-                                                <h2 className="text-3xl sm:text-4xl md:text-6xl font-extrabold tracking-tight text-white drop-shadow-md leading-tight">
+                                        {/* Overlay sutil se tiver imagem */}
+                                        {item.data.image_url && (
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                                        )}
+
+                                        <div className="container mx-auto px-6 py-12 flex flex-col items-center justify-center text-center relative z-10 h-full">
+                                            <div className="space-y-4 md:space-y-6 max-w-3xl">
+                                                <h2
+                                                    className="text-3xl sm:text-4xl md:text-6xl font-extrabold tracking-tight drop-shadow-md leading-tight"
+                                                    style={{
+                                                        color: item.data
+                                                            .text_color,
+                                                    }}
+                                                >
                                                     {item.data.title}
                                                 </h2>
                                                 {item.data.subtitle && (
-                                                    <p className="text-base sm:text-lg md:text-2xl text-gray-200 drop-shadow-md font-light line-clamp-3 md:line-clamp-none">
+                                                    <p
+                                                        className="text-base sm:text-lg md:text-2xl drop-shadow-md font-light"
+                                                        style={{
+                                                            color: item.data
+                                                                .text_color,
+                                                            opacity: 0.9,
+                                                        }}
+                                                    >
                                                         {item.data.subtitle}
                                                     </p>
                                                 )}
-                                                <div className="pt-2">
+                                                <div className="pt-4">
                                                     <Button
                                                         asChild
                                                         size="lg"
-                                                        className="w-full md:w-auto text-base md:text-lg px-8 h-12 rounded-full shadow-lg hover:scale-105 transition-transform bg-white text-black hover:bg-gray-100"
+                                                        className="text-base md:text-lg px-8 h-12 rounded-full shadow-lg hover:scale-105 transition-transform bg-white text-black hover:bg-gray-100 border-none"
                                                     >
                                                         <a
                                                             href={
@@ -139,22 +158,11 @@ export const HeroBanner = () => {
                                                     </Button>
                                                 </div>
                                             </div>
-
-                                            {/* Imagem Ilustrativa (Se houver, ou se for o mesmo background usado como destaque) */}
-                                            <div className="flex-1 flex justify-center md:justify-end items-center w-full">
-                                                {/* No mobile, limitamos a altura para não ocupar a tela toda */}
-                                                <img
-                                                    src={item.data.image_url}
-                                                    alt={item.data.title}
-                                                    className="h-40 sm:h-56 md:max-h-[400px] w-auto object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500 rounded-lg md:rounded-none"
-                                                />
-                                            </div>
                                         </div>
                                     </>
                                 ) : (
                                     // --- PRODUTO EM PROMOÇÃO ---
                                     <>
-                                        {/* Fundo borrado */}
                                         <img
                                             src={
                                                 item.data.images[0] ||
@@ -209,7 +217,6 @@ export const HeroBanner = () => {
                                             </div>
 
                                             <div className="flex-1 flex justify-center md:justify-end items-center w-full">
-                                                {/* Imagem do Produto: Ajustada para Mobile */}
                                                 <img
                                                     src={
                                                         item.data.images[0] ||
@@ -227,7 +234,6 @@ export const HeroBanner = () => {
                     ))}
                 </CarouselContent>
 
-                {/* Setas de navegação escondidas no mobile para não poluir (usuário arrasta) */}
                 <CarouselPrevious className="left-4 bg-white/20 hover:bg-white/40 text-white border-none hidden md:flex" />
                 <CarouselNext className="right-4 bg-white/20 hover:bg-white/40 text-white border-none hidden md:flex" />
             </Carousel>

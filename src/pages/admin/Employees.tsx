@@ -36,7 +36,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox"; // <-- IMPORTAR
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Employee, Store } from "@/types";
@@ -49,12 +49,19 @@ import {
     EmployeeInsertPayload,
     EmployeeUpdatePayload,
 } from "@/lib/api";
-import { Edit, Trash2, Plus } from "lucide-react";
+import {
+    Edit,
+    Trash2,
+    Plus,
+    Link as LinkIcon,
+    Copy,
+    Check,
+} from "lucide-react";
 
 const employeeSchema = z.object({
     name: z.string().min(2, "Nome é obrigatório."),
     email: z.string().email("Email inválido."),
-    store_id: z.string().optional(), // Opcional (se vazio = admin geral)
+    store_id: z.string().optional(),
     can_create: z.boolean().default(false),
     can_update: z.boolean().default(false),
     can_delete: z.boolean().default(false),
@@ -69,6 +76,9 @@ const AdminEmployees = () => {
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(
         null
     );
+
+    // Estado para feedback visual de cópia
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     const { data: employees, isLoading } = useQuery<Employee[]>({
         queryKey: ["employees"],
@@ -85,7 +95,7 @@ const AdminEmployees = () => {
         defaultValues: {
             name: "",
             email: "",
-            store_id: "all", // "all" representa sem loja (admin geral)
+            store_id: "all",
             can_create: false,
             can_update: false,
             can_delete: false,
@@ -155,7 +165,6 @@ const AdminEmployees = () => {
     };
 
     const onSubmit = (data: EmployeeFormValues) => {
-        // Converte "all" para null (Admin Geral)
         const payloadStoreId = data.store_id === "all" ? null : data.store_id;
 
         const payload = {
@@ -166,18 +175,24 @@ const AdminEmployees = () => {
         if (editingEmployee) {
             updateMutation.mutate({ ...payload, id: editingEmployee.id });
         } else {
-            // Atenção: O ID do funcionário no CREATE deve ser igual ao ID de Auth (que já deve existir).
-            // Para simplificar aqui, assumimos que você cria o usuário no Auth primeiro e usa o ID dele,
-            // ou usa uma Trigger no banco. Neste form simples, estamos apenas inserindo na tabela.
-            // Se precisar criar o Auth User via código, precisamos da Admin API do Supabase (backend).
-            toast({
-                variant: "warning",
-                title: "Atenção",
-                description:
-                    "Lembre-se que o Email deve corresponder a um usuário já registrado no Auth, ou use uma Trigger para criar.",
-            });
-            createMutation.mutate({ ...payload, id: crypto.randomUUID() }); // Placeholder ID
+            // Nota: Em produção, o ID deve ser o UID do Auth do Supabase
+            createMutation.mutate({ ...payload, id: crypto.randomUUID() });
         }
+    };
+
+    // --- FUNÇÃO DE COPIAR LINK ---
+    const copyLink = (employeeId: string) => {
+        const link = `${window.location.origin}/?ref=${employeeId}`;
+        navigator.clipboard.writeText(link);
+
+        setCopiedId(employeeId);
+        setTimeout(() => setCopiedId(null), 2000); // Reseta ícone após 2s
+
+        toast({
+            title: "Link copiado!",
+            description:
+                "Link de vendedor copiado para a área de transferência.",
+        });
     };
 
     return (
@@ -291,69 +306,71 @@ const AdminEmployees = () => {
                                         <h4 className="font-medium text-sm">
                                             Permissões
                                         </h4>
-                                        <FormField
-                                            control={form.control}
-                                            name="can_create"
-                                            render={({ field }) => (
-                                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                                    <FormControl>
-                                                        <Checkbox
-                                                            checked={
-                                                                field.value
-                                                            }
-                                                            onCheckedChange={
-                                                                field.onChange
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormLabel className="font-normal">
-                                                        Pode Criar
-                                                    </FormLabel>
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="can_update"
-                                            render={({ field }) => (
-                                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                                    <FormControl>
-                                                        <Checkbox
-                                                            checked={
-                                                                field.value
-                                                            }
-                                                            onCheckedChange={
-                                                                field.onChange
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormLabel className="font-normal">
-                                                        Pode Editar
-                                                    </FormLabel>
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="can_delete"
-                                            render={({ field }) => (
-                                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                                    <FormControl>
-                                                        <Checkbox
-                                                            checked={
-                                                                field.value
-                                                            }
-                                                            onCheckedChange={
-                                                                field.onChange
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormLabel className="font-normal">
-                                                        Pode Excluir
-                                                    </FormLabel>
-                                                </FormItem>
-                                            )}
-                                        />
+                                        <div className="flex gap-4">
+                                            <FormField
+                                                control={form.control}
+                                                name="can_create"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex items-center space-x-2 space-y-0">
+                                                        <FormControl>
+                                                            <Checkbox
+                                                                checked={
+                                                                    field.value
+                                                                }
+                                                                onCheckedChange={
+                                                                    field.onChange
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                        <FormLabel className="font-normal">
+                                                            Criar
+                                                        </FormLabel>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="can_update"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex items-center space-x-2 space-y-0">
+                                                        <FormControl>
+                                                            <Checkbox
+                                                                checked={
+                                                                    field.value
+                                                                }
+                                                                onCheckedChange={
+                                                                    field.onChange
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                        <FormLabel className="font-normal">
+                                                            Editar
+                                                        </FormLabel>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="can_delete"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex items-center space-x-2 space-y-0">
+                                                        <FormControl>
+                                                            <Checkbox
+                                                                checked={
+                                                                    field.value
+                                                                }
+                                                                onCheckedChange={
+                                                                    field.onChange
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                        <FormLabel className="font-normal">
+                                                            Excluir
+                                                        </FormLabel>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </div>
                                     </div>
 
                                     <Button type="submit" className="w-full">
@@ -371,7 +388,7 @@ const AdminEmployees = () => {
                             <TableRow>
                                 <TableHead>Nome</TableHead>
                                 <TableHead>Loja</TableHead>
-                                <TableHead>Permissões</TableHead>
+                                <TableHead>Link de Venda</TableHead>
                                 <TableHead className="text-right">
                                     Ações
                                 </TableHead>
@@ -395,10 +412,22 @@ const AdminEmployees = () => {
                                             </span>
                                         )}
                                     </TableCell>
-                                    <TableCell className="text-xs text-muted-foreground">
-                                        {emp.can_create && "Criar • "}
-                                        {emp.can_update && "Editar • "}
-                                        {emp.can_delete && "Excluir"}
+                                    <TableCell>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => copyLink(emp.id)}
+                                            className="gap-2 min-w-[140px]"
+                                        >
+                                            {copiedId === emp.id ? (
+                                                <Check className="h-3 w-3 text-green-600" />
+                                            ) : (
+                                                <LinkIcon className="h-3 w-3" />
+                                            )}
+                                            {copiedId === emp.id
+                                                ? "Copiado!"
+                                                : "Copiar Link"}
+                                        </Button>
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <Button

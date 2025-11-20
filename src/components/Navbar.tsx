@@ -15,6 +15,7 @@ import { AuthContext } from "@/contexts/AuthContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
 import { CartDrawer } from "@/components/CartDrawer";
+import { ModeToggle } from "@/components/Mode-Toggle"; 
 import {
     Sheet,
     SheetContent,
@@ -28,7 +29,6 @@ const navLinks = [
     { to: "/aparelhos", label: "Aparelhos", icon: Smartphone },
     { to: "/acessorios", label: "Acessórios", icon: Tag },
     { to: "/promocoes", label: "Promoções", icon: MessageCircle },
-    { to: "/garantia", label: "Garantia", icon: ShieldCheck },
 ];
 
 export const Navbar = () => {
@@ -66,7 +66,6 @@ export const Navbar = () => {
             <div className="container flex h-16 items-center justify-between gap-2 md:gap-4">
                 {/* ESQUERDA: Menu Mobile + Logo */}
                 <div className="flex items-center">
-                    {/* Menu Hamburguer (Só aparece em Mobile/Tablet) */}
                     <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                         <SheetTrigger asChild className="md:hidden mr-2">
                             <Button variant="ghost" size="icon">
@@ -86,29 +85,30 @@ export const Navbar = () => {
                             </SheetHeader>
 
                             <div className="flex flex-col mt-6 space-y-2">
-                                {/* Links Mobile */}
-                                {navLinks.map((link) => (
-                                    <Button
-                                        key={link.to}
-                                        variant={
-                                            isActive(link.to)
-                                                ? "secondary"
-                                                : "ghost"
-                                        }
-                                        size="lg"
-                                        asChild
-                                        className="justify-start"
-                                        onClick={() => setIsMenuOpen(false)}
-                                    >
-                                        <Link
-                                            to={link.to}
-                                            className="flex items-center gap-3"
+                                {/* Links Mobile - SÓ MOSTRA SE NÃO FOR ADMIN */}
+                                {!employeeProfile &&
+                                    navLinks.map((link) => (
+                                        <Button
+                                            key={link.to}
+                                            variant={
+                                                isActive(link.to)
+                                                    ? "secondary"
+                                                    : "ghost"
+                                            }
+                                            size="lg"
+                                            asChild
+                                            className="justify-start"
+                                            onClick={() => setIsMenuOpen(false)}
                                         >
-                                            <link.icon className="h-5 w-5" />
-                                            <span>{link.label}</span>
-                                        </Link>
-                                    </Button>
-                                ))}
+                                            <Link
+                                                to={link.to}
+                                                className="flex items-center gap-3"
+                                            >
+                                                <link.icon className="h-5 w-5" />
+                                                <span>{link.label}</span>
+                                            </Link>
+                                        </Button>
+                                    ))}
 
                                 <Separator className="my-4" />
 
@@ -116,7 +116,7 @@ export const Navbar = () => {
                                 {employeeProfile ? (
                                     <>
                                         <div className="px-2 py-1 text-sm font-medium text-muted-foreground">
-                                            Área Admin
+                                            {employeeProfile.name} (Admin)
                                         </div>
                                         <Button
                                             variant="ghost"
@@ -164,7 +164,6 @@ export const Navbar = () => {
                         </SheetContent>
                     </Sheet>
 
-                    {/* Logo */}
                     <Link to="/" className="flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-primary-foreground">
                             <Smartphone className="h-5 w-5" />
@@ -175,52 +174,63 @@ export const Navbar = () => {
                     </Link>
                 </div>
 
-                {/* CENTRO: Barra de Pesquisa (Apenas Desktop) */}
-                <form
-                    onSubmit={handleSearch}
-                    className="hidden md:flex flex-1 max-w-sm items-center relative mx-4"
-                >
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        type="search"
-                        placeholder="Buscar produtos..."
-                        className="pl-9 w-full bg-muted/50 focus:bg-background transition-colors"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </form>
+                {/* CENTRO: Barra de Pesquisa (Escondida se for Admin, para focar na gestão) */}
+                {!employeeProfile && (
+                    <form
+                        onSubmit={handleSearch}
+                        className="hidden md:flex flex-1 max-w-sm items-center relative mx-4"
+                    >
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            type="search"
+                            placeholder="Buscar produtos..."
+                            className="pl-9 w-full bg-muted/50 focus:bg-background transition-colors"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </form>
+                )}
 
                 {/* DIREITA: Links Desktop + Ações */}
                 <div className="flex items-center gap-1 md:gap-2">
-                    {/* Links (Apenas Desktop) */}
-                    <div className="hidden md:flex items-center gap-1 mr-2">
-                        {navLinks.map((link) => (
-                            <Button
-                                key={link.to}
-                                variant={
-                                    isActive(link.to) ? "secondary" : "ghost"
-                                }
-                                size="sm"
-                                asChild
-                            >
-                                <Link to={link.to}>{link.label}</Link>
-                            </Button>
-                        ))}
-                    </div>
+                    {/* Botão de Tema */}
+                    <ModeToggle />
+
+                    {/* Links (Apenas Desktop e se NÃO for Admin) */}
+                    {!employeeProfile && (
+                        <div className="hidden lg:flex items-center gap-1 mr-2">
+                            {navLinks.map((link) => (
+                                <Button
+                                    key={link.to}
+                                    variant={
+                                        isActive(link.to)
+                                            ? "secondary"
+                                            : "ghost"
+                                    }
+                                    size="sm"
+                                    asChild
+                                >
+                                    <Link to={link.to}>{link.label}</Link>
+                                </Button>
+                            ))}
+                        </div>
+                    )}
 
                     {/* Busca Mobile (Ícone) */}
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="md:hidden"
-                        onClick={() => navigate("/aparelhos")}
-                    >
-                        <Search className="h-5 w-5" />
-                        <span className="sr-only">Buscar</span>
-                    </Button>
+                    {!employeeProfile && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="md:hidden"
+                            onClick={() => navigate("/aparelhos")}
+                        >
+                            <Search className="h-5 w-5" />
+                            <span className="sr-only">Buscar</span>
+                        </Button>
+                    )}
 
-                    {/* Carrinho (Sempre visível, ícone) */}
-                    <CartDrawer />
+                    {/* Carrinho (Escondido se for Admin) */}
+                    {!employeeProfile && <CartDrawer />}
 
                     {/* Perfil / Login */}
                     {!employeeProfile && <CustomerAuthPopover />}
@@ -228,7 +238,6 @@ export const Navbar = () => {
                     {/* Admin Actions */}
                     {employeeProfile && (
                         <div className="flex items-center">
-                            {/* Desktop: Botão com texto / Mobile: Ícone */}
                             <Button
                                 variant="ghost"
                                 size="sm"
@@ -239,18 +248,7 @@ export const Navbar = () => {
                                     <ShieldCheck className="h-4 w-4" /> Painel
                                 </Link>
                             </Button>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                asChild
-                                className="md:hidden"
-                            >
-                                <Link to="/admin">
-                                    <ShieldCheck className="h-5 w-5" />
-                                </Link>
-                            </Button>
 
-                            {/* Logout Admin (Apenas Desktop, no mobile fica no menu) */}
                             <Button
                                 variant="ghost"
                                 size="icon"
