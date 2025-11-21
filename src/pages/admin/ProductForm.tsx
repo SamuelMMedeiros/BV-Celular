@@ -62,14 +62,6 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "recharts";
 
-const MAX_FILE_SIZE_MB = 5;
-const ACCEPTED_IMAGE_TYPES = [
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/webp",
-];
-
 const SUBCATEGORIES = {
     aparelho: [
         { value: "smartphone", label: "Smartphone" },
@@ -99,10 +91,8 @@ const commonSchema = z.object({
     description: z.string().optional().nullable(),
     brand: z.string().min(1, "Marca obrigatória."),
     subcategory: z.string().optional(),
-
     price: z.string().min(1, "Preço obrigatório"),
     originalPrice: z.string().optional().nullable(),
-
     storage: z.string().optional().nullable(),
     ram: z.string().optional().nullable(),
     colors: z
@@ -117,7 +107,6 @@ const commonSchema = z.object({
                       .filter(Boolean)
                 : []
         ),
-
     category: z.enum(["aparelho", "acessorio"]),
     isPromotion: z.boolean().default(false),
     promotion_end_date: z.date().optional().nullable(),
@@ -126,7 +115,6 @@ const commonSchema = z.object({
     installment_price: z.string().optional(),
     max_installments: z.string().optional().default("12"),
     store_ids: z.array(z.string()).optional(),
-
     has_variations: z.boolean().default(false),
     variants: z.array(variantSchema).optional(),
 });
@@ -255,12 +243,13 @@ const AdminProductForm = () => {
         onSuccess: () => {
             toast({ title: "Sucesso!", description: "Produto criado." });
             queryClient.invalidateQueries({ queryKey: ["adminProducts"] });
-            navigate("/admin/products");
+            // CORREÇÃO: Redireciona para a rota em português
+            navigate("/admin/produtos");
         },
         onError: (error) =>
             toast({
                 variant: "destructive",
-                title: "Erro",
+                title: "Erro ao criar",
                 description: error.message,
             }),
     });
@@ -270,12 +259,13 @@ const AdminProductForm = () => {
         onSuccess: () => {
             toast({ title: "Sucesso!", description: "Produto atualizado." });
             queryClient.invalidateQueries({ queryKey: ["adminProducts"] });
-            navigate("/admin/products");
+            // CORREÇÃO: Redireciona para a rota em português
+            navigate("/admin/produtos");
         },
         onError: (error) =>
             toast({
                 variant: "destructive",
-                title: "Erro",
+                title: "Erro ao atualizar",
                 description: error.message,
             }),
     });
@@ -335,7 +325,6 @@ const AdminProductForm = () => {
         }
     };
 
-    // CORREÇÃO DO ERRO isLoading
     const isLoading = createMutation.isPending || updateMutation.isPending;
 
     const handlePriceBlur = (e: any, fieldName: any) => {
@@ -375,13 +364,14 @@ const AdminProductForm = () => {
             <main className="container py-8">
                 <Card className="mx-auto max-w-4xl">
                     <CardHeader>
+                        {/* CORREÇÃO: Link de voltar aponta para /admin/produtos */}
                         <Button
                             variant="ghost"
                             size="sm"
                             asChild
                             className="mb-2 w-fit justify-self-start p-0"
                         >
-                            <Link to="/admin/products">
+                            <Link to="/admin/produtos">
                                 <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
                             </Link>
                         </Button>
@@ -597,8 +587,6 @@ const AdminProductForm = () => {
                                             )}
                                         />
                                     </div>
-
-                                    {/* Variações */}
                                     <div className="border rounded-lg p-4 bg-slate-50 dark:bg-slate-900 space-y-4">
                                         <FormField
                                             control={form.control}
@@ -634,8 +622,7 @@ const AdminProductForm = () => {
                                                         >
                                                             <div className="col-span-5">
                                                                 <Label className="text-xs">
-                                                                    Nome (Ex:
-                                                                    Azul 64GB)
+                                                                    Nome
                                                                 </Label>
                                                                 <Input
                                                                     {...form.register(
@@ -646,7 +633,7 @@ const AdminProductForm = () => {
                                                             </div>
                                                             <div className="col-span-3">
                                                                 <Label className="text-xs">
-                                                                    Preço (R$)
+                                                                    Preço
                                                                 </Label>
                                                                 <Input
                                                                     {...form.register(
@@ -713,8 +700,6 @@ const AdminProductForm = () => {
                                             </div>
                                         )}
                                     </div>
-
-                                    {/* Extras */}
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-t pt-4 mt-4 bg-muted/10 p-4 rounded-md">
                                         <div className="col-span-full font-semibold text-sm text-muted-foreground">
                                             OPÇÕES AVANÇADAS
@@ -784,7 +769,6 @@ const AdminProductForm = () => {
                                             )}
                                         />
                                     </div>
-
                                     <FormField
                                         control={form.control}
                                         name="description"
@@ -801,8 +785,6 @@ const AdminProductForm = () => {
                                             </FormItem>
                                         )}
                                     />
-
-                                    {/* Imagens */}
                                     <Controller
                                         control={form.control}
                                         name="image_files"
@@ -891,7 +873,6 @@ const AdminProductForm = () => {
                                             </FormItem>
                                         )}
                                     />
-
                                     <FormField
                                         control={form.control}
                                         name="store_ids"
@@ -951,7 +932,102 @@ const AdminProductForm = () => {
                                             </FormItem>
                                         )}
                                     />
-
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                                        <FormField
+                                            control={form.control}
+                                            name="isPromotion"
+                                            render={({ field }) => (
+                                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 h-[84px]">
+                                                    <div className="space-y-0.5">
+                                                        <FormLabel className="text-base">
+                                                            Em Promoção?
+                                                        </FormLabel>
+                                                    </div>
+                                                    <FormControl>
+                                                        <Switch
+                                                            checked={
+                                                                field.value
+                                                            }
+                                                            onCheckedChange={
+                                                                field.onChange
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                </FormItem>
+                                            )}
+                                        />
+                                        {isPromotion && (
+                                            <FormField
+                                                control={form.control}
+                                                name="promotion_end_date"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex flex-col pt-2">
+                                                        <FormLabel>
+                                                            Válida até
+                                                        </FormLabel>
+                                                        <Popover>
+                                                            <PopoverTrigger
+                                                                asChild
+                                                            >
+                                                                <FormControl>
+                                                                    <Button
+                                                                        variant={
+                                                                            "outline"
+                                                                        }
+                                                                        className={cn(
+                                                                            "pl-3 text-left font-normal h-12",
+                                                                            !field.value &&
+                                                                                "text-muted-foreground"
+                                                                        )}
+                                                                    >
+                                                                        {field.value ? (
+                                                                            format(
+                                                                                field.value,
+                                                                                "PPP",
+                                                                                {
+                                                                                    locale: ptBR,
+                                                                                }
+                                                                            )
+                                                                        ) : (
+                                                                            <span>
+                                                                                Selecione
+                                                                                a
+                                                                                data
+                                                                            </span>
+                                                                        )}
+                                                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                                    </Button>
+                                                                </FormControl>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent
+                                                                className="w-auto p-0"
+                                                                align="start"
+                                                            >
+                                                                <Calendar
+                                                                    mode="single"
+                                                                    selected={
+                                                                        field.value ||
+                                                                        undefined
+                                                                    }
+                                                                    onSelect={
+                                                                        field.onChange
+                                                                    }
+                                                                    disabled={(
+                                                                        date
+                                                                    ) =>
+                                                                        date <
+                                                                        new Date()
+                                                                    }
+                                                                    initialFocus
+                                                                />
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        )}
+                                    </div>
                                     <Button
                                         type="submit"
                                         disabled={isLoading}

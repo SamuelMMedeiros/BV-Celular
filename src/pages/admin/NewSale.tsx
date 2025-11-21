@@ -1,17 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useMemo } from "react";
+//
+// === CÓDIGO COMPLETO PARA: src/pages/admin/NewSale.tsx ===
+//
+import { useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-    CardFooter,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
     Select,
@@ -43,9 +39,7 @@ import {
 } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
-import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { AuthContext } from "@/contexts/AuthContext";
-import { useContext } from "react";
 import {
     fetchProducts,
     fetchClients,
@@ -53,13 +47,7 @@ import {
     createOrder,
     fetchClientAddresses,
 } from "@/lib/api";
-import {
-    Product,
-    CustomerProfile,
-    Store,
-    OrderCartItem,
-    Address,
-} from "@/types";
+import { Product, CustomerProfile, OrderCartItem } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import {
     Check,
@@ -77,20 +65,16 @@ import { cn } from "@/lib/utils";
 const AdminNewSale = () => {
     const { toast } = useToast();
     const navigate = useNavigate();
-    const { employeeProfile } = useContext(AuthContext)!; // Pega quem está logado (Vendedor)
+    const { employeeProfile } = useContext(AuthContext)!;
 
-    // Estados de Busca
+    // Estados
     const [clientOpen, setClientOpen] = useState(false);
     const [productOpen, setProductOpen] = useState(false);
     const [clientQuery, setClientQuery] = useState("");
     const [productQuery, setProductQuery] = useState("");
-
-    // Estados da Venda
     const [selectedClient, setSelectedClient] =
         useState<CustomerProfile | null>(null);
     const [cart, setCart] = useState<OrderCartItem[]>([]);
-
-    // Estados do Checkout
     const [selectedStoreId, setSelectedStoreId] = useState<string>("");
     const [deliveryType, setDeliveryType] = useState<"pickup" | "delivery">(
         "pickup"
@@ -126,7 +110,6 @@ const AdminNewSale = () => {
         enabled: !!selectedClient,
     });
 
-    // Ações do Carrinho
     const addToCart = (product: Product) => {
         setCart((prev) => {
             const existing = prev.find((p) => p.id === product.id);
@@ -150,17 +133,17 @@ const AdminNewSale = () => {
         toast({ title: "Produto adicionado" });
     };
 
-    const removeFromCart = (id: string) => {
+    const removeFromCart = (id: string) =>
         setCart((prev) => prev.filter((item) => item.id !== id));
-    };
 
     const updateQuantity = (id: string, delta: number) => {
         setCart((prev) =>
             prev.map((item) => {
-                if (item.id === id) {
-                    const newQty = Math.max(1, item.quantity + delta);
-                    return { ...item, quantity: newQty };
-                }
+                if (item.id === id)
+                    return {
+                        ...item,
+                        quantity: Math.max(1, item.quantity + delta),
+                    };
                 return item;
             })
         );
@@ -171,7 +154,6 @@ const AdminNewSale = () => {
         0
     );
 
-    // Finalizar Venda
     const handleFinishSale = async () => {
         if (!selectedClient)
             return toast({
@@ -185,7 +167,7 @@ const AdminNewSale = () => {
         if (deliveryType === "delivery" && !selectedAddressId)
             return toast({
                 variant: "destructive",
-                title: "Selecione o endereço de entrega",
+                title: "Selecione o endereço",
             });
 
         setIsSaving(true);
@@ -195,21 +177,17 @@ const AdminNewSale = () => {
                 store_id: selectedStoreId,
                 total_price: total,
                 items: cart,
-                status: "completed", // Venda balcão já nasce concluída ou pendente? Vamos por completed se for presencial
+                status: "completed",
                 employee_id: employeeProfile?.id || null,
                 delivery_type: deliveryType,
                 address_id:
                     deliveryType === "delivery" ? selectedAddressId : null,
                 payment_method: paymentMethod,
-                // delivery_fee: 0, // Pode adicionar lógica de taxa manual aqui se quiser
             });
 
             toast({ title: "Venda realizada com sucesso!" });
-            // Reset
-            setCart([]);
-            setSelectedClient(null);
-            setSelectedStoreId("");
-            navigate("/admin/orders"); // Vai para lista de pedidos
+            // CORREÇÃO: Redirecionamento em português
+            navigate("/admin/pedidos");
         } catch (error: any) {
             toast({
                 variant: "destructive",
@@ -225,9 +203,7 @@ const AdminNewSale = () => {
         <div className="min-h-screen bg-background">
             <Navbar />
             <main className="container py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* COLUNA ESQUERDA: SELEÇÃO */}
                 <div className="lg:col-span-2 space-y-8">
-                    {/* 1. SELECIONAR CLIENTE */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
@@ -254,10 +230,8 @@ const AdminNewSale = () => {
                                 </PopoverTrigger>
                                 <PopoverContent className="w-[400px] p-0">
                                     <Command shouldFilter={false}>
-                                        {" "}
-                                        {/* Filtramos via API/State */}
                                         <CommandInput
-                                            placeholder="Digite o nome do cliente..."
+                                            placeholder="Nome do cliente..."
                                             onValueChange={setClientQuery}
                                         />
                                         <CommandList>
@@ -292,8 +266,7 @@ const AdminNewSale = () => {
                                                                 {client.name}
                                                             </span>
                                                             <span className="text-xs text-muted-foreground">
-                                                                {client.phone} •{" "}
-                                                                {client.email}
+                                                                {client.phone}
                                                             </span>
                                                         </div>
                                                     </CommandItem>
@@ -303,21 +276,13 @@ const AdminNewSale = () => {
                                     </Command>
                                 </PopoverContent>
                             </Popover>
-                            {!selectedClient && (
-                                <p className="text-xs text-muted-foreground mt-2">
-                                    Se o cliente não existe, cadastre-o na aba
-                                    "Clientes" primeiro.
-                                </p>
-                            )}
                         </CardContent>
                     </Card>
 
-                    {/* 2. SELECIONAR PRODUTOS */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Search className="h-5 w-5" /> Adicionar
-                                Produtos
+                                <Search className="h-5 w-5" /> Produtos
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -332,7 +297,7 @@ const AdminNewSale = () => {
                                         aria-expanded={productOpen}
                                         className="w-full justify-between h-12 text-base"
                                     >
-                                        Buscar produto para adicionar...
+                                        Adicionar produto...
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                     </Button>
                                 </PopoverTrigger>
@@ -356,22 +321,9 @@ const AdminNewSale = () => {
                                                         }
                                                     >
                                                         <div className="flex justify-between w-full items-center">
-                                                            <div className="flex flex-col">
-                                                                <span>
-                                                                    {
-                                                                        product.name
-                                                                    }
-                                                                </span>
-                                                                <span className="text-xs text-muted-foreground">
-                                                                    {
-                                                                        product.storage
-                                                                    }{" "}
-                                                                    •{" "}
-                                                                    {
-                                                                        product.colors
-                                                                    }
-                                                                </span>
-                                                            </div>
+                                                            <span>
+                                                                {product.name}
+                                                            </span>
                                                             <span className="font-bold">
                                                                 {formatCurrency(
                                                                     product.price
@@ -386,7 +338,6 @@ const AdminNewSale = () => {
                                 </PopoverContent>
                             </Popover>
 
-                            {/* LISTA DE ITENS */}
                             <div className="border rounded-lg overflow-hidden">
                                 <Table>
                                     <TableHeader>
@@ -482,19 +433,16 @@ const AdminNewSale = () => {
                     </Card>
                 </div>
 
-                {/* COLUNA DIREITA: CHECKOUT */}
                 <div className="lg:col-span-1">
                     <Card className="sticky top-24 border-primary/20 shadow-lg">
                         <CardHeader className="bg-muted/20 border-b pb-4">
                             <CardTitle className="flex items-center gap-2">
                                 <ShoppingCart className="h-5 w-5" /> Finalizar
-                                Venda
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-6 pt-6">
-                            {/* LOJA */}
                             <div className="space-y-2">
-                                <Label>Saindo da Loja:</Label>
+                                <Label>Loja:</Label>
                                 <Select
                                     value={selectedStoreId}
                                     onValueChange={setSelectedStoreId}
@@ -511,10 +459,8 @@ const AdminNewSale = () => {
                                     </SelectContent>
                                 </Select>
                             </div>
-
-                            {/* TIPO DE ENTREGA */}
                             <div className="space-y-2">
-                                <Label>Entrega/Retirada:</Label>
+                                <Label>Entrega:</Label>
                                 <RadioGroup
                                     value={deliveryType}
                                     onValueChange={(v: any) =>
@@ -540,18 +486,16 @@ const AdminNewSale = () => {
                                     </div>
                                 </RadioGroup>
                             </div>
-
-                            {/* ENDEREÇO (Se entrega) */}
                             {deliveryType === "delivery" && (
                                 <div className="space-y-2 border p-3 rounded bg-muted/30">
-                                    <Label>Endereço do Cliente:</Label>
+                                    <Label>Endereço:</Label>
                                     {addresses && addresses.length > 0 ? (
                                         <Select
                                             value={selectedAddressId}
                                             onValueChange={setSelectedAddressId}
                                         >
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Selecione endereço" />
+                                                <SelectValue placeholder="Selecione" />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {addresses.map((a) => (
@@ -566,14 +510,11 @@ const AdminNewSale = () => {
                                         </Select>
                                     ) : (
                                         <p className="text-xs text-destructive">
-                                            O cliente não tem endereços
-                                            cadastrados.
+                                            Cliente sem endereço.
                                         </p>
                                     )}
                                 </div>
                             )}
-
-                            {/* PAGAMENTO */}
                             <div className="space-y-2">
                                 <Label>Pagamento:</Label>
                                 <Select
@@ -587,7 +528,7 @@ const AdminNewSale = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="credit_card">
-                                            Cartão Crédito/Débito
+                                            Cartão
                                         </SelectItem>
                                         <SelectItem value="pix">Pix</SelectItem>
                                         <SelectItem value="cash">
@@ -596,7 +537,6 @@ const AdminNewSale = () => {
                                     </SelectContent>
                                 </Select>
                             </div>
-
                             <div className="border-t pt-4">
                                 <div className="flex justify-between items-center mb-4">
                                     <span className="text-muted-foreground">
@@ -615,8 +555,8 @@ const AdminNewSale = () => {
                                         <Loader2 className="animate-spin mr-2" />
                                     ) : (
                                         <Check className="mr-2" />
-                                    )}
-                                    Confirmar Venda
+                                    )}{" "}
+                                    Confirmar
                                 </Button>
                             </div>
                         </CardContent>

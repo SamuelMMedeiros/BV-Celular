@@ -1,8 +1,7 @@
-//
-// === CÓDIGO COMPLETO CORRIGIDO PARA: src/pages/admin/Products.tsx ===
-//
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
-import { Button, buttonVariants } from "@/components/ui/button"; // Importe buttonVariants
+import { Button } from "@/components/ui/button";
 import {
     Table,
     TableBody,
@@ -11,291 +10,175 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { AlertTriangle, ArrowLeft, Edit, Plus, Trash2 } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import { fetchAllProducts, deleteProduct } from "@/lib/api";
 import { Product } from "@/types";
-import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { Loader2, Plus, Trash2, Edit, Search } from "lucide-react";
+import { Link } from "react-router-dom"; // Importante
+import { formatCurrency } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
-// Formata o preço de centavos (ex: 799900) para R$ (ex: R$ 7.999,00)
-const formatPrice = (priceInCents: number) => {
-    return (priceInCents / 100).toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-    });
-};
-
-export const AdminProducts = () => {
+const AdminProducts = () => {
     const { toast } = useToast();
     const queryClient = useQueryClient();
-    const [productToDelete, setProductToDelete] = useState<Product | null>(
-        null
-    );
+    const [searchTerm, setSearchTerm] = useState("");
 
-    // Query para buscar os produtos
-    const {
-        data: products,
-        isLoading,
-        isError,
-    } = useQuery<Product[]>({
+    const { data: products, isLoading } = useQuery<Product[]>({
         queryKey: ["adminProducts"],
         queryFn: fetchAllProducts,
     });
 
-    // Mutação para deletar o produto
     const deleteMutation = useMutation({
         mutationFn: (product: Product) => deleteProduct(product),
         onSuccess: () => {
-            toast({
-                title: "Sucesso!",
-                description: "Produto excluído com sucesso.",
-            });
+            toast({ title: "Sucesso", description: "Produto removido." });
             queryClient.invalidateQueries({ queryKey: ["adminProducts"] });
-            setProductToDelete(null);
         },
         onError: (error) => {
             toast({
                 variant: "destructive",
-                title: "Erro ao excluir produto",
+                title: "Erro",
                 description: error.message,
             });
-            setProductToDelete(null);
         },
     });
 
-    const handleDeleteClick = (product: Product) => {
-        setProductToDelete(product);
-    };
+    const filteredProducts = products?.filter((p) =>
+        p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
-    const handleConfirmDelete = () => {
-        if (productToDelete) {
-            deleteMutation.mutate(productToDelete);
+    const handleDelete = (product: Product) => {
+        if (confirm("Tem certeza que deseja excluir este produto?")) {
+            deleteMutation.mutate(product);
         }
     };
 
     return (
         <div className="min-h-screen bg-background">
             <Navbar />
-
             <main className="container py-8">
-                {/* Cabeçalho da Página */}
-                <div className="mb-6 flex items-center justify-between">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                     <div>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                            className="mb-2"
-                        >
-                            <Link to="/admin">
-                                <ArrowLeft className="mr-2 h-4 w-4" />
-                                Voltar ao Painel
+                        <h1 className="text-3xl font-bold">Produtos</h1>
+                        <p className="text-muted-foreground">
+                            Gerencie o catálogo da loja.
+                        </p>
+                    </div>
+
+                    <div className="flex gap-2 w-full md:w-auto">
+                        <div className="relative flex-1 md:w-64">
+                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar produto..."
+                                className="pl-8"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        {/* CORREÇÃO DA ROTA DO BOTÃO ADICIONAR */}
+                        <Button asChild>
+                            <Link to="/admin/produtos/novo">
+                                <Plus className="mr-2 h-4 w-4" /> Novo Produto
                             </Link>
                         </Button>
-                        <h1 className="text-3xl font-bold text-foreground">
-                            Gerenciar Produtos
-                        </h1>
                     </div>
-                    <Button asChild>
-                        <Link to="/admin/products/new">
-                            <Plus className="mr-2 h-4 w-4" />
-                            Adicionar Novo
-                        </Link>
-                    </Button>
                 </div>
 
-                {/* Tabela de Produtos */}
-                <div className="rounded-lg border">
+                <div className="border rounded-lg">
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="w-[80px]">
-                                    Imagem
-                                </TableHead>
                                 <TableHead>Nome</TableHead>
-                                <TableHead>Preço</TableHead>
                                 <TableHead>Categoria</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead className="w-[100px]">
+                                <TableHead>Preço</TableHead>
+                                <TableHead>Estoque</TableHead>
+                                <TableHead className="text-right">
                                     Ações
                                 </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading &&
-                                // Skeleton (Carregamento)
-                                Array.from({ length: 5 }).map((_, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell>
-                                            <Skeleton className="h-12 w-12 rounded-md" />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Skeleton className="h-5 w-3/4" />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Skeleton className="h-5 w-1/4" />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Skeleton className="h-5 w-1/2" />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Skeleton className="h-6 w-20 rounded-full" />
-                                        </TableCell>
-                                        <TableCell className="flex gap-2">
-                                            <Skeleton className="h-8 w-8" />
-                                            <Skeleton className="h-8 w-8" />
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-
-                            {/*
-                AQUI ESTÁ A CORREÇÃO!
-                O comentário foi substituído pelo JSX correto.
-              */}
-                            {isError && (
+                            {isLoading ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={6}
-                                        className="text-center text-destructive"
+                                        colSpan={5}
+                                        className="text-center py-8"
                                     >
-                                        <AlertTriangle className="mr-2 inline h-4 w-4" />
-                                        Erro ao carregar os produtos.
+                                        <Loader2 className="animate-spin mx-auto" />
                                     </TableCell>
                                 </TableRow>
-                            )}
-
-                            {!isLoading &&
-                                !isError &&
-                                products?.map((product) => (
+                            ) : !filteredProducts ||
+                              filteredProducts.length === 0 ? (
+                                <TableRow>
+                                    <TableCell
+                                        colSpan={5}
+                                        className="text-center py-8 text-muted-foreground"
+                                    >
+                                        Nenhum produto encontrado.
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                filteredProducts.map((product) => (
                                     <TableRow key={product.id}>
                                         <TableCell>
-                                            <img
-                                                src={
-                                                    product.images?.[0] ||
-                                                    "/placeholder.svg"
-                                                }
-                                                alt={product.name}
-                                                className="h-12 w-12 rounded-md object-cover"
-                                            />
-                                        </TableCell>
-                                        <TableCell className="font-medium">
-                                            {product.name}
-                                        </TableCell>
-                                        <TableCell>
-                                            {formatPrice(product.price)}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline">
-                                                {product.category}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            {product.isPromotion ? (
-                                                <Badge variant="destructive">
+                                            <div className="font-medium">
+                                                {product.name}
+                                            </div>
+                                            {product.isPromotion && (
+                                                <Badge
+                                                    variant="secondary"
+                                                    className="text-[10px] h-5"
+                                                >
                                                     Promoção
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="secondary">
-                                                    Normal
                                                 </Badge>
                                             )}
                                         </TableCell>
-                                        <TableCell className="flex gap-2">
-                                            {/* Link de Edição */}
+                                        <TableCell className="capitalize">
+                                            {product.category}
+                                        </TableCell>
+                                        <TableCell>
+                                            {formatCurrency(product.price)}
+                                        </TableCell>
+                                        <TableCell>
+                                            {product.quantity}
+                                            {product.has_variations && (
+                                                <span className="text-xs text-muted-foreground ml-1">
+                                                    (Variável)
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            {/* CORREÇÃO DA ROTA DE EDIÇÃO */}
                                             <Button
-                                                variant="outline"
+                                                variant="ghost"
                                                 size="icon"
-                                                className="h-8 w-8"
                                                 asChild
                                             >
                                                 <Link
-                                                    to={`/admin/products/edit/${product.id}`}
+                                                    to={`/admin/produtos/editar/${product.id}`}
                                                 >
                                                     <Edit className="h-4 w-4" />
                                                 </Link>
                                             </Button>
-                                            {/* Botão de Excluir */}
                                             <Button
-                                                variant="destructive"
+                                                variant="ghost"
                                                 size="icon"
-                                                className="h-8 w-8"
+                                                className="text-destructive"
                                                 onClick={() =>
-                                                    handleDeleteClick(product)
-                                                }
-                                                disabled={
-                                                    deleteMutation.isPending
+                                                    handleDelete(product)
                                                 }
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
                                         </TableCell>
                                     </TableRow>
-                                ))}
+                                ))
+                            )}
                         </TableBody>
                     </Table>
                 </div>
-
-                {!isLoading && !isError && products?.length === 0 && (
-                    <div className="py-20 text-center text-muted-foreground">
-                        Nenhum produto cadastrado ainda.
-                    </div>
-                )}
             </main>
-
-            {/* Diálogo de Confirmação de Exclusão */}
-            <AlertDialog
-                open={!!productToDelete}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setProductToDelete(null);
-                    }
-                }}
-            >
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Esta ação não pode ser desfeita. Isso irá excluir
-                            permanentemente o produto
-                            <span className="font-medium">
-                                {" "}
-                                "{productToDelete?.name}"{" "}
-                            </span>
-                            e remover suas imagens.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={deleteMutation.isPending}>
-                            Cancelar
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                            className={buttonVariants({
-                                variant: "destructive",
-                            })}
-                            onClick={handleConfirmDelete}
-                            disabled={deleteMutation.isPending}
-                        >
-                            {deleteMutation.isPending
-                                ? "Excluindo..."
-                                : "Excluir"}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div>
     );
 };
