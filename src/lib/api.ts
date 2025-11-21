@@ -2,14 +2,15 @@
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
-// Importamos os tipos de @/types
 import { 
-    Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, Coupon, Address, ShippingQuote, Driver,
+    Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, Coupon, Address, ShippingQuote, Driver, WholesaleClient, PublicLink,
     ProductInsertPayload, ProductUpdatePayload, StoreInsertPayload, StoreUpdatePayload,
     EmployeeInsertPayload, EmployeeUpdatePayload, CustomerUpdatePayload, OrderInsertPayload,
-    BannerInsertPayload, BannerUpdatePayload, CouponInsertPayload, CouponUpdatePayload, WarrantyInsertPayload, AddressInsertPayload, DriverInsertPayload
+    BannerInsertPayload, BannerUpdatePayload, CouponInsertPayload, CouponUpdatePayload, WarrantyInsertPayload, AddressInsertPayload, DriverInsertPayload,
+    WholesaleClientInsertPayload, WholesaleClientUpdatePayload, BulkClientInsertPayload,
+    PublicLinkInsertPayload, PublicLinkUpdatePayload // <-- NOVOS PAYLOADS IMPORTADOS
 } from "@/types";
-// Importamos o Database para uso nas funções de retorno
+// Importamos o Database para uso nas funções de retorno se necessário (embora os tipos customizados acima já cubram)
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid'; 
 
@@ -39,7 +40,7 @@ export const fetchProducts = async (params: { q?: string; category?: 'aparelho' 
   let query = supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity, wholesale_price, installment_price, max_installments,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -73,7 +74,7 @@ export const fetchPromotions = async (params: { q?: string; isPromotion?: boolea
   let query = supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity, wholesale_price, installment_price, max_installments,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -106,7 +107,7 @@ export const fetchAllProducts = async (): Promise<Product[]> => {
     let query = supabase
       .from('Products')
       .select(`
-        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
+        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity, wholesale_price, installment_price, max_installments,
         ProductStores (
           Stores (
             id, name, whatsapp, city
@@ -147,7 +148,7 @@ export const fetchProductById = async (productId: string): Promise<Product> => {
   let { data: rawProduct, error } = await supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity, wholesale_price, installment_price, max_installments,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -173,12 +174,12 @@ export const fetchProductById = async (productId: string): Promise<Product> => {
   return product;
 };
 
-// Função nova para buscar produtos relacionados
+// Função para buscar produtos relacionados
 export const fetchRelatedProducts = async (category: string, currentProductId: string): Promise<Product[]> => {
   const { data, error } = await supabase
     .from('Products')
     .select(`
-      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
+      id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity, wholesale_price, installment_price, max_installments,
       ProductStores (
         Stores (
           id, name, whatsapp, city
@@ -247,6 +248,9 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
     subcategory: payload.subcategory,
     promotion_end_date: payload.promotion_end_date, 
     quantity: payload.quantity || 0,
+    wholesale_price: payload.wholesale_price || 0,
+    installment_price: payload.installment_price || 0,
+    max_installments: payload.max_installments || 12,
     images: imageUrls,
   };
 
@@ -326,6 +330,9 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     subcategory: payload.subcategory,
     promotion_end_date: payload.promotion_end_date, 
     quantity: payload.quantity,
+    wholesale_price: payload.wholesale_price,
+    installment_price: payload.installment_price,
+    max_installments: payload.max_installments,
     images: finalImageUrls,
   };
 
@@ -623,6 +630,56 @@ export const upsertClient = async (profile: { id: string; name: string; phone: s
 };
 
 // ==================================================================
+// FUNÇÕES DE API (CLIENTES ATACADO - WHOLESALE)
+// ==================================================================
+
+export const fetchWholesaleClients = async (): Promise<WholesaleClient[]> => {
+    const { data, error } = await supabase.from('WholesaleClients').select(`*, Stores ( name )`).order('name');
+    if (error) throw new Error(error.message);
+    // @ts-ignore
+    return data as unknown as WholesaleClient[];
+};
+
+export const createWholesaleClient = async (payload: WholesaleClientInsertPayload): Promise<void> => {
+    const { error } = await supabase.from('WholesaleClients').insert({ id: uuidv4(), ...payload });
+    if (error) throw new Error(error.message);
+};
+
+export const updateWholesaleClient = async (payload: WholesaleClientUpdatePayload): Promise<void> => {
+    const { id, ...updateData } = payload;
+    const { error } = await supabase.from('WholesaleClients').update(updateData).eq('id', id);
+    if (error) throw new Error(error.message);
+};
+
+export const deleteWholesaleClient = async (id: string): Promise<void> => {
+    const { error } = await supabase.from('WholesaleClients').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+};
+
+export const fetchWholesaleProfile = async (): Promise<WholesaleClient | null> => {
+    // @ts-ignore
+    const { data, error } = await supabase.rpc('get_wholesale_profile');
+    if (error || !data) return null;
+    return data as unknown as WholesaleClient;
+};
+
+// --- NOVA FUNÇÃO: IMPORTAÇÃO EM MASSA DE CLIENTES ---
+export const createBulkClients = async (clients: BulkClientInsertPayload[]): Promise<void> => {
+    const clientsWithId = clients.map(c => ({
+        id: uuidv4(),
+        name: c.name,
+        email: c.email,
+        phone: c.phone
+    }));
+
+    const { error } = await supabase
+        .from('Clients')
+        .insert(clientsWithId);
+
+    if (error) throw new Error(error.message);
+};
+
+// ==================================================================
 // FUNÇÕES DE API (ENDEREÇOS E CEP)
 // ==================================================================
 
@@ -727,6 +784,7 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
   }
 
   // --- BAIXA DE ESTOQUE AUTOMÁTICA ---
+  // Percorre os itens do pedido e chama a função de decrementar estoque
   for (const item of payload.items) {
     try {
         await supabase.rpc('decrement_stock', { 
@@ -735,6 +793,7 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
         });
     } catch (stockError) {
         console.error("Erro ao baixar estoque do item:", item.name, stockError);
+        // Não bloqueamos o pedido se o estoque falhar, mas logamos
     }
   }
 
@@ -834,7 +893,7 @@ export const fetchClientFavorites = async (clientId: string): Promise<Product[]>
     .select(`
       product_id,
       Products (
-        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity,
+        id, name, description, price, originalPrice, storage, ram, colors, isPromotion, category, images, brand, promotion_end_date, subcategory, quantity, wholesale_price, installment_price, max_installments,
         ProductStores ( Stores ( id, name, whatsapp, city ) )
       )
     `)
@@ -1089,17 +1148,69 @@ export const createCouponUsage = async (clientId: string, couponId: string): Pro
 };
 
 // ==================================================================
-// FUNÇÕES DE PAGAMENTO (STRIPE EDGE FUNCTION)
+// FUNÇÕES DE PAGAMENTO (STRIPE)
 // ==================================================================
 
 export const createPaymentIntent = async (amount: number, storeId: string): Promise<{ clientSecret: string }> => {
-  // Chama a Edge Function 'create-payment-intent'
   const { data, error } = await supabase.functions.invoke('create-payment-intent', {
     body: { amount, storeId }
   });
 
-  if (error) throw new Error(`Erro na função de pagamento: ${error.message}`);
+  if (error) throw new Error(`Erro pagamento: ${error.message}`);
   if (data?.error) throw new Error(data.error);
 
   return data; 
+};
+
+// ==================================================================
+// FUNÇÕES DE API (AGREGADOR DE LINKS) - NOVO
+// ==================================================================
+
+export const fetchPublicLinks = async (): Promise<PublicLink[]> => {
+    const { data, error } = await supabase
+        .from('PublicLinks')
+        .select('*')
+        .order('created_at', { ascending: true }); 
+
+    if (error) throw new Error(error.message);
+    return data as PublicLink[];
+};
+
+export const createPublicLink = async (payload: PublicLinkInsertPayload): Promise<void> => {
+    const { error } = await supabase
+        .from('PublicLinks')
+        .insert({ 
+            id: uuidv4(), 
+            ...payload 
+        });
+
+    if (error) throw new Error(error.message);
+};
+
+export const updatePublicLink = async (payload: PublicLinkUpdatePayload): Promise<void> => {
+    const { id, ...updateData } = payload;
+    const { error } = await supabase
+        .from('PublicLinks')
+        .update(updateData)
+        .eq('id', id);
+
+    if (error) throw new Error(error.message);
+};
+
+export const deletePublicLink = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('PublicLinks')
+        .delete()
+        .eq('id', id);
+
+    if (error) throw new Error(error.message);
+};
+
+export const togglePublicLinkStatus = async (id: string, currentStatus: boolean): Promise<void> => {
+    const { error } = await supabase
+        .from('PublicLinks')
+        .update({ active: !currentStatus })
+        .eq('id', id);
+
+    if (error) throw new Error(error.message);
 };

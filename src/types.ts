@@ -13,6 +13,10 @@ export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'col
   brand?: string | null;
   promotion_end_date?: string | null;
   quantity?: number;
+  wholesale_price?: number;
+  installment_price?: number;
+  max_installments?: number;
+  subcategory?: string | null;
 };
 
 export type Store = Database['public']['Tables']['Stores']['Row'] & {
@@ -20,7 +24,6 @@ export type Store = Database['public']['Tables']['Stores']['Row'] & {
     cnpj?: string | null; 
     delivery_fixed_fee?: number;
     free_shipping_min_value?: number;
-    // Novos campos Stripe
     stripe_public_key?: string | null;
     stripe_secret_key?: string | null;
     stripe_enabled?: boolean;
@@ -41,6 +44,20 @@ export type Driver = {
     phone: string;
     active: boolean;
     created_at?: string;
+};
+
+export type WholesaleClient = {
+    id: string;
+    name: string;
+    company_name: string;
+    cnpj: string;
+    cpf?: string;
+    email: string;
+    address: string;
+    phone: string;
+    active: boolean;
+    store_id?: string;
+    Stores?: { name: string } | null;
 };
 
 export type CustomerProfile = {
@@ -101,12 +118,6 @@ export type Order = {
   Addresses?: Address | null;
 };
 
-export type ShippingQuote = {
-    price: number;
-    days: number;
-    type: string;
-};
-
 export type Banner = {
     id: string;
     title: string;
@@ -146,7 +157,23 @@ export type Coupon = {
     allow_with_promotion?: boolean;  
 };
 
-// --- PAYLOADS ---
+export type ShippingQuote = {
+    price: number;
+    days: number;
+    type: string;
+};
+
+// --- LINKTREE / CONTATOS ---
+
+export type PublicLink = {
+    id: string;
+    title: string;
+    url: string;
+    icon: string; // 'whatsapp' | 'maps' | 'instagram' | 'facebook' | 'tiktok' | 'site' | 'phone'
+    active: boolean;
+};
+
+// --- PAYLOADS (Tipos para Inserção/Atualização) ---
 
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
   store_ids?: string[]; 
@@ -154,6 +181,10 @@ export type ProductInsertPayload = Database['public']['Tables']['Products']['Ins
   brand?: string;
   promotion_end_date?: string | null;
   quantity?: number;
+  wholesale_price?: number;
+  installment_price?: number;
+  max_installments?: number;
+  subcategory?: string;
 };
 
 export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
@@ -188,10 +219,32 @@ export type DriverInsertPayload = {
     phone: string;
 };
 
+export type WholesaleClientInsertPayload = {
+    name: string;
+    company_name: string;
+    cnpj: string;
+    cpf?: string;
+    email: string;
+    address: string;
+    phone: string;
+    store_id: string;
+};
+
+export type WholesaleClientUpdatePayload = Partial<WholesaleClientInsertPayload> & {
+    id: string;
+};
+
 export type CustomerUpdatePayload = {
   id: string;
   name: string;
   phone: string;
+};
+
+// Payload para importação em massa de Clientes
+export type BulkClientInsertPayload = {
+    name: string;
+    email: string;
+    phone: string;
 };
 
 export type OrderInsertPayload = {
@@ -214,38 +267,49 @@ export type WarrantyInsertPayload = {
     client_id: string;
     store_id: string;
     product_model: string;
-    serial_number: string;
-    invoice_number?: string;
-    purchase_date: Date;
-    warranty_months: number;
-    warranty_end_date: Date;
+  serial_number: string;
+  invoice_number?: string;
+  purchase_date: Date;
+  warranty_months: number;
+  warranty_end_date: Date;
 };
 
 export type CouponInsertPayload = {
-    code: string;
-    discount_percent: number;
-    active?: boolean;
-    valid_until?: Date | null;
-    min_purchase_value?: number;
-    valid_for_categories?: string[]; 
-    allow_with_promotion?: boolean;  
+  code: string;
+  discount_percent: number;
+  active?: boolean;
+  valid_until?: Date | null;
+  min_purchase_value?: number;
+  valid_for_categories?: string[]; 
+  allow_with_promotion?: boolean;  
 };
 
 export type CouponUpdatePayload = Partial<CouponInsertPayload> & {
-    id: string;
+  id: string;
 };
 
 export type BannerInsertPayload = {
-    title: string;
-    subtitle?: string | null;
-    image_url?: string | null; 
-    link_url: string;
-    button_text: string;
-    active?: boolean;
-    background_color?: string;
-    text_color?: string;
+  title: string;
+  subtitle?: string | null;
+  image_url?: string | null; 
+  link_url: string;
+  button_text: string;
+  active?: boolean;
+  background_color?: string;
+  text_color?: string;
 };
 
 export type BannerUpdatePayload = Partial<BannerInsertPayload> & {
+    id: string;
+};
+
+export type PublicLinkInsertPayload = {
+    title: string;
+    url: string;
+    icon: string;
+    active?: boolean;
+};
+
+export type PublicLinkUpdatePayload = Partial<PublicLinkInsertPayload> & {
     id: string;
 };

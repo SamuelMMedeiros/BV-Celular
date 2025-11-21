@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
@@ -11,22 +11,13 @@ import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
 import { ProductFilters } from "@/components/ProductFilters";
 import { EmptyState } from "@/components/EmptyState";
-import { Filter, SearchX, ArrowUpDown } from "lucide-react";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+import { Filter, SearchX } from "lucide-react";
 
 const Acessorios = () => {
     const [searchParams] = useSearchParams();
     const queryFromUrl = searchParams.get("q") || "";
 
     const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
-    const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
-    const [sortOrder, setSortOrder] = useState<string>("newest");
 
     const { data: allProducts, isLoading } = useQuery<Product[]>({
         queryKey: ["products", "acessorio", queryFromUrl],
@@ -34,21 +25,7 @@ const Acessorios = () => {
             fetchProducts({ category: "acessorio", q: queryFromUrl }),
     });
 
-    // Lógica de Ordenação
-    const sortedProducts = useMemo(() => {
-        if (!filteredProducts) return [];
-        const products = [...filteredProducts];
-
-        switch (sortOrder) {
-            case "low_price":
-                return products.sort((a, b) => a.price - b.price);
-            case "high_price":
-                return products.sort((a, b) => b.price - a.price);
-            case "newest":
-            default:
-                return products;
-        }
-    }, [filteredProducts, sortOrder]);
+    const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
 
     useEffect(() => {
         if (allProducts) setFilteredProducts(allProducts);
@@ -86,40 +63,17 @@ const Acessorios = () => {
                                 <p className="text-muted-foreground mt-1">
                                     {queryFromUrl
                                         ? `Resultados para "${queryFromUrl}"`
-                                        : `${sortedProducts.length} produtos encontrados`}
+                                        : `${filteredProducts.length} produtos encontrados`}
                                 </p>
                             </div>
 
-                            <div className="flex gap-2 w-full sm:w-auto">
-                                <Button
-                                    variant="outline"
-                                    className="md:hidden flex-1"
-                                    onClick={() => setIsMobileFiltersOpen(true)}
-                                >
-                                    <Filter className="mr-2 h-4 w-4" /> Filtros
-                                </Button>
-
-                                <Select
-                                    value={sortOrder}
-                                    onValueChange={setSortOrder}
-                                >
-                                    <SelectTrigger className="w-[180px]">
-                                        <ArrowUpDown className="mr-2 h-4 w-4 text-muted-foreground" />
-                                        <SelectValue placeholder="Ordenar" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="newest">
-                                            Mais Recentes
-                                        </SelectItem>
-                                        <SelectItem value="low_price">
-                                            Menor Preço
-                                        </SelectItem>
-                                        <SelectItem value="high_price">
-                                            Maior Preço
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            <Button
+                                variant="outline"
+                                className="md:hidden w-full sm:w-auto"
+                                onClick={() => setIsMobileFiltersOpen(true)}
+                            >
+                                <Filter className="mr-2 h-4 w-4" /> Filtros
+                            </Button>
                         </div>
 
                         {isLoading ? (
@@ -132,7 +86,7 @@ const Acessorios = () => {
                                     </div>
                                 ))}
                             </div>
-                        ) : sortedProducts.length === 0 ? (
+                        ) : filteredProducts.length === 0 ? (
                             <EmptyState
                                 icon={SearchX}
                                 title="Nenhum acessório encontrado"
@@ -142,7 +96,7 @@ const Acessorios = () => {
                             />
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-up">
-                                {sortedProducts.map((product) => (
+                                {filteredProducts.map((product) => (
                                     <ProductCard
                                         key={product.id}
                                         product={product}

@@ -1,3 +1,6 @@
+//
+// === CÓDIGO COMPLETO PARA: src/App.tsx ===
+//
 import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -18,6 +21,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 
 import AdminLoginPage from "./pages/Login";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { PublicRoute } from "@/components/PublicRoute";
 
 import Index from "./pages/Index";
 import Aparelhos from "./pages/Aparelhos";
@@ -35,16 +39,20 @@ import AdminOrders from "./pages/admin/Orders";
 import AdminBanners from "./pages/admin/Banners";
 import AdminWarranties from "./pages/admin/Warranties";
 import AdminCoupons from "./pages/admin/Coupons";
-import AdminLogistics from "./pages/admin/Logistics"; // <-- IMPORTAR AQUI
+import AdminLogistics from "./pages/admin/Logistics";
+import AdminWholesale from "./pages/admin/Wholesale";
+import AdminLinks from "./pages/admin/Links"; // <-- NOVO IMPORT
 
 import DriverDashboard from "./pages/driver/Dashboard";
 import DriverLogin from "./pages/DriverLogin";
 
 import Acessorios from "./pages/Acessorios";
 import CustomerLogin from "./pages/CustomerLogin";
+import WholesaleLogin from "./pages/WholesaleLogin";
 import MinhaConta from "./pages/MinhaConta";
 import ProductDetails from "./pages/ProductDetails";
 import WarrantyPage from "./pages/Warranty";
+import LinksPage from "./pages/LinksPage"; // <-- NOVO IMPORT
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -56,13 +64,14 @@ const queryClient = new QueryClient({
 
 const EmployeeTracker = () => {
     const [searchParams] = useSearchParams();
+
     useEffect(() => {
         const ref = searchParams.get("ref");
         if (ref) {
             localStorage.setItem("bv_employee_ref", ref);
-            console.log("Referência de funcionário capturada:", ref);
         }
     }, [searchParams]);
+
     return null;
 };
 
@@ -70,7 +79,11 @@ const PublicLayout = () => (
     <CustomerAuthProvider>
         <CartProvider>
             <EmployeeTracker />
-            <Outlet />
+            <AuthProvider>
+                <PublicRoute>
+                    <Outlet />
+                </PublicRoute>
+            </AuthProvider>
         </CartProvider>
     </CustomerAuthProvider>
 );
@@ -86,7 +99,7 @@ const AdminLayout = () => (
 );
 
 const DriverLayout = () => (
-    <div className="bg-slate-50 min-h-screen">
+    <div className="bg-slate-50 dark:bg-slate-950 min-h-screen">
         <Outlet />
     </div>
 );
@@ -104,9 +117,14 @@ const App = () => (
                             <Route path="/" element={<Index />} />
                             <Route path="/login" element={<CustomerLogin />} />
                             <Route
+                                path="/atacado-login"
+                                element={<WholesaleLogin />}
+                            />
+                            <Route
                                 path="/admin-login"
                                 element={<AdminLoginPage />}
                             />
+
                             <Route path="/aparelhos" element={<Aparelhos />} />
                             <Route path="/promocoes" element={<Promocoes />} />
                             <Route
@@ -126,6 +144,9 @@ const App = () => (
                                 element={<WarrantyPage />}
                             />
 
+                            {/* ROTA PÚBLICA DO LINKTREE */}
+                            <Route path="/links" element={<LinksPage />} />
+
                             <Route path="*" element={<NotFound />} />
                         </Route>
 
@@ -134,35 +155,36 @@ const App = () => (
                             <Route element={<ProtectedRoute />}>
                                 <Route index element={<Admin />} />
                                 <Route
-                                    path="products"
+                                    path="produtos"
                                     element={<AdminProducts />}
                                 />
                                 <Route
-                                    path="products/new"
+                                    path="produtos/novo"
                                     element={<AdminProductForm />}
                                 />
                                 <Route
-                                    path="products/edit/:productId"
+                                    path="produtos/editar/:productId"
                                     element={<AdminProductForm />}
                                 />
+                                <Route path="lojas" element={<AdminStores />} />
                                 <Route
-                                    path="stores"
-                                    element={<AdminStores />}
-                                />
-                                <Route
-                                    path="employees"
+                                    path="funcionarios"
                                     element={<AdminEmployees />}
                                 />
                                 <Route
-                                    path="drivers"
+                                    path="entregadores"
                                     element={<AdminDrivers />}
                                 />
                                 <Route
-                                    path="clients"
+                                    path="clientes"
                                     element={<AdminClients />}
                                 />
                                 <Route
-                                    path="orders"
+                                    path="atacado"
+                                    element={<AdminWholesale />}
+                                />
+                                <Route
+                                    path="pedidos"
                                     element={<AdminOrders />}
                                 />
                                 <Route
@@ -170,18 +192,20 @@ const App = () => (
                                     element={<AdminBanners />}
                                 />
                                 <Route
-                                    path="warranties"
+                                    path="garantias"
                                     element={<AdminWarranties />}
                                 />
                                 <Route
-                                    path="coupons"
+                                    path="cupons"
                                     element={<AdminCoupons />}
                                 />
                                 <Route
-                                    path="logistics"
+                                    path="logistica"
                                     element={<AdminLogistics />}
-                                />{" "}
-                                {/* <-- ROTA NOVA */}
+                                />
+
+                                {/* ROTA DE GESTÃO DE LINKS */}
+                                <Route path="links" element={<AdminLinks />} />
                             </Route>
                         </Route>
 

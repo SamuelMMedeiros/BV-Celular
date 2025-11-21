@@ -2,13 +2,15 @@
 import { createContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { Employee } from "@/types";
-import { fetchEmployeeProfile } from "@/lib/api";
+import { Employee, WholesaleClient } from "@/types"; // Importar
+import { fetchEmployeeProfile, fetchWholesaleProfile } from "@/lib/api"; // Importar
 
 interface AuthContextType {
     session: Session | null;
     user: User | null;
     employeeProfile: Employee | null;
+    wholesaleProfile: WholesaleClient | null; // <-- NOVO
+    isWholesale: boolean; // <-- NOVO
     loading: boolean;
     logout: () => Promise<void>;
 }
@@ -17,13 +19,14 @@ export const AuthContext = createContext<AuthContextType | undefined>(
     undefined
 );
 
-const ADMIN_PROFILE_KEY = "bv_admin_profile"; // Chave para o LocalStorage
+const ADMIN_PROFILE_KEY = "bv_admin_profile";
+const WHOLESALE_PROFILE_KEY = "bv_wholesale_profile"; // <-- Cache
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
 
-    // 1. INICIALIZAÇÃO COM CACHE (Carrega instantaneamente)
+    // Admin Profile
     const [employeeProfile, setEmployeeProfile] = useState<Employee | null>(
         () => {
             try {
@@ -35,8 +38,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     );
 
-    // Se tiver perfil em cache, não começa carregando (tela branca evitada!)
-    const [loading, setLoading] = useState(!employeeProfile);
+    // Wholesale Profile
+    const [wholesaleProfile, setWholesaleProfile] =
+        useState<WholesaleClient | null>(() => {
+            try {
+                const stored = localStorage.getItem(WHOLESALE_PROFILE_KEY);
+                return stored ? JSON.parse(stored) : null;
+            } catch {
+                return null;
+            }
+        });
+
+    const [loading, setLoading] = useState(
+        !employeeProfile && !wholesaleProfile
+    );
 
     useEffect(() => {
         let mounted = true;
@@ -45,53 +60,57 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             sessionFromEvent: Session | null
         ) => {
             if (!mounted) return;
-
             setSession(sessionFromEvent);
             setUser(sessionFromEvent?.user ?? null);
 
             if (sessionFromEvent?.user) {
                 try {
-                    // Busca dados atualizados do banco (usando a nova RPC rápida)
+                    // 1. Tenta Admin
                     const profile = await fetchEmployeeProfile(
                         sessionFromEvent.user.id
                     );
-
                     if (mounted) {
                         if (profile) {
-                            console.log(
-                                "[Auth] Perfil Admin atualizado/confirmado."
-                            );
                             setEmployeeProfile(profile);
-                            // Salva no cache para o próximo reload
                             localStorage.setItem(
                                 ADMIN_PROFILE_KEY,
                                 JSON.stringify(profile)
                             );
                         } else {
-                            console.warn(
-                                "[Auth] Usuário logado mas não é Admin. Limpando acesso."
-                            );
                             setEmployeeProfile(null);
                             localStorage.removeItem(ADMIN_PROFILE_KEY);
                         }
                     }
+
+                    // 2. Tenta Atacado
+                    const wholesale = await fetchWholesaleProfile();
+                    if (mounted) {
+                        if (wholesale) {
+                            setWholesaleProfile(wholesale);
+                            localStorage.setItem(
+                                WHOLESALE_PROFILE_KEY,
+                                JSON.stringify(wholesale)
+                            );
+                        } else {
+                            setWholesaleProfile(null);
+                            localStorage.removeItem(WHOLESALE_PROFILE_KEY);
+                        }
+                    }
                 } catch (error) {
-                    console.error("[Auth] Erro ao validar perfil:", error);
-                    // Em caso de erro de rede, mantemos o perfil do cache se existir (fallback)
-                    // Não limpamos o estado para não deslogar o usuário por instabilidade
+                    console.error("Erro ao validar perfis:", error);
                 }
             } else {
-                // Se não tem sessão, limpa tudo
                 if (mounted) {
                     setEmployeeProfile(null);
                     localStorage.removeItem(ADMIN_PROFILE_KEY);
+                    setWholesaleProfile(null);
+                    localStorage.removeItem(WHOLESALE_PROFILE_KEY);
                 }
             }
 
             if (mounted) setLoading(false);
         };
 
-        // Fluxo de inicialização
         supabase.auth.getSession().then(({ data: { session } }) => {
             getSessionAndProfile(session);
         });
@@ -113,13 +132,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setSession(null);
         setUser(null);
         setEmployeeProfile(null);
-        localStorage.removeItem(ADMIN_PROFILE_KEY); // Limpa cache ao sair
+        setWholesaleProfile(null);
+        localStorage.removeItem(ADMIN_PROFILE_KEY);
+        localStorage.removeItem(WHOLESALE_PROFILE_KEY);
     };
 
     const value = {
         session,
         user,
         employeeProfile,
+        wholesaleProfile,
+        isWholesale: !!wholesaleProfile,
         loading,
         logout,
     };
