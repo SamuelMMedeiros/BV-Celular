@@ -1,3 +1,6 @@
+//
+// === CÓDIGO COMPLETO PARA: src/components/Navbar.tsx ===
+//
 import { useState, useContext } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -15,7 +18,8 @@ import { AuthContext } from "@/contexts/AuthContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
 import { CartDrawer } from "@/components/CartDrawer";
-import { ModeToggle } from "@/components/Mode-Toggle"; 
+import { ModeToggle } from "@/components/Mode-Toggle";
+import { NotificationButton } from "@/components/NotificationButton"; // <-- IMPORT NOVO
 import {
     Sheet,
     SheetContent,
@@ -174,7 +178,7 @@ export const Navbar = () => {
                     </Link>
                 </div>
 
-                {/* CENTRO: Barra de Pesquisa (Escondida se for Admin, para focar na gestão) */}
+                {/* CENTRO: Barra de Pesquisa (Escondida se for Admin) */}
                 {!employeeProfile && (
                     <form
                         onSubmit={handleSearch}
@@ -193,6 +197,9 @@ export const Navbar = () => {
 
                 {/* DIREITA: Links Desktop + Ações */}
                 <div className="flex items-center gap-1 md:gap-2">
+                    {/* Botão de Notificação (Novo) */}
+                    <NotificationButton />
+
                     {/* Botão de Tema */}
                     <ModeToggle />
 

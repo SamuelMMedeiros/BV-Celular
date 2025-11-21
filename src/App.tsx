@@ -43,6 +43,7 @@ import AdminCoupons from "./pages/admin/Coupons";
 import AdminLogistics from "./pages/admin/Logistics";
 import AdminWholesale from "./pages/admin/Wholesale";
 import AdminLinks from "./pages/admin/Links";
+import AdminNotifications from "./pages/admin/Notifications";
 
 import DriverDashboard from "./pages/driver/Dashboard";
 import DriverLogin from "./pages/DriverLogin";
@@ -207,6 +208,10 @@ const App = () => (
                                 <Route
                                     path="logistica"
                                     element={<AdminLogistics />}
+                                />
+                                <Route
+                                    path="notifications"
+                                    element={<AdminNotifications />}
                                 />
 
                                 {/* ROTA DE GESTÃO DE LINKS */}

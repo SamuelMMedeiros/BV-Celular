@@ -333,3 +333,24 @@ export type PublicLinkInsertPayload = {
 export type PublicLinkUpdatePayload = Partial<PublicLinkInsertPayload> & {
     id: string;
 };
+
+export type PushCampaign = {
+    id: string;
+    title: string;
+    body: string;
+    image_url?: string | null;
+    link_url?: string | null;
+    scheduled_for?: string | null;
+    status: 'draft' | 'sent' | 'scheduled';
+    sent_count: number;
+    created_at: string;
+};
+
+export type PushCampaignInsertPayload = {
+    title: string;
+    body: string;
+    image_url?: string | null;
+    link_url?: string | null;
+    scheduled_for?: string | null; // ISO String
+    status?: 'draft' | 'sent' | 'scheduled';
+};

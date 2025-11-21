@@ -55,7 +55,8 @@ import {
     TicketPercent,
     Clock,
     Briefcase,
-    Link as LinkIcon, // <-- ÍCONE ADICIONADO
+    Link as LinkIcon,
+    BellRing,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, subDays, isSameDay } from "date-fns";
@@ -470,7 +471,6 @@ const AdminDashboard = () => {
                                 </Link>
                             </Button>
 
-                            {/* --- BOTÃO ADICIONADO --- */}
                             <Button
                                 asChild
                                 variant="outline"
@@ -479,6 +479,16 @@ const AdminDashboard = () => {
                                 <Link to="/admin/links">
                                     <LinkIcon className="mr-2 h-4 w-4" />{" "}
                                     Central de Links (Linktree)
+                                </Link>
+                            </Button>
+                            <Button
+                                asChild
+                                variant="outline"
+                                className="justify-start"
+                            >
+                                <Link to="/admin/notifications">
+                                    <BellRing className="mr-2 h-4 w-4" />{" "}
+                                    Notificações Push
                                 </Link>
                             </Button>
                         </CardContent>

@@ -8,7 +8,7 @@ import {
     EmployeeInsertPayload, EmployeeUpdatePayload, CustomerUpdatePayload, OrderInsertPayload,
     BannerInsertPayload, BannerUpdatePayload, CouponInsertPayload, CouponUpdatePayload, WarrantyInsertPayload, AddressInsertPayload, DriverInsertPayload,
     WholesaleClientInsertPayload, WholesaleClientUpdatePayload, BulkClientInsertPayload,
-    PublicLinkInsertPayload, PublicLinkUpdatePayload // <-- NOVOS PAYLOADS IMPORTADOS
+    PublicLinkInsertPayload, PublicLinkUpdatePayload, PushCampaign, PushCampaignInsertPayload
 } from "@/types";
 // Importamos o Database para uso nas funções de retorno se necessário (embora os tipos customizados acima já cubram)
 import { Database } from "@/integrations/supabase/types";
@@ -1239,4 +1239,59 @@ export const sendOrderEmail = async (
     });
 
     if (error) console.error("Erro ao enviar e-mail:", error);
+};
+
+// ==================================================================
+// FUNÇÕES DE NOTIFICAÇÃO (ADMIN)
+// ==================================================================
+
+export const fetchNotifications = async (): Promise<PushCampaign[]> => {
+    const { data, error } = await supabase
+        .from('Notifications')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data as PushCampaign[];
+};
+
+export const createNotification = async (payload: PushCampaignInsertPayload): Promise<void> => {
+    const { error } = await supabase
+        .from('Notifications')
+        .insert(payload);
+    if (error) throw new Error(error.message);
+};
+
+export const deleteNotification = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('Notifications')
+        .delete()
+        .eq('id', id);
+    if (error) throw new Error(error.message);
+};
+
+// Dispara a notificação através da Edge Function e atualiza o status
+export const sendNotificationNow = async (notification: PushCampaign): Promise<number> => {
+    // 1. Chama a Edge Function
+    const { data, error } = await supabase.functions.invoke('send-push', {
+        body: {
+            title: notification.title,
+            body: notification.body,
+            url: notification.link_url,
+            image: notification.image_url // Envia a imagem grande
+        }
+    });
+
+    if (error) throw new Error(error.message);
+    if (data.error) throw new Error(data.error);
+
+    // 2. Atualiza o status no banco para 'sent'
+    await supabase
+        .from('Notifications')
+        .update({ 
+            status: 'sent', 
+            sent_count: data.successCount || 0 
+        })
+        .eq('id', notification.id);
+
+    return data.successCount || 0;
 };

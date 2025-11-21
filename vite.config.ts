@@ -1,6 +1,3 @@
-//
-// === CÓDIGO COMPLETO PARA: vite.config.ts ===
-//
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
@@ -19,6 +16,11 @@ export default defineConfig(({ mode }) => ({
     
     // --- CONFIGURAÇÃO DO PWA ---
     VitePWA({
+      // Configurações para Notificações (InjectManifest)
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+
       registerType: 'autoUpdate',
       // Adicione os arquivos estáticos que devem ser cacheados
       includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png', 'icons/*.png'], 
