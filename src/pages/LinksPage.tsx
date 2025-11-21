@@ -1,6 +1,9 @@
+//
+// === CÓDIGO COMPLETO PARA: src/pages/LinksPage.tsx ===
+//
 import { useQuery } from "@tanstack/react-query";
-import { fetchPublicLinks } from "@/lib/api";
-import { PublicLink } from "@/types";
+import { fetchPublicLinks, fetchStores } from "@/lib/api";
+import { PublicLink, Store } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -12,12 +15,13 @@ import {
     Globe,
     Smartphone,
     ArrowLeft,
+    Store as StoreIcon,
+    ExternalLink,
 } from "lucide-react";
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
 import { Link } from "react-router-dom";
+import { Separator } from "@/components/ui/separator";
 
-// Helper para renderizar o ícone correto
+// Helper para renderizar o ícone correto dos links manuais
 const getIcon = (iconName: string) => {
     switch (iconName) {
         case "whatsapp":
@@ -35,7 +39,7 @@ const getIcon = (iconName: string) => {
     }
 };
 
-// Helper para cor do botão baseada no tipo
+// Helper para cor do botão baseada no tipo (Links Manuais)
 const getButtonClass = (iconName: string) => {
     switch (iconName) {
         case "whatsapp":
@@ -52,85 +56,179 @@ const getButtonClass = (iconName: string) => {
 };
 
 const LinksPage = () => {
-    const { data: links, isLoading } = useQuery<PublicLink[]>({
+    // 1. Busca Links Manuais
+    const { data: links, isLoading: loadingLinks } = useQuery<PublicLink[]>({
         queryKey: ["publicLinks"],
         queryFn: fetchPublicLinks,
     });
 
+    // 2. Busca Lojas (Automático)
+    const { data: stores, isLoading: loadingStores } = useQuery<Store[]>({
+        queryKey: ["storesPublic"],
+        queryFn: fetchStores,
+    });
+
     const activeLinks = links?.filter((l) => l.active) || [];
+    const isLoading = loadingLinks || loadingStores;
+
+    // Helpers para URLs dinâmicas de Loja
+    const getStoreWhatsAppUrl = (phone: string) =>
+        `https://wa.me/${phone.replace(/\D/g, "")}`;
+    const getStoreMapUrl = (address: string, city: string) =>
+        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            `${address}, ${city}`
+        )}`;
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
-            <Navbar />
-
-            <main className="flex-1 container py-12 flex flex-col items-center max-w-md mx-auto animate-fade-in">
-                {/* Cabeçalho da Página de Links */}
-                <div className="text-center space-y-4 mb-8">
-                    <div className="h-24 w-24 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full mx-auto flex items-center justify-center shadow-xl mb-4">
-                        <Smartphone className="h-10 w-10 text-white" />
-                    </div>
-                    <h1 className="text-2xl font-bold tracking-tight">
+        <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col items-center py-12 px-4 text-slate-100 font-sans">
+            {/* --- CABEÇALHO (PERFIL) --- */}
+            <div className="w-full max-w-md text-center space-y-4 mb-8 animate-fade-in">
+                <div className="h-28 w-28 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full mx-auto flex items-center justify-center shadow-2xl mb-4 ring-4 ring-white/10">
+                    <Smartphone className="h-12 w-12 text-white" />
+                </div>
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-white">
                         BV Celular
                     </h1>
-                    <p className="text-muted-foreground">
-                        Fale conosco ou nos encontre nas redes sociais.
+                    <p className="text-slate-400 mt-1">
+                        Tecnologia, Acessórios e Assistência Técnica.
                     </p>
                 </div>
+            </div>
 
-                {/* Lista de Botões */}
-                <div className="w-full space-y-4">
-                    {isLoading ? (
-                        <>
-                            <Skeleton className="h-14 w-full rounded-xl" />
-                            <Skeleton className="h-14 w-full rounded-xl" />
-                            <Skeleton className="h-14 w-full rounded-xl" />
-                        </>
-                    ) : activeLinks.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground border rounded-xl bg-background/50">
-                            Nenhum link de contato disponível no momento.
-                        </div>
-                    ) : (
-                        activeLinks.map((link) => (
-                            <Button
-                                key={link.id}
-                                asChild
-                                size="lg"
-                                className={`w-full h-14 text-lg font-medium shadow-sm rounded-xl justify-start px-6 transition-transform hover:scale-[1.02] active:scale-95 ${getButtonClass(
-                                    link.icon
-                                )}`}
-                            >
-                                <a
-                                    href={link.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center w-full"
+            <div className="w-full max-w-md space-y-6 animate-slide-up">
+                {isLoading ? (
+                    // SKELETON LOADING
+                    <div className="space-y-3">
+                        <Skeleton className="h-14 w-full rounded-xl bg-slate-800" />
+                        <Skeleton className="h-14 w-full rounded-xl bg-slate-800" />
+                        <Skeleton className="h-14 w-full rounded-xl bg-slate-800" />
+                    </div>
+                ) : (
+                    <>
+                        {/* 1. LINKS MANUAIS (Destaques, Redes Sociais, Promoções) */}
+                        <div className="space-y-3">
+                            {activeLinks.map((link) => (
+                                <Button
+                                    key={link.id}
+                                    asChild
+                                    size="lg"
+                                    className={`w-full h-14 text-base font-semibold shadow-lg rounded-xl justify-start px-4 transition-transform hover:scale-[1.02] active:scale-95 ${getButtonClass(
+                                        link.icon
+                                    )}`}
                                 >
-                                    <span className="mr-4">
-                                        {getIcon(link.icon)}
+                                    <a
+                                        href={link.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center w-full"
+                                    >
+                                        <span className="mr-4">
+                                            {getIcon(link.icon)}
+                                        </span>
+                                        <span className="flex-1 text-center mr-6">
+                                            {link.title}
+                                        </span>
+                                    </a>
+                                </Button>
+                            ))}
+                        </div>
+
+                        {/* Separador se houver lojas */}
+                        {stores && stores.length > 0 && (
+                            <div className="relative py-4">
+                                <div className="absolute inset-0 flex items-center">
+                                    <span className="w-full border-t border-slate-800" />
+                                </div>
+                                <div className="relative flex justify-center text-xs uppercase">
+                                    <span className="bg-slate-950 px-2 text-slate-500 font-bold tracking-widest">
+                                        Nossas Unidades
                                     </span>
-                                    <span className="flex-1 text-center mr-6">
-                                        {link.title}
-                                    </span>
-                                </a>
-                            </Button>
-                        ))
-                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 2. LINKS AUTOMÁTICOS DAS LOJAS */}
+                        <div className="space-y-4">
+                            {stores?.map((store) => (
+                                <div
+                                    key={store.id}
+                                    className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 space-y-3 hover:bg-slate-800 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2 text-white font-semibold">
+                                        <StoreIcon className="h-5 w-5 text-blue-400" />
+                                        {store.name}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {/* Botão WhatsApp da Loja */}
+                                        <Button
+                                            asChild
+                                            variant="outline"
+                                            className="bg-transparent border-green-600/30 text-green-400 hover:bg-green-600/10 hover:text-green-300 w-full justify-start h-10"
+                                        >
+                                            <a
+                                                href={getStoreWhatsAppUrl(
+                                                    store.whatsapp
+                                                )}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >
+                                                <MessageCircle className="mr-2 h-4 w-4" />{" "}
+                                                WhatsApp
+                                            </a>
+                                        </Button>
+
+                                        {/* Botão Endereço (Se houver) */}
+                                        {store.address && store.city ? (
+                                            <Button
+                                                asChild
+                                                variant="outline"
+                                                className="bg-transparent border-slate-600 text-slate-300 hover:bg-slate-700 w-full justify-start h-10"
+                                            >
+                                                <a
+                                                    href={getStoreMapUrl(
+                                                        store.address,
+                                                        store.city
+                                                    )}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                >
+                                                    <MapPin className="mr-2 h-4 w-4" />{" "}
+                                                    Localização
+                                                </a>
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                disabled
+                                                variant="outline"
+                                                className="bg-transparent border-slate-800 text-slate-600 w-full justify-start h-10 cursor-not-allowed"
+                                            >
+                                                <MapPin className="mr-2 h-4 w-4" />{" "}
+                                                Sem Endereço
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+
+                {/* RODAPÉ SIMPLES */}
+                <div className="pt-8 pb-4 flex justify-center">
+                    <Button
+                        variant="link"
+                        className="text-slate-500 hover:text-white"
+                        asChild
+                    >
+                        <Link to="/">
+                            <ArrowLeft className="mr-2 h-4 w-4" /> Acessar Loja
+                            Virtual
+                        </Link>
+                    </Button>
                 </div>
-
-                {/* Botão Voltar */}
-                <Button
-                    variant="ghost"
-                    className="mt-12 text-muted-foreground"
-                    asChild
-                >
-                    <Link to="/">
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Voltar para a
-                        Loja
-                    </Link>
-                </Button>
-            </main>
-
-            <Footer />
+            </div>
         </div>
     );
 };
