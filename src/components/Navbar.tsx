@@ -1,6 +1,3 @@
-//
-// === CÓDIGO COMPLETO PARA: src/components/Navbar.tsx ===
-//
 import { useState, useContext } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -19,7 +16,7 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
 import { CartDrawer } from "@/components/CartDrawer";
 import { ModeToggle } from "@/components/Mode-Toggle";
-import { NotificationButton } from "@/components/NotificationButton"; // <-- IMPORT NOVO
+import { NotificationButton } from "@/components/NotificationButton";
 import {
     Sheet,
     SheetContent,
@@ -54,8 +51,14 @@ export const Navbar = () => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const handleAdminLogout = async () => {
-        await adminLogout();
-        navigate("/");
+        console.log(">>> DEBUG: [Navbar] handleAdminLogout clicado");
+        try {
+            await adminLogout();
+            console.log(">>> DEBUG: [Navbar] Logout admin bem sucedido");
+            navigate("/");
+        } catch (error) {
+            console.error(">>> DEBUG: [Navbar] Erro no Logout:", error);
+        }
     };
 
     const handleSearch = (e: React.FormEvent) => {
@@ -197,10 +200,7 @@ export const Navbar = () => {
 
                 {/* DIREITA: Links Desktop + Ações */}
                 <div className="flex items-center gap-1 md:gap-2">
-                    {/* Botão de Notificação (Novo) */}
                     <NotificationButton />
-
-                    {/* Botão de Tema */}
                     <ModeToggle />
 
                     {/* Links (Apenas Desktop e se NÃO for Admin) */}

@@ -1,8 +1,10 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useContext, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { AuthContext } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
     Card,
     CardContent,
@@ -10,108 +12,135 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Smartphone, AlertTriangle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast"; //
+import { useToast } from "@/hooks/use-toast";
+import { Loader2, ShieldAlert } from "lucide-react";
+import { Navbar } from "@/components/Navbar";
 
-const Login = () => {
-    const navigate = useNavigate();
-    const { toast } = useToast();
+const AdminLoginPage = () => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-    const handleLogin = async (e: React.FormEvent) => {
+    // Hooks no nível superior (Sempre!)
+    const auth = useContext(AuthContext);
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { toast } = useToast();
+
+    // Se o contexto falhar (não deveria acontecer com o App.tsx correto)
+    if (!auth) return null;
+
+    const { signIn, user, employeeProfile, loading, logout } = auth;
+    const from = location.state?.from?.pathname || "/admin";
+
+    useEffect(() => {
+        // Redireciona apenas se tiver certeza absoluta do perfil de admin
+        if (!loading && user && employeeProfile) {
+            navigate(from, { replace: true });
+        }
+    }, [user, employeeProfile, loading, navigate, from]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsLoading(true);
-        setError(null);
-
+        setIsLoggingIn(true);
         try {
-            // 1. Tenta fazer login com o Supabase
-            const { error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
-
-            if (error) throw error;
-
-            // 2. Sucesso! Redireciona para o painel admin
-            navigate("/admin");
-        } catch (err: any) {
-            setError("Credenciais inválidas. Verifique seu e-mail e senha.");
-            console.error("Erro no login:", err.message);
+            await signIn(email, password);
+            // Redirecionamento será feito pelo useEffect
+        } catch (error: any) {
             toast({
                 variant: "destructive",
-                title: "Falha no Login",
-                description:
-                    "Credenciais inválidas. Verifique seu e-mail e senha.",
+                title: "Erro ao entrar",
+                description: error.message || "Verifique suas credenciais.",
             });
-        } finally {
-            setIsLoading(false);
+            setIsLoggingIn(false);
         }
     };
 
-    return (
-        <div className="flex min-h-screen items-center justify-center bg-gradient-hero p-4">
-            <Card className="w-full max-w-sm">
-                <CardHeader className="items-center text-center">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-primary mb-2">
-                        <Smartphone className="h-6 w-6 text-primary-foreground" />
-                    </div>
-                    <CardTitle className="text-2xl">
-                        BV Celular - Admin
-                    </CardTitle>
-                    <CardDescription>
-                        Acesse seu painel de gerenciamento
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleLogin} className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="email">E-mail</Label>
-                            <Input
-                                id="email"
-                                type="email"
-                                placeholder="admin@bvcelular.com"
-                                required
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                disabled={isLoading}
-                            />
+    // Tela de Erro de Permissão (Logado, mas não é Admin)
+    if (!loading && user && !employeeProfile) {
+        return (
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+                <Card className="w-full max-w-md border-destructive">
+                    <CardHeader className="text-center">
+                        <div className="mx-auto bg-destructive/10 p-3 rounded-full w-fit text-destructive mb-2">
+                            <ShieldAlert className="h-8 w-8" />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="password">Senha</Label>
-                            <Input
-                                id="password"
-                                type="password"
-                                required
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                disabled={isLoading}
-                            />
-                        </div>
-
-                        {error && (
-                            <div className="flex items-center gap-2 text-sm text-destructive">
-                                <AlertTriangle className="h-4 w-4" />
-                                <span>{error}</span>
-                            </div>
-                        )}
-
+                        <CardTitle className="text-destructive">
+                            Acesso Negado
+                        </CardTitle>
+                        <CardDescription>
+                            Sua conta não possui perfil administrativo.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
                         <Button
-                            type="submit"
+                            onClick={() => logout()}
+                            variant="outline"
                             className="w-full"
-                            disabled={isLoading}
                         >
-                            {isLoading ? "Entrando..." : "Entrar"}
+                            Sair e Tentar Outra Conta
                         </Button>
-                    </form>
-                </CardContent>
-            </Card>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
+            <Navbar />
+            <div className="flex-1 flex items-center justify-center p-4">
+                <Card className="w-full max-w-md">
+                    <CardHeader className="space-y-1">
+                        <CardTitle className="text-2xl font-bold text-center">
+                            Acesso Administrativo
+                        </CardTitle>
+                        <CardDescription className="text-center">
+                            Digite suas credenciais.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="email">Email</Label>
+                                <Input
+                                    id="email"
+                                    type="email"
+                                    required
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="password">Senha</Label>
+                                <Input
+                                    id="password"
+                                    type="password"
+                                    required
+                                    value={password}
+                                    onChange={(e) =>
+                                        setPassword(e.target.value)
+                                    }
+                                />
+                            </div>
+                            <Button
+                                type="submit"
+                                className="w-full"
+                                disabled={isLoggingIn}
+                            >
+                                {isLoggingIn ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    "Entrar"
+                                )}
+                            </Button>
+                        </form>
+                    </CardContent>
+                </Card>
+            </div>
         </div>
     );
 };
 
-export default Login;
+export default AdminLoginPage;

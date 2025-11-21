@@ -10,13 +10,14 @@ interface PublicRouteProps {
 export const PublicRoute = ({ children }: PublicRouteProps) => {
     const context = useContext(AuthContext);
 
+    // Se por algum motivo o contexto falhar (não deve ocorrer agora), renderiza o outlet
     if (!context) {
         return <Outlet />;
     }
 
     const { employeeProfile, loading } = context;
 
-    // Enquanto carrega, não faz nada (ou mostra skeleton)
+    // Enquanto verifica a sessão, mostra loading para evitar redirect falso
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
@@ -25,11 +26,11 @@ export const PublicRoute = ({ children }: PublicRouteProps) => {
         );
     }
 
-    // SE FOR ADMIN/FUNCIONÁRIO, PROÍBE O ACESSO E MANDA PRO ADMIN
+    // Se for Admin/Funcionário, BLOQUEIA acesso público e joga pro painel
     if (employeeProfile) {
         return <Navigate to="/admin" replace />;
     }
 
-    // Se for cliente ou visitante, permite
+    // Se for visitante ou cliente normal, libera
     return children ? <>{children}</> : <Outlet />;
 };

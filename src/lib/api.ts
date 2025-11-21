@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable prefer-const */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
 // Importamos TODOS os tipos de @/types para evitar conflitos e redefinições locais
 import { 
@@ -805,10 +803,8 @@ export const fetchAllOrders = async (): Promise<Order[]> => {
     `)
     .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error("Erro fetchAllOrders:", error);
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
+  
   // @ts-ignore
   return data as unknown as Order[];
 };

@@ -1,6 +1,3 @@
-//
-// === CÓDIGO COMPLETO PARA: src/App.tsx ===
-//
 import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -28,7 +25,6 @@ import Aparelhos from "./pages/Aparelhos";
 import Promocoes from "./pages/Promocoes";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
-import CheckoutSuccess from "./pages/CheckoutSuccess";
 
 import AdminProducts from "./pages/admin/Products";
 import AdminProductForm from "./pages/admin/ProductForm";
@@ -43,7 +39,6 @@ import AdminCoupons from "./pages/admin/Coupons";
 import AdminLogistics from "./pages/admin/Logistics";
 import AdminWholesale from "./pages/admin/Wholesale";
 import AdminLinks from "./pages/admin/Links";
-import AdminNotifications from "./pages/admin/Notifications";
 import AdminNewSale from "./pages/admin/NewSale";
 
 import DriverDashboard from "./pages/driver/Dashboard";
@@ -56,7 +51,7 @@ import MinhaConta from "./pages/MinhaConta";
 import ProductDetails from "./pages/ProductDetails";
 import WarrantyPage from "./pages/Warranty";
 import LinksPage from "./pages/LinksPage";
-
+import CheckoutSuccess from "./pages/CheckoutSuccess";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -66,6 +61,7 @@ const queryClient = new QueryClient({
     },
 });
 
+// --- TRACKER DE FUNCIONÁRIO ---
 const EmployeeTracker = () => {
     const [searchParams] = useSearchParams();
 
@@ -79,27 +75,12 @@ const EmployeeTracker = () => {
     return null;
 };
 
-const PublicLayout = () => (
-    <CustomerAuthProvider>
-        <CartProvider>
-            <EmployeeTracker />
-            <AuthProvider>
-                <PublicRoute>
-                    <Outlet />
-                </PublicRoute>
-            </AuthProvider>
-        </CartProvider>
-    </CustomerAuthProvider>
-);
-
-const AdminLayout = () => (
-    <AuthProvider>
-        <CustomerAuthProvider>
-            <CartProvider>
-                <Outlet />
-            </CartProvider>
-        </CustomerAuthProvider>
-    </AuthProvider>
+// Layouts agora são apenas containers visuais (divs), sem lógica de contexto
+const MainLayout = () => (
+    <>
+        <EmployeeTracker />
+        <Outlet />
+    </>
 );
 
 const DriverLayout = () => (
@@ -114,130 +95,159 @@ const App = () => (
             <Toaster />
             <Sonner />
             <ThemeProvider defaultTheme="system" storageKey="bv-celular-theme">
-                <BrowserRouter>
-                    <Routes>
-                        {/* Rotas Públicas */}
-                        <Route element={<PublicLayout />}>
-                            <Route path="/" element={<Index />} />
-                            <Route path="/login" element={<CustomerLogin />} />
-                            <Route
-                                path="/atacado-login"
-                                element={<WholesaleLogin />}
-                            />
-                            <Route
-                                path="/admin-login"
-                                element={<AdminLoginPage />}
-                            />
+                {/* AQUI ESTÁ A CORREÇÃO: 
+                    Os Providers agora envolvem TODA a aplicação.
+                    Eles não são recriados na troca de rotas.
+                */}
+                <AuthProvider>
+                    <CustomerAuthProvider>
+                        <CartProvider>
+                            <BrowserRouter>
+                                <Routes>
+                                    {/* ROTAS PÚBLICAS (Protegidas contra Admin) */}
+                                    <Route element={<MainLayout />}>
+                                        <Route element={<PublicRoute />}>
+                                            <Route
+                                                path="/"
+                                                element={<Index />}
+                                            />
+                                            <Route
+                                                path="/login"
+                                                element={<CustomerLogin />}
+                                            />
+                                            <Route
+                                                path="/atacado-login"
+                                                element={<WholesaleLogin />}
+                                            />
+                                            <Route
+                                                path="/admin-login"
+                                                element={<AdminLoginPage />}
+                                            />
 
-                            <Route path="/aparelhos" element={<Aparelhos />} />
-                            <Route path="/promocoes" element={<Promocoes />} />
-                            <Route
-                                path="/acessorios"
-                                element={<Acessorios />}
-                            />
-                            <Route
-                                path="/minha-conta"
-                                element={<MinhaConta />}
-                            />
-                            <Route
-                                path="/produto/:productId"
-                                element={<ProductDetails />}
-                            />
-                            <Route
-                                path="/garantia"
-                                element={<WarrantyPage />}
-                            />
-                            <Route
-                                path="/success"
-                                element={<CheckoutSuccess />}
-                            />
+                                            <Route
+                                                path="/aparelhos"
+                                                element={<Aparelhos />}
+                                            />
+                                            <Route
+                                                path="/promocoes"
+                                                element={<Promocoes />}
+                                            />
+                                            <Route
+                                                path="/acessorios"
+                                                element={<Acessorios />}
+                                            />
+                                            <Route
+                                                path="/minha-conta"
+                                                element={<MinhaConta />}
+                                            />
+                                            <Route
+                                                path="/produto/:productId"
+                                                element={<ProductDetails />}
+                                            />
+                                            <Route
+                                                path="/garantia"
+                                                element={<WarrantyPage />}
+                                            />
+                                            <Route
+                                                path="/links"
+                                                element={<LinksPage />}
+                                            />
+                                            <Route
+                                                path="/success"
+                                                element={<CheckoutSuccess />}
+                                            />
+                                        </Route>
 
-                            {/* ROTA PÚBLICA DO LINKTREE */}
-                            <Route path="/links" element={<LinksPage />} />
+                                        {/* Rota 404 fica fora do PublicRoute para não redirecionar admin perdido */}
+                                        <Route
+                                            path="*"
+                                            element={<NotFound />}
+                                        />
+                                    </Route>
 
-                            <Route path="*" element={<NotFound />} />
-                        </Route>
+                                    {/* ROTAS ADMIN (Protegidas) */}
+                                    <Route path="/admin">
+                                        <Route element={<ProtectedRoute />}>
+                                            <Route index element={<Admin />} />
+                                            <Route
+                                                path="produtos"
+                                                element={<AdminProducts />}
+                                            />
+                                            <Route
+                                                path="produtos/novo"
+                                                element={<AdminProductForm />}
+                                            />
+                                            <Route
+                                                path="produtos/editar/:productId"
+                                                element={<AdminProductForm />}
+                                            />
+                                            <Route
+                                                path="lojas"
+                                                element={<AdminStores />}
+                                            />
+                                            <Route
+                                                path="funcionarios"
+                                                element={<AdminEmployees />}
+                                            />
+                                            <Route
+                                                path="entregadores"
+                                                element={<AdminDrivers />}
+                                            />
+                                            <Route
+                                                path="clientes"
+                                                element={<AdminClients />}
+                                            />
+                                            <Route
+                                                path="atacado"
+                                                element={<AdminWholesale />}
+                                            />
+                                            <Route
+                                                path="pedidos"
+                                                element={<AdminOrders />}
+                                            />
+                                            <Route
+                                                path="banners"
+                                                element={<AdminBanners />}
+                                            />
+                                            <Route
+                                                path="garantias"
+                                                element={<AdminWarranties />}
+                                            />
+                                            <Route
+                                                path="cupons"
+                                                element={<AdminCoupons />}
+                                            />
+                                            <Route
+                                                path="logistica"
+                                                element={<AdminLogistics />}
+                                            />
+                                            <Route
+                                                path="links"
+                                                element={<AdminLinks />}
+                                            />
+                                            <Route
+                                                path="venda-nova"
+                                                element={<AdminNewSale />}
+                                            />
+                                        </Route>
+                                    </Route>
 
-                        {/* Rotas de Admin */}
-                        <Route path="/admin" element={<AdminLayout />}>
-                            <Route element={<ProtectedRoute />}>
-                                <Route index element={<Admin />} />
-                                <Route
-                                    path="produtos"
-                                    element={<AdminProducts />}
-                                />
-                                <Route
-                                    path="produtos/novo"
-                                    element={<AdminProductForm />}
-                                />
-                                <Route
-                                    path="produtos/editar/:productId"
-                                    element={<AdminProductForm />}
-                                />
-                                <Route path="lojas" element={<AdminStores />} />
-                                <Route
-                                    path="funcionarios"
-                                    element={<AdminEmployees />}
-                                />
-                                <Route
-                                    path="entregadores"
-                                    element={<AdminDrivers />}
-                                />
-                                <Route
-                                    path="clientes"
-                                    element={<AdminClients />}
-                                />
-                                <Route
-                                    path="atacado"
-                                    element={<AdminWholesale />}
-                                />
-                                <Route
-                                    path="pedidos"
-                                    element={<AdminOrders />}
-                                />
-                                <Route
-                                    path="banners"
-                                    element={<AdminBanners />}
-                                />
-                                <Route
-                                    path="garantias"
-                                    element={<AdminWarranties />}
-                                />
-                                <Route
-                                    path="cupons"
-                                    element={<AdminCoupons />}
-                                />
-                                <Route
-                                    path="logistica"
-                                    element={<AdminLogistics />}
-                                />
-                                <Route
-                                    path="notifications"
-                                    element={<AdminNotifications />}
-                                />
-                                <Route
-                                    path="venda-nova"
-                                    element={<AdminNewSale />}
-                                />
-
-                                {/* ROTA DE GESTÃO DE LINKS */}
-                                <Route path="links" element={<AdminLinks />} />
-                            </Route>
-                        </Route>
-
-                        {/* Rotas de Entregador */}
-                        <Route element={<DriverLayout />}>
-                            <Route
-                                path="/driver-login"
-                                element={<DriverLogin />}
-                            />
-                            <Route
-                                path="/entregador"
-                                element={<DriverDashboard />}
-                            />
-                        </Route>
-                    </Routes>
-                </BrowserRouter>
+                                    {/* ROTAS ENTREGADOR */}
+                                    <Route element={<DriverLayout />}>
+                                        <Route
+                                            path="/driver-login"
+                                            element={<DriverLogin />}
+                                        />
+                                        <Route
+                                            path="/entregador"
+                                            element={<DriverDashboard />}
+                                        />
+                                    </Route>
+                                </Routes>
+                            </BrowserRouter>
+                        </CartProvider>
+                    </CustomerAuthProvider>
+                </AuthProvider>
             </ThemeProvider>
         </TooltipProvider>
     </QueryClientProvider>

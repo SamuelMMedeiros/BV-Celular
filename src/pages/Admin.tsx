@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { fetchAllOrders, fetchStores, updateOrderStatus } from "@/lib/api";
 import { Order, Store, OrderCartItem } from "@/types";
 import { formatCurrency } from "@/lib/utils";
@@ -56,8 +55,6 @@ import {
     Clock,
     Briefcase,
     Link as LinkIcon,
-    BellRing,
-    ShoppingCart,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, subDays, isSameDay } from "date-fns";
@@ -69,7 +66,6 @@ const AdminDashboard = () => {
     const queryClient = useQueryClient();
     const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
 
-    // Busca dados (Pedidos e Lojas)
     const { data: orders, isLoading: isLoadingOrders } = useQuery<Order[]>({
         queryKey: ["adminOrders"],
         queryFn: fetchAllOrders,
@@ -117,12 +113,10 @@ const AdminDashboard = () => {
         const pendingOrders = filteredOrders.filter(
             (o) => o.status === "pending"
         );
-
         const totalRevenue = completedOrders.reduce(
             (acc, curr) => acc + Number(curr.total_price),
             0
         );
-
         const averageTicket =
             completedOrders.length > 0
                 ? totalRevenue / completedOrders.length
@@ -139,22 +133,18 @@ const AdminDashboard = () => {
 
     const chartData = useMemo(() => {
         if (!orders || !stores) return [];
-
-        const last7Days = Array.from({ length: 7 }, (_, i) => {
-            const d = subDays(new Date(), 6 - i);
-            return d;
-        });
+        const last7Days = Array.from({ length: 7 }, (_, i) =>
+            subDays(new Date(), 6 - i)
+        );
 
         return last7Days.map((date) => {
             const dateKey = format(date, "dd/MM", { locale: ptBR });
             const dayData: any = { date: dateKey };
-
             const daysOrders = orders.filter(
                 (o) =>
                     o.status === "completed" &&
                     isSameDay(new Date(o.created_at), date)
             );
-
             const relevantOrders =
                 selectedStoreId === "all"
                     ? daysOrders
@@ -164,10 +154,8 @@ const AdminDashboard = () => {
                 const storeRevenue = relevantOrders
                     .filter((o) => o.store_id === store.id)
                     .reduce((acc, curr) => acc + Number(curr.total_price), 0);
-
                 dayData[store.name] = storeRevenue / 100;
             });
-
             return dayData;
         });
     }, [orders, stores, selectedStoreId]);
@@ -378,7 +366,6 @@ const AdminDashboard = () => {
                                     Pedidos
                                 </Link>
                             </Button>
-
                             <Button
                                 asChild
                                 variant="default"
@@ -389,7 +376,6 @@ const AdminDashboard = () => {
                                     / Logística
                                 </Link>
                             </Button>
-
                             <Button
                                 asChild
                                 variant="outline"
@@ -428,7 +414,6 @@ const AdminDashboard = () => {
                                     <Users className="mr-2 h-4 w-4" /> Clientes
                                 </Link>
                             </Button>
-
                             <Button
                                 asChild
                                 variant="outline"
@@ -439,7 +424,6 @@ const AdminDashboard = () => {
                                     Clientes Atacado
                                 </Link>
                             </Button>
-
                             <Button
                                 asChild
                                 variant="outline"
@@ -450,7 +434,6 @@ const AdminDashboard = () => {
                                     Gerenciar Cupons
                                 </Link>
                             </Button>
-
                             <Button
                                 asChild
                                 variant="outline"
@@ -471,7 +454,6 @@ const AdminDashboard = () => {
                                     Banners
                                 </Link>
                             </Button>
-
                             <Button
                                 asChild
                                 variant="outline"
@@ -480,26 +462,6 @@ const AdminDashboard = () => {
                                 <Link to="/admin/links">
                                     <LinkIcon className="mr-2 h-4 w-4" />{" "}
                                     Central de Links (Linktree)
-                                </Link>
-                            </Button>
-                            <Button
-                                asChild
-                                variant="outline"
-                                className="justify-start"
-                            >
-                                <Link to="/admin/notifications">
-                                    <BellRing className="mr-2 h-4 w-4" />{" "}
-                                    Notificações Push
-                                </Link>
-                            </Button>
-                            <Button
-                                asChild
-                                variant="default"
-                                className="justify-start bg-green-600 hover:bg-green-700"
-                            >
-                                <Link to="/admin/venda-nova">
-                                    <ShoppingCart className="mr-2 h-4 w-4" />{" "}
-                                    Nova Venda (PDV)
                                 </Link>
                             </Button>
                         </CardContent>
@@ -534,7 +496,6 @@ const AdminDashboard = () => {
                                                 )}
                                             </span>
                                         </div>
-
                                         <div className="flex items-center gap-2">
                                             <Select
                                                 defaultValue={order.status}
@@ -565,13 +526,11 @@ const AdminDashboard = () => {
                                                     </SelectItem>
                                                 </SelectContent>
                                             </Select>
-
                                             <span className="font-bold text-sm hidden md:block w-24 text-right">
                                                 {formatCurrency(
                                                     order.total_price
                                                 )}
                                             </span>
-
                                             <Dialog>
                                                 <DialogTrigger asChild>
                                                     <Button
@@ -668,10 +627,7 @@ const DashboardSkeleton = () => (
         <Navbar />
         <main className="container py-8 space-y-8 animate-pulse">
             <div className="flex justify-between">
-                <div className="space-y-2">
-                    <Skeleton className="h-8 w-48" />
-                    <Skeleton className="h-4 w-64" />
-                </div>
+                <Skeleton className="h-8 w-48" />
                 <Skeleton className="h-10 w-[200px]" />
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
