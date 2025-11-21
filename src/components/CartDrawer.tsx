@@ -401,7 +401,7 @@ export const CartDrawer = () => {
                 <div className="flex flex-col gap-4 py-4">
                     {cartItems.map((item) => (
                         <div
-                            key={item.id}
+                            key={`${item.id}-${item.variantId || "base"}`}
                             className="flex flex-col gap-3 border-b pb-4 last:border-0"
                         >
                             <div className="flex items-start justify-between gap-3">
@@ -410,14 +410,24 @@ export const CartDrawer = () => {
                                     alt={item.name}
                                     className="h-16 w-16 rounded-md object-cover border"
                                 />
-                                <p className="flex-1 font-medium leading-tight break-words min-w-0">
-                                    {item.name}
-                                </p>
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-medium leading-tight break-words">
+                                        {item.name}
+                                    </p>
+                                    {/* MOSTRA VARIAÇÃO SE HOUVER */}
+                                    {item.variantName && (
+                                        <p className="text-xs text-muted-foreground mt-1 bg-muted inline-block px-1.5 py-0.5 rounded">
+                                            {item.variantName}
+                                        </p>
+                                    )}
+                                </div>
                                 <Button
                                     variant="ghost"
                                     size="icon"
                                     className="h-7 w-7 text-muted-foreground flex-shrink-0"
-                                    onClick={() => removeFromCart(item.id)}
+                                    onClick={() =>
+                                        removeFromCart(item.id, item.variantId)
+                                    }
                                 >
                                     <X className="h-4 w-4" />
                                 </Button>
@@ -434,7 +444,8 @@ export const CartDrawer = () => {
                                         onClick={() =>
                                             updateQuantity(
                                                 item.id,
-                                                item.quantity - 1
+                                                item.quantity - 1,
+                                                item.variantId
                                             )
                                         }
                                     >
@@ -450,7 +461,8 @@ export const CartDrawer = () => {
                                         onClick={() =>
                                             updateQuantity(
                                                 item.id,
-                                                item.quantity + 1
+                                                item.quantity + 1,
+                                                item.variantId
                                             )
                                         }
                                     >

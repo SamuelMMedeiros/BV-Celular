@@ -1,4 +1,6 @@
-/* eslint-disable react-refresh/only-export-components */
+//
+// === CÓDIGO COMPLETO PARA: src/contexts/CartContext.tsx ===
+//
 import {
     createContext,
     useContext,
@@ -9,7 +11,7 @@ import {
     useCallback,
 } from "react";
 import { CartItem, Coupon, ShippingQuote } from "@/types";
-import { fetchCoupon, checkCouponUsage, calculateFreight } from "@/lib/api"; // <-- IMPORT calculateFreight
+import { fetchCoupon, checkCouponUsage, calculateFreight } from "@/lib/api";
 import { useCustomerAuth } from "./CustomerAuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { isBefore } from "date-fns";
@@ -17,20 +19,20 @@ import { isBefore } from "date-fns";
 interface CartContextType {
     cartItems: CartItem[];
     addToCart: (item: CartItem) => void;
-    removeFromCart: (itemId: string) => void;
-    updateQuantity: (itemId: string, quantity: number) => void;
+    removeFromCart: (itemId: string, variantId?: string) => void; // Assinatura atualizada
+    updateQuantity: (
+        itemId: string,
+        quantity: number,
+        variantId?: string
+    ) => void; // Assinatura atualizada
     clearCart: () => void;
     itemCount: number;
-    
-    // Campos de Cupom
     subtotal: number;
     discountAmount: number;
     totalPrice: number;
     coupon: Coupon | null;
     applyCoupon: (code: string) => Promise<boolean>;
     removeCoupon: () => void;
-    
-    // Campos de Frete
     shippingQuote: ShippingQuote | null;
     calculateShipping: (cep: string) => Promise<void>;
     clearShipping: () => void;
@@ -38,7 +40,7 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'bvcelular_cart';
+const LOCAL_STORAGE_KEY = "bvcelular_cart";
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
     const [cartItems, setCartItems] = useState<CartItem[]>(() => {
@@ -52,12 +54,11 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     });
 
     const [coupon, setCoupon] = useState<Coupon | null>(null);
+    const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(
+        null
+    );
 
-    
-
-    const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null); // <-- Novo State
-    
-    const { profile, isLoggedIn } = useCustomerAuth(); 
+    const { profile, isLoggedIn } = useCustomerAuth();
     const { toast } = useToast();
 
     useEffect(() => {
@@ -70,7 +71,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const subtotal = useMemo(() => {
-        return cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+        return cartItems.reduce(
+            (total, item) => total + item.price * item.quantity,
+            0
+        );
     }, [cartItems]);
 
     const discountAmount = useMemo(() => {
@@ -81,50 +85,59 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     const totalPrice = useMemo(() => {
         let total = subtotal - discountAmount;
         if (shippingQuote) {
-            total += shippingQuote.price; // Soma o frete
+            total += shippingQuote.price;
         }
         return total > 0 ? total : 0;
     }, [subtotal, discountAmount, shippingQuote]);
 
-    const addToCart = useCallback((item: CartItem) => {
+    // Adicionar ao Carrinho (Com suporte a variações)
+    const addToCart = useCallback((newItem: CartItem) => {
         setCartItems((prevItems) => {
-            const existingItem = prevItems.find(
-                (i) => i.id === item.id
+            // Procura item idêntico (mesmo ID E mesma variação)
+            const existingItemIndex = prevItems.findIndex(
+                (i) => i.id === newItem.id && i.variantId === newItem.variantId
             );
 
-            if (existingItem) {
-                return prevItems.map((i) =>
-                    i.id === item.id
-                        ? { ...i, quantity: Math.min(i.quantity + 1, 5) } 
-                        : i
-                );
+            if (existingItemIndex > -1) {
+                const updatedItems = [...prevItems];
+                const currentItem = updatedItems[existingItemIndex];
+
+                // Limite de 5 unidades ou estoque máximo
+                const newQuantity = Math.min(currentItem.quantity + 1, 10);
+                updatedItems[existingItemIndex] = {
+                    ...currentItem,
+                    quantity: newQuantity,
+                };
+                return updatedItems;
             } else {
-                return [...prevItems, { ...item, quantity: 1 }];
+                return [...prevItems, { ...newItem, quantity: 1 }];
             }
         });
     }, []);
 
-    const removeFromCart = useCallback((productId: string) => {
-        setCartItems((prevItems) =>
-            prevItems.filter((item) => item.id !== productId)
-        );
-    }, []);
+    const removeFromCart = useCallback(
+        (productId: string, variantId?: string) => {
+            setCartItems((prevItems) =>
+                prevItems.filter(
+                    (item) =>
+                        !(item.id === productId && item.variantId === variantId)
+                )
+            );
+        },
+        []
+    );
 
     const updateQuantity = useCallback(
-        (productId: string, quantity: number) => {
-            if (quantity < 1 || quantity > 5) return; 
-            
+        (productId: string, quantity: number, variantId?: string) => {
+            if (quantity < 1 || quantity > 10) return;
+
             setCartItems((prevItems) => {
-                if (quantity <= 0) {
-                    return prevItems.filter(
-                        (item) => item.id !== productId
-                    );
-                }
-                return prevItems.map((item) =>
-                    item.id === productId
-                        ? { ...item, quantity: quantity }
-                        : item
-                );
+                return prevItems.map((item) => {
+                    if (item.id === productId && item.variantId === variantId) {
+                        return { ...item, quantity: quantity };
+                    }
+                    return item;
+                });
             });
         },
         []
@@ -136,109 +149,107 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         setShippingQuote(null);
     }, []);
 
-const applyCoupon = async (code: string) => {
-    if (!code) return false;
+    const applyCoupon = async (code: string) => {
+        if (!code) return false;
 
-    if (!isLoggedIn || !profile) {
-        toast({
-            variant: "destructive",
-            title: "Login necessário",
-            description: "Faça login para usar cupons.",
-        });
-        return false;
-    }
-
-    const foundCoupon = await fetchCoupon(code);
-
-    if (foundCoupon) {
-        // 1. Validade de Data
-        if (
-            foundCoupon.valid_until &&
-            isBefore(new Date(foundCoupon.valid_until), new Date())
-        ) {
-            toast({ variant: "destructive", title: "Cupom expirado" });
-            return false;
-        }
-
-        // 2. Valor Mínimo
-        if (
-            foundCoupon.min_purchase_value &&
-            subtotal < foundCoupon.min_purchase_value * 100
-        ) {
+        if (!isLoggedIn || !profile) {
             toast({
                 variant: "destructive",
-                title: "Valor mínimo não atingido",
+                title: "Login necessário",
+                description: "Faça login para usar cupons.",
             });
             return false;
         }
 
-        // 3. Uso Único
-        const alreadyUsed = await checkCouponUsage(profile.id, foundCoupon.id);
-        if (alreadyUsed) {
-            toast({ variant: "destructive", title: "Cupom já utilizado" });
-            return false;
-        }
+        const foundCoupon = await fetchCoupon(code);
 
-        // --- NOVAS REGRAS DE VALIDAÇÃO ---
+        if (foundCoupon) {
+            if (
+                foundCoupon.valid_until &&
+                isBefore(new Date(foundCoupon.valid_until), new Date())
+            ) {
+                toast({ variant: "destructive", title: "Cupom expirado" });
+                return false;
+            }
 
-        // 4. Bloqueio de Promoção
-        if (!foundCoupon.allow_with_promotion) {
-            // Verifica se TEM algum item em promoção no carrinho
-            // (Precisamos que CartItem tenha isPromotion, que adicionamos no types.ts)
-            const hasPromoItem = cartItems.some((item) => item.isPromotion);
-            if (hasPromoItem) {
+            if (
+                foundCoupon.min_purchase_value &&
+                subtotal < foundCoupon.min_purchase_value * 100
+            ) {
                 toast({
                     variant: "destructive",
-                    title: "Não permitido",
-                    description:
-                        "Este cupom não acumula com itens em promoção.",
+                    title: "Valor mínimo não atingido",
                 });
                 return false;
             }
-        }
 
-        // 5. Restrição de Categoria
-        if (
-            foundCoupon.valid_for_categories &&
-            foundCoupon.valid_for_categories.length > 0
-        ) {
-            // Verifica se TODOS os itens do carrinho pertencem às categorias permitidas
-            const allItemsValid = cartItems.every((item) =>
-                foundCoupon.valid_for_categories?.includes(item.category)
+            const alreadyUsed = await checkCouponUsage(
+                profile.id,
+                foundCoupon.id
             );
-
-            if (!allItemsValid) {
-                toast({
-                    variant: "destructive",
-                    title: "Categoria inválida",
-                    description: `Este cupom só vale para: ${foundCoupon.valid_for_categories.join(
-                        ", "
-                    )}`,
-                });
+            if (alreadyUsed) {
+                toast({ variant: "destructive", title: "Cupom já utilizado" });
                 return false;
             }
+
+            if (!foundCoupon.allow_with_promotion) {
+                const hasPromoItem = cartItems.some((item) => item.isPromotion);
+                if (hasPromoItem) {
+                    toast({
+                        variant: "destructive",
+                        title: "Não permitido",
+                        description:
+                            "Este cupom não acumula com itens em promoção.",
+                    });
+                    return false;
+                }
+            }
+
+            if (
+                foundCoupon.valid_for_categories &&
+                foundCoupon.valid_for_categories.length > 0
+            ) {
+                const allItemsValid = cartItems.every((item) =>
+                    foundCoupon.valid_for_categories?.includes(item.category)
+                );
+                if (!allItemsValid) {
+                    toast({
+                        variant: "destructive",
+                        title: "Categoria inválida",
+                        description: `Válido apenas para: ${foundCoupon.valid_for_categories.join(
+                            ", "
+                        )}`,
+                    });
+                    return false;
+                }
+            }
+
+            setCoupon(foundCoupon);
+            return true;
         }
 
-        setCoupon(foundCoupon);
-        return true;
-    }
-
-    toast({ variant: "destructive", title: "Cupom inválido" });
-    return false;
-};
+        toast({ variant: "destructive", title: "Cupom inválido" });
+        return false;
+    };
 
     const removeCoupon = () => setCoupon(null);
 
-    // --- NOVA LÓGICA DE FRETE ---
     const calculateShipping = async (cep: string) => {
         try {
             const quote = await calculateFreight(cep);
             setShippingQuote(quote);
-            toast({ title: "Frete calculado!", description: `Prazo: ${quote.days} dias úteis.` });
+            toast({
+                title: "Frete calculado!",
+                description: `Prazo: ${quote.days} dias úteis.`,
+            });
         } catch (error) {
             console.error(error);
             setShippingQuote(null);
-            toast({ variant: "destructive", title: "Erro no frete", description: "Verifique o CEP." });
+            toast({
+                variant: "destructive",
+                title: "Erro no frete",
+                description: "Verifique o CEP.",
+            });
         }
     };
 
@@ -257,15 +268,13 @@ const applyCoupon = async (code: string) => {
         coupon,
         applyCoupon,
         removeCoupon,
-        shippingQuote,     // Novo
-        calculateShipping, // Novo
-        clearShipping,     // Novo
+        shippingQuote,
+        calculateShipping,
+        clearShipping,
     };
 
     return (
-        <CartContext.Provider value={value}>
-            {children}
-        </CartContext.Provider>
+        <CartContext.Provider value={value}>{children}</CartContext.Provider>
     );
 };
 

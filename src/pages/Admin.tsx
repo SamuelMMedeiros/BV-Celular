@@ -55,6 +55,7 @@ import {
     Clock,
     Briefcase,
     Link as LinkIcon,
+    Bell,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, subDays, isSameDay } from "date-fns";
@@ -66,9 +67,15 @@ const AdminDashboard = () => {
     const queryClient = useQueryClient();
     const [selectedStoreId, setSelectedStoreId] = useState<string>("all");
 
-    const { data: orders, isLoading: isLoadingOrders } = useQuery<Order[]>({
+    // Busca dados
+    const {
+        data: orders,
+        isLoading: isLoadingOrders,
+        isError,
+    } = useQuery<Order[]>({
         queryKey: ["adminOrders"],
         queryFn: fetchAllOrders,
+        retry: 2,
     });
 
     const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
@@ -86,18 +93,14 @@ const AdminDashboard = () => {
         }) => updateOrderStatus(orderId, status),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["adminOrders"] });
-            toast({
-                title: "Status atualizado!",
-                description: "O pedido foi atualizado com sucesso.",
-            });
+            toast({ title: "Status atualizado!" });
         },
-        onError: (error) => {
+        onError: (error) =>
             toast({
                 variant: "destructive",
-                title: "Erro ao atualizar",
+                title: "Erro",
                 description: error.message,
-            });
-        },
+            }),
     });
 
     const filteredOrders = useMemo(() => {
@@ -107,14 +110,13 @@ const AdminDashboard = () => {
     }, [orders, selectedStoreId]);
 
     const metrics = useMemo(() => {
-        const completedOrders = filteredOrders.filter(
+        const safeOrders = filteredOrders || [];
+        const completedOrders = safeOrders.filter(
             (o) => o.status === "completed"
         );
-        const pendingOrders = filteredOrders.filter(
-            (o) => o.status === "pending"
-        );
+        const pendingOrders = safeOrders.filter((o) => o.status === "pending");
         const totalRevenue = completedOrders.reduce(
-            (acc, curr) => acc + Number(curr.total_price),
+            (acc, curr) => acc + Number(curr.total_price || 0),
             0
         );
         const averageTicket =
@@ -124,7 +126,7 @@ const AdminDashboard = () => {
 
         return {
             totalRevenue,
-            totalOrdersCount: filteredOrders.length,
+            totalOrdersCount: safeOrders.length,
             completedOrdersCount: completedOrders.length,
             pendingOrdersCount: pendingOrders.length,
             averageTicket,
@@ -136,7 +138,6 @@ const AdminDashboard = () => {
         const last7Days = Array.from({ length: 7 }, (_, i) =>
             subDays(new Date(), 6 - i)
         );
-
         return last7Days.map((date) => {
             const dateKey = format(date, "dd/MM", { locale: ptBR });
             const dayData: any = { date: dateKey };
@@ -149,11 +150,13 @@ const AdminDashboard = () => {
                 selectedStoreId === "all"
                     ? daysOrders
                     : daysOrders.filter((o) => o.store_id === selectedStoreId);
-
             stores.forEach((store) => {
                 const storeRevenue = relevantOrders
                     .filter((o) => o.store_id === store.id)
-                    .reduce((acc, curr) => acc + Number(curr.total_price), 0);
+                    .reduce(
+                        (acc, curr) => acc + Number(curr.total_price || 0),
+                        0
+                    );
                 dayData[store.name] = storeRevenue / 100;
             });
             return dayData;
@@ -163,6 +166,8 @@ const AdminDashboard = () => {
     const colors = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
 
     const parseItems = (items: any): OrderCartItem[] => {
+        if (!items) return [];
+        if (Array.isArray(items)) return items;
         if (typeof items === "string") {
             try {
                 return JSON.parse(items);
@@ -170,11 +175,31 @@ const AdminDashboard = () => {
                 return [];
             }
         }
-        return items as OrderCartItem[];
+        return [];
     };
 
-    if (isLoadingOrders || isLoadingStores) {
-        return <DashboardSkeleton />;
+    if (isLoadingOrders || isLoadingStores)
+        return (
+            <div className="min-h-screen bg-background">
+                <Navbar />
+                <div className="container py-8 space-y-4">
+                    <Skeleton className="h-12 w-48" />
+                    <Skeleton className="h-64 w-full" />
+                </div>
+            </div>
+        );
+
+    if (isError) {
+        return (
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
+                <p className="text-destructive mb-4">
+                    Erro ao carregar dados. Verifique sua conexão.
+                </p>
+                <Button onClick={() => window.location.reload()}>
+                    Tentar Novamente
+                </Button>
+            </div>
+        );
     }
 
     return (
@@ -187,7 +212,7 @@ const AdminDashboard = () => {
                             Dashboard
                         </h2>
                         <p className="text-muted-foreground">
-                            Visão geral do desempenho da sua loja.
+                            Visão geral do desempenho.
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -213,11 +238,11 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 animate-slide-up">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">
-                                Receita Total
+                                Receita
                             </CardTitle>
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
@@ -230,7 +255,6 @@ const AdminDashboard = () => {
                             </p>
                         </CardContent>
                     </Card>
-
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">
@@ -247,7 +271,6 @@ const AdminDashboard = () => {
                             </p>
                         </CardContent>
                     </Card>
-
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">
@@ -259,12 +282,8 @@ const AdminDashboard = () => {
                             <div className="text-2xl font-bold">
                                 {formatCurrency(metrics.averageTicket)}
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                Vendas concluídas
-                            </p>
                         </CardContent>
                     </Card>
-
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">
@@ -283,14 +302,11 @@ const AdminDashboard = () => {
                                     : 0}
                                 %
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                Pedidos concluídos
-                            </p>
                         </CardContent>
                     </Card>
                 </div>
 
-                <Card className="col-span-4 animate-slide-up">
+                <Card className="col-span-4">
                     <CardHeader>
                         <CardTitle>Vendas (7 dias)</CardTitle>
                     </CardHeader>
@@ -337,15 +353,14 @@ const AdminDashboard = () => {
                     </CardContent>
                 </Card>
 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7 animate-slide-up">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                     <Card className="col-span-3">
                         <CardHeader>
                             <CardTitle>Menu de Gestão</CardTitle>
-                            <CardDescription>
-                                Acesso rápido aos cadastros.
-                            </CardDescription>
+                            <CardDescription>Acesso rápido.</CardDescription>
                         </CardHeader>
                         <CardContent className="grid grid-cols-1 gap-2">
+                            {/* LINKS EM PORTUGUÊS */}
                             <Button
                                 asChild
                                 variant="outline"
@@ -366,6 +381,7 @@ const AdminDashboard = () => {
                                     Pedidos
                                 </Link>
                             </Button>
+
                             <Button
                                 asChild
                                 variant="default"
@@ -376,6 +392,17 @@ const AdminDashboard = () => {
                                     / Logística
                                 </Link>
                             </Button>
+                            <Button
+                                asChild
+                                variant="default"
+                                className="justify-start bg-green-600 hover:bg-green-700"
+                            >
+                                <Link to="/admin/venda-nova">
+                                    <ShoppingBag className="mr-2 h-4 w-4" />{" "}
+                                    Nova Venda (PDV)
+                                </Link>
+                            </Button>
+
                             <Button
                                 asChild
                                 variant="outline"
@@ -414,6 +441,7 @@ const AdminDashboard = () => {
                                     <Users className="mr-2 h-4 w-4" /> Clientes
                                 </Link>
                             </Button>
+
                             <Button
                                 asChild
                                 variant="outline"
@@ -452,6 +480,16 @@ const AdminDashboard = () => {
                                 <Link to="/admin/banners">
                                     <ImageIcon className="mr-2 h-4 w-4" />{" "}
                                     Banners
+                                </Link>
+                            </Button>
+                            <Button
+                                asChild
+                                variant="outline"
+                                className="justify-start"
+                            >
+                                <Link to="/admin/notificacoes">
+                                    <Bell className="mr-2 h-4 w-4" />{" "}
+                                    Notificações Push
                                 </Link>
                             </Button>
                             <Button
@@ -544,7 +582,7 @@ const AdminDashboard = () => {
                                                 <DialogContent>
                                                     <DialogHeader>
                                                         <DialogTitle>
-                                                            Detalhes do Pedido
+                                                            Detalhes
                                                         </DialogTitle>
                                                         <DialogDescription>
                                                             ID: {order.id}
@@ -603,7 +641,7 @@ const AdminDashboard = () => {
                                 ))}
                                 {filteredOrders.length === 0 && (
                                     <p className="text-sm text-muted-foreground text-center py-4">
-                                        Nenhum pedido encontrado.
+                                        Nenhum pedido.
                                     </p>
                                 )}
                             </div>

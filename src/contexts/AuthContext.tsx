@@ -1,4 +1,13 @@
-import { createContext, useEffect, useState, useMemo } from "react";
+//
+// === CÓDIGO COMPLETO PARA: src/contexts/AuthContext.tsx ===
+//
+import {
+    createContext,
+    useEffect,
+    useState,
+    useMemo,
+    useCallback,
+} from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Employee, WholesaleClient } from "@/types";
@@ -47,52 +56,72 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
         });
 
-    // Inicia carregando apenas se não tivermos dados em cache
+    // Loading state inicia true se não tivermos dados cacheados
     const [loading, setLoading] = useState(
         !employeeProfile && !wholesaleProfile
     );
 
+    const logout = useCallback(async () => {
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setEmployeeProfile(null);
+        setWholesaleProfile(null);
+        localStorage.removeItem(ADMIN_PROFILE_KEY);
+        localStorage.removeItem(WHOLESALE_PROFILE_KEY);
+        setLoading(false);
+    }, []);
+
+    // FUNÇÃO CENTRAL DE CARREGAMENTO DE PERFIS
+    const loadProfiles = useCallback(async (currentUser: User) => {
+        try {
+            // 1. Tenta Admin (Prioridade)
+            const admin = await fetchEmployeeProfile(currentUser.id);
+            if (admin) {
+                setEmployeeProfile(admin);
+                setWholesaleProfile(null); // Garante que não misture
+                localStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(admin));
+                localStorage.removeItem(WHOLESALE_PROFILE_KEY);
+                return; // Encerra se achou admin
+            }
+
+            // 2. Se não é Admin, tenta Atacado
+            // Nota: fetchWholesaleProfile usa auth.uid() internamente no backend, não precisa de ID
+            const wholesale = await fetchWholesaleProfile();
+            if (wholesale) {
+                setWholesaleProfile(wholesale);
+                setEmployeeProfile(null);
+                localStorage.setItem(
+                    WHOLESALE_PROFILE_KEY,
+                    JSON.stringify(wholesale)
+                );
+                localStorage.removeItem(ADMIN_PROFILE_KEY);
+                return; // Encerra se achou atacado
+            }
+
+            // 3. Se não achou nenhum dos dois, limpa perfis especiais
+            // (O usuário pode ser um cliente varejo comum, então não damos logout forçado aqui)
+            setEmployeeProfile(null);
+            setWholesaleProfile(null);
+            localStorage.removeItem(ADMIN_PROFILE_KEY);
+            localStorage.removeItem(WHOLESALE_PROFILE_KEY);
+        } catch (error) {
+            console.error("Erro ao carregar perfis:", error);
+            // Em caso de erro de rede, mantemos o estado anterior ou limpamos sem logout forçado
+        }
+    }, []);
+
     useEffect(() => {
         let mounted = true;
 
-        const getSessionAndProfile = async (
-            sessionFromEvent: Session | null
-        ) => {
+        const processSession = async (s: Session | null) => {
             if (!mounted) return;
 
-            setSession(sessionFromEvent);
-            setUser(sessionFromEvent?.user ?? null);
+            setSession(s);
+            setUser(s?.user ?? null);
 
-            if (sessionFromEvent?.user) {
-                try {
-                    // 1. Busca Perfil Admin
-                    const profile = await fetchEmployeeProfile(
-                        sessionFromEvent.user.id
-                    );
-                    if (mounted) {
-                        setEmployeeProfile(profile);
-                        if (profile)
-                            localStorage.setItem(
-                                ADMIN_PROFILE_KEY,
-                                JSON.stringify(profile)
-                            );
-                        else localStorage.removeItem(ADMIN_PROFILE_KEY);
-                    }
-
-                    // 2. Busca Perfil Atacado
-                    const wholesale = await fetchWholesaleProfile();
-                    if (mounted) {
-                        setWholesaleProfile(wholesale);
-                        if (wholesale)
-                            localStorage.setItem(
-                                WHOLESALE_PROFILE_KEY,
-                                JSON.stringify(wholesale)
-                            );
-                        else localStorage.removeItem(WHOLESALE_PROFILE_KEY);
-                    }
-                } catch (error) {
-                    console.error("Erro ao carregar perfis:", error);
-                }
+            if (s?.user) {
+                await loadProfiles(s.user);
             } else {
                 // Logout / Sem sessão
                 if (mounted) {
@@ -107,13 +136,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         };
 
         // Inicialização
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            getSessionAndProfile(session);
+        supabase.auth.getSession().then(({ data: { session }, error }) => {
+            if (error) {
+                console.error("Erro de sessão inicial:", error);
+                // Só aqui fazemos logout forçado se a sessão for inválida
+                logout();
+            } else {
+                processSession(session);
+            }
         });
 
         const { data: authListener } = supabase.auth.onAuthStateChange(
             (_event, session) => {
-                getSessionAndProfile(session);
+                processSession(session);
             }
         );
 
@@ -121,29 +156,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             mounted = false;
             authListener.subscription.unsubscribe();
         };
-    }, []);
+    }, [logout, loadProfiles]);
 
-    const signIn = async (email: string, pass: string) => {
+    const signIn = useCallback(async (email: string, pass: string) => {
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password: pass,
         });
         if (error) throw error;
-    };
+    }, []);
 
-    const logout = async () => {
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-        setEmployeeProfile(null);
-        setWholesaleProfile(null);
-        localStorage.removeItem(ADMIN_PROFILE_KEY);
-        localStorage.removeItem(WHOLESALE_PROFILE_KEY);
-        setLoading(false);
-    };
-
-    // USEMEMO: A CORREÇÃO DO LOOP ESTÁ AQUI
-    // Garante que o objeto 'value' só mude se os dados mudarem, evitando re-renders infinitos.
     const value = useMemo(
         () => ({
             session,
@@ -155,7 +177,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             signIn,
             logout,
         }),
-        [session, user, employeeProfile, wholesaleProfile, loading]
+        [
+            session,
+            user,
+            employeeProfile,
+            wholesaleProfile,
+            loading,
+            signIn,
+            logout,
+        ]
     );
 
     return (
