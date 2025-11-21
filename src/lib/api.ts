@@ -768,6 +768,7 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
     address_id: payload.address_id,
     delivery_fee: payload.delivery_fee || 0,
     payment_method: payload.payment_method,
+    stripe_payment_id: payload.stripe_payment_id,
     change_for: payload.change_for
   };
 
