@@ -1,10 +1,12 @@
+//
+// === CÓDIGO COMPLETO PARA: vite.config.ts ===
+//
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
-// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
@@ -16,27 +18,29 @@ export default defineConfig(({ mode }) => ({
     
     // --- CONFIGURAÇÃO DO PWA ---
     VitePWA({
-      // Configurações para Notificações (InjectManifest)
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.js',
-
       registerType: 'autoUpdate',
-      // Adicione os arquivos estáticos que devem ser cacheados
+      
+      // Arquivos estáticos a serem cacheados
       includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png', 'icons/*.png'], 
       
       devOptions: {
         enabled: true,
-        type: 'module',
+        type: 'module', // Garante que imports funcionem em dev
+        navigateFallback: 'index.html',
       },
 
       manifest: {
         name: "BVCelular",
         short_name: "BVCelular",
+        description: "Sua loja de eletrônicos e acessórios.",
         start_url: "/",
         display: "standalone",
         background_color: "#ffffff",
         theme_color: "#000000",
+        orientation: "portrait",
         icons: [
           {
             src: "icons/-48x48.png",
@@ -72,7 +76,7 @@ export default defineConfig(({ mode }) => ({
             src: "icons/-192x192.png",
             sizes: "192x192",
             type: "image/png",
-            purpose: 'any maskable' //para compatibilidade Android
+            purpose: 'any maskable'
           },
           {
             src: "icons/-256x256.png",
@@ -88,7 +92,7 @@ export default defineConfig(({ mode }) => ({
             src: "icons/-512x512.png",
             sizes: "512x512",
             type: "image/png",
-            purpose: 'any maskable' // para compatibilidade Android
+            purpose: 'any maskable'
           }
         ]
       }

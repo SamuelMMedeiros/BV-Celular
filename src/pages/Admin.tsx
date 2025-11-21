@@ -57,6 +57,7 @@ import {
     Briefcase,
     Link as LinkIcon,
     BellRing,
+    ShoppingCart,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, subDays, isSameDay } from "date-fns";
@@ -489,6 +490,16 @@ const AdminDashboard = () => {
                                 <Link to="/admin/notifications">
                                     <BellRing className="mr-2 h-4 w-4" />{" "}
                                     Notificações Push
+                                </Link>
+                            </Button>
+                            <Button
+                                asChild
+                                variant="default"
+                                className="justify-start bg-green-600 hover:bg-green-700"
+                            >
+                                <Link to="/admin/venda-nova">
+                                    <ShoppingCart className="mr-2 h-4 w-4" />{" "}
+                                    Nova Venda (PDV)
                                 </Link>
                             </Button>
                         </CardContent>

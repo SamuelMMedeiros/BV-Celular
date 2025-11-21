@@ -44,6 +44,7 @@ import AdminLogistics from "./pages/admin/Logistics";
 import AdminWholesale from "./pages/admin/Wholesale";
 import AdminLinks from "./pages/admin/Links";
 import AdminNotifications from "./pages/admin/Notifications";
+import AdminNewSale from "./pages/admin/NewSale";
 
 import DriverDashboard from "./pages/driver/Dashboard";
 import DriverLogin from "./pages/DriverLogin";
@@ -55,6 +56,7 @@ import MinhaConta from "./pages/MinhaConta";
 import ProductDetails from "./pages/ProductDetails";
 import WarrantyPage from "./pages/Warranty";
 import LinksPage from "./pages/LinksPage";
+
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -212,6 +214,10 @@ const App = () => (
                                 <Route
                                     path="notifications"
                                     element={<AdminNotifications />}
+                                />
+                                <Route
+                                    path="venda-nova"
+                                    element={<AdminNewSale />}
                                 />
 
                                 {/* ROTA DE GESTÃO DE LINKS */}

@@ -1,16 +1,18 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable prefer-const */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
+// Importamos TODOS os tipos de @/types para evitar conflitos e redefinições locais
 import { 
     Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, Coupon, Address, ShippingQuote, Driver, WholesaleClient, PublicLink,
     ProductInsertPayload, ProductUpdatePayload, StoreInsertPayload, StoreUpdatePayload,
     EmployeeInsertPayload, EmployeeUpdatePayload, CustomerUpdatePayload, OrderInsertPayload,
     BannerInsertPayload, BannerUpdatePayload, CouponInsertPayload, CouponUpdatePayload, WarrantyInsertPayload, AddressInsertPayload, DriverInsertPayload,
     WholesaleClientInsertPayload, WholesaleClientUpdatePayload, BulkClientInsertPayload,
-    PublicLinkInsertPayload, PublicLinkUpdatePayload, PushCampaign, PushCampaignInsertPayload
+    PublicLinkInsertPayload, PublicLinkUpdatePayload
 } from "@/types";
-// Importamos o Database para uso nas funções de retorno se necessário (embora os tipos customizados acima já cubram)
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid'; 
 
@@ -174,7 +176,7 @@ export const fetchProductById = async (productId: string): Promise<Product> => {
   return product;
 };
 
-// Função para buscar produtos relacionados
+// Função nova para buscar produtos relacionados
 export const fetchRelatedProducts = async (category: string, currentProductId: string): Promise<Product[]> => {
   const { data, error } = await supabase
     .from('Products')
@@ -443,22 +445,9 @@ export const fetchEmployees = async (): Promise<Employee[]> => {
 };
 
 export const fetchEmployeeProfile = async (userId: string): Promise<Employee | null> => {
-  console.log("[API] Buscando perfil via RPC get_admin_profile...");
-  
-  // @ts-ignore: Ignora erro de tipo da função RPC
+  // @ts-ignore
   const { data, error } = await supabase.rpc('get_admin_profile');
-
-  if (error) {
-    console.error("[API] Erro na RPC get_admin_profile:", error);
-    return null;
-  }
-
-  if (!data) {
-    console.log("[API] RPC retornou nulo (usuário não é admin).");
-    return null;
-  }
-
-  console.log("[API] Perfil encontrado via RPC:", data);
+  if (error || !data) return null;
   return data as unknown as Employee;
 };
 
@@ -535,8 +524,8 @@ export const deleteDriver = async (id: string): Promise<void> => {
 // FUNÇÕES DE API (CLIENTES)
 // ==================================================================
 
-export const fetchClients = async (): Promise<CustomerProfile[]> => {
-  const { data, error } = await supabase
+export const fetchClients = async (searchQuery?: string): Promise<CustomerProfile[]> => {
+  let query = supabase
     .from('Clients')
     .select(`
       id,
@@ -545,6 +534,12 @@ export const fetchClients = async (): Promise<CustomerProfile[]> => {
       email
     `)
     .order('created_at', { ascending: false });
+
+  if (searchQuery) {
+      query = query.ilike('name', `%${searchQuery}%`);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Erro ao buscar clientes (Admin):", error);
@@ -629,6 +624,22 @@ export const upsertClient = async (profile: { id: string; name: string; phone: s
     }
 };
 
+// --- NOVA FUNÇÃO: IMPORTAÇÃO EM MASSA DE CLIENTES ---
+export const createBulkClients = async (clients: BulkClientInsertPayload[]): Promise<void> => {
+    const clientsWithId = clients.map(c => ({
+        id: uuidv4(),
+        name: c.name,
+        email: c.email,
+        phone: c.phone
+    }));
+
+    const { error } = await supabase
+        .from('Clients')
+        .insert(clientsWithId);
+
+    if (error) throw new Error(error.message);
+};
+
 // ==================================================================
 // FUNÇÕES DE API (CLIENTES ATACADO - WHOLESALE)
 // ==================================================================
@@ -661,22 +672,6 @@ export const fetchWholesaleProfile = async (): Promise<WholesaleClient | null> =
     const { data, error } = await supabase.rpc('get_wholesale_profile');
     if (error || !data) return null;
     return data as unknown as WholesaleClient;
-};
-
-// --- NOVA FUNÇÃO: IMPORTAÇÃO EM MASSA DE CLIENTES ---
-export const createBulkClients = async (clients: BulkClientInsertPayload[]): Promise<void> => {
-    const clientsWithId = clients.map(c => ({
-        id: uuidv4(),
-        name: c.name,
-        email: c.email,
-        phone: c.phone
-    }));
-
-    const { error } = await supabase
-        .from('Clients')
-        .insert(clientsWithId);
-
-    if (error) throw new Error(error.message);
 };
 
 // ==================================================================
@@ -714,7 +709,6 @@ export const calculateFreight = async (cep: string): Promise<ShippingQuote> => {
 
     const state = address.state;
     
-    // Simulação de frete
     if (state === 'MG') {
         return { price: 1500, days: 3, type: 'SEDEX (Local)' };
     } else if (['SP', 'RJ', 'ES'].includes(state)) {
@@ -768,11 +762,11 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
     address_id: payload.address_id,
     delivery_fee: payload.delivery_fee || 0,
     payment_method: payload.payment_method,
-    stripe_payment_id: payload.stripe_payment_id,
-    change_for: payload.change_for
+    change_for: payload.change_for,
+    stripe_payment_id: payload.stripe_payment_id
   };
 
-  // @ts-ignore: Contorna erro de tipo até update
+  // @ts-ignore
   const { data, error } = await supabase
     .from('Orders')
     .insert(orderData as any) 
@@ -784,8 +778,7 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
     throw new Error(error.message);
   }
 
-  // --- BAIXA DE ESTOQUE AUTOMÁTICA ---
-  // Percorre os itens do pedido e chama a função de decrementar estoque
+  // Baixa de estoque
   for (const item of payload.items) {
     try {
         await supabase.rpc('decrement_stock', { 
@@ -794,7 +787,6 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
         });
     } catch (stockError) {
         console.error("Erro ao baixar estoque do item:", item.name, stockError);
-        // Não bloqueamos o pedido se o estoque falhar, mas logamos
     }
   }
 
@@ -888,7 +880,7 @@ export const toggleFavorite = async (clientId: string, productId: string): Promi
 };
 
 export const fetchClientFavorites = async (clientId: string): Promise<Product[]> => {
-  // @ts-ignore: Ignora erro de profundidade de tipo temporariamente
+  // @ts-ignore
   const { data, error } = await (supabase
     .from('Favorites')
     .select(`
@@ -1025,7 +1017,7 @@ export const fetchAllWarranties = async (): Promise<Warranty[]> => {
 };
 
 export const fetchClientWarranties = async (clientId: string): Promise<Warranty[]> => {
-    //@ts-ignore
+  //@ts-ignore
     const { data, error } = await supabase
         .from('Warranties')
         .select(`
@@ -1149,22 +1141,7 @@ export const createCouponUsage = async (clientId: string, couponId: string): Pro
 };
 
 // ==================================================================
-// FUNÇÕES DE PAGAMENTO (STRIPE)
-// ==================================================================
-
-export const createPaymentIntent = async (amount: number, storeId: string): Promise<{ clientSecret: string }> => {
-  const { data, error } = await supabase.functions.invoke('create-payment-intent', {
-    body: { amount, storeId }
-  });
-
-  if (error) throw new Error(`Erro pagamento: ${error.message}`);
-  if (data?.error) throw new Error(data.error);
-
-  return data; 
-};
-
-// ==================================================================
-// FUNÇÕES DE API (AGREGADOR DE LINKS) - NOVO
+// FUNÇÕES DE API (AGREGADOR DE LINKS)
 // ==================================================================
 
 export const fetchPublicLinks = async (): Promise<PublicLink[]> => {
@@ -1217,6 +1194,86 @@ export const togglePublicLinkStatus = async (id: string, currentStatus: boolean)
 };
 
 // ==================================================================
+// FUNÇÕES DE API (NOTIFICAÇÕES PUSH)
+// ==================================================================
+
+// Tipagem local apenas para referência, já que não é uma entidade de banco completa
+type PushNotification = {
+    id: string;
+    title: string;
+    body: string;
+    link_url?: string;
+    image_url?: string;
+    created_at: string;
+    status: string;
+    sent_count: number;
+};
+
+export const fetchNotifications = async (): Promise<PushNotification[]> => {
+    // @ts-ignore
+    const { data, error } = await supabase
+        .from('Notifications')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data as any as PushNotification[];
+};
+
+export const createNotification = async (payload: any): Promise<void> => {
+    const { error } = await supabase
+        .from('Notifications')
+        .insert(payload);
+    if (error) throw new Error(error.message);
+};
+
+export const deleteNotification = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('Notifications')
+        .delete()
+        .eq('id', id);
+    if (error) throw new Error(error.message);
+};
+
+export const sendNotificationNow = async (notification: PushNotification): Promise<number> => {
+    const { data, error } = await supabase.functions.invoke('send-push', {
+        body: {
+            title: notification.title,
+            body: notification.body,
+            url: notification.link_url,
+            image: notification.image_url 
+        }
+    });
+
+    if (error) throw new Error(error.message);
+    if (data.error) throw new Error(data.error);
+
+    await supabase
+        .from('Notifications')
+        .update({ 
+            status: 'sent', 
+            sent_count: data.successCount || 0 
+        })
+        .eq('id', notification.id);
+
+    return data.successCount || 0;
+};
+
+// ==================================================================
+// FUNÇÕES DE PAGAMENTO (STRIPE)
+// ==================================================================
+
+export const createPaymentIntent = async (amount: number, storeId: string): Promise<{ clientSecret: string }> => {
+  const { data, error } = await supabase.functions.invoke('create-payment-intent', {
+    body: { amount, storeId }
+  });
+
+  if (error) throw new Error(`Erro pagamento: ${error.message}`);
+  if (data?.error) throw new Error(data.error);
+
+  return data; 
+};
+
+// ==================================================================
 // FUNÇÕES DE EMAIL (RESEND)
 // ==================================================================
 
@@ -1239,59 +1296,4 @@ export const sendOrderEmail = async (
     });
 
     if (error) console.error("Erro ao enviar e-mail:", error);
-};
-
-// ==================================================================
-// FUNÇÕES DE NOTIFICAÇÃO (ADMIN)
-// ==================================================================
-
-export const fetchNotifications = async (): Promise<PushCampaign[]> => {
-    const { data, error } = await supabase
-        .from('Notifications')
-        .select('*')
-        .order('created_at', { ascending: false });
-    if (error) throw new Error(error.message);
-    return data as PushCampaign[];
-};
-
-export const createNotification = async (payload: PushCampaignInsertPayload): Promise<void> => {
-    const { error } = await supabase
-        .from('Notifications')
-        .insert(payload);
-    if (error) throw new Error(error.message);
-};
-
-export const deleteNotification = async (id: string): Promise<void> => {
-    const { error } = await supabase
-        .from('Notifications')
-        .delete()
-        .eq('id', id);
-    if (error) throw new Error(error.message);
-};
-
-// Dispara a notificação através da Edge Function e atualiza o status
-export const sendNotificationNow = async (notification: PushCampaign): Promise<number> => {
-    // 1. Chama a Edge Function
-    const { data, error } = await supabase.functions.invoke('send-push', {
-        body: {
-            title: notification.title,
-            body: notification.body,
-            url: notification.link_url,
-            image: notification.image_url // Envia a imagem grande
-        }
-    });
-
-    if (error) throw new Error(error.message);
-    if (data.error) throw new Error(data.error);
-
-    // 2. Atualiza o status no banco para 'sent'
-    await supabase
-        .from('Notifications')
-        .update({ 
-            status: 'sent', 
-            sent_count: data.successCount || 0 
-        })
-        .eq('id', notification.id);
-
-    return data.successCount || 0;
 };
