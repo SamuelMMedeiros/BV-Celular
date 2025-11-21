@@ -1,875 +1,278 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useNavigate, useLocation } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-    Mail,
-    PersonStanding,
-    Phone,
-    User,
-    AlertTriangle,
-    Package,
-    Clock,
-    CheckCircle,
-    XCircle,
-    Heart,
-    ShieldCheck,
-    MapPin,
-    Plus,
-    Trash2,
-} from "lucide-react";
-
-import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+//
+// === CÓDIGO COMPLETO PARA: src/pages/MinhaConta.tsx ===
+//
+import { useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
-import {
-    Form,
-    FormControl,
-    FormDescription,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
-// --- 1. FUNÇÕES DA API (Somente lógica) ---
-import {
-    updateCustomerProfile,
-    fetchClientOrders,
-    fetchClientFavorites,
-    fetchClientWarranties,
-    fetchClientAddresses,
-    createAddress,
-    deleteAddress,
-    fetchAddressByCEP,
-} from "@/lib/api";
-import { supabase } from "@/integrations/supabase/client";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { fetchClientOrders, fetchClientFavorites, fetchClientAddresses, deleteAddress, fetchClientWarranties } from "@/lib/api";
+import { Order, Product, Address, Warranty } from "@/types";
 import { formatCurrency } from "@/lib/utils";
-// --- 2. TIPOS (Tudo vem daqui agora) ---
-import {
-    OrderCartItem,
-    Address,
-    AddressInsertPayload,
-    CustomerUpdatePayload, // <-- Corrigido: Importado de types
-} from "@/types";
+import { Loader2, Package, MapPin, Heart, LogOut, Trash2, Plus, ShieldCheck, Clock, CheckCircle, Truck, XCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ProductCard } from "@/components/ProductCard";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
-import { Loader2 } from "lucide-react";
-import { EmptyState } from "@/components/EmptyState";
-
-// Schemas
-const profileSchema = z.object({
-    name: z.string().min(2, "Nome completo é obrigatório"),
-    phone: z.string().regex(/^\d{10,11}$/, "Telefone inválido"),
-});
-
-const addressSchema = z.object({
-    name: z.string().min(1, "Dê um nome (ex: Casa)"),
-    cep: z.string().min(8, "CEP inválido").max(9),
-    street: z.string().min(1, "Rua é obrigatória"),
-    number: z.string().min(1, "Número é obrigatório"),
-    neighborhood: z.string().min(1, "Bairro é obrigatório"),
-    city: z.string().min(1, "Cidade é obrigatória"),
-    state: z.string().min(2, "Estado é obrigatório"),
-    complement: z.string().optional(),
-});
-
-type ProfileFormValues = z.infer<typeof profileSchema>;
-type AddressFormValues = z.infer<typeof addressSchema>;
+import { generateWarrantyPDF } from "@/lib/pdfGenerator";
 
 const MinhaConta = () => {
-    const { profile, isLoggedIn, isLoadingSession, refetchProfile } =
-        useCustomerAuth();
+    const { user, profile, logout, isLoadingSession } = useCustomerAuth();
     const navigate = useNavigate();
-    const location = useLocation();
-    const { toast } = useToast();
     const queryClient = useQueryClient();
 
-    const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false);
-    const [isLoadingCep, setIsLoadingCep] = useState(false);
-
-    const profileForm = useForm<ProfileFormValues>({
-        resolver: zodResolver(profileSchema),
-        defaultValues: { name: "", phone: "" },
-    });
-
-    const addressForm = useForm<AddressFormValues>({
-        resolver: zodResolver(addressSchema),
-        defaultValues: {
-            name: "Casa",
-            cep: "",
-            street: "",
-            number: "",
-            neighborhood: "",
-            city: "",
-            state: "",
-            complement: "",
-        },
-    });
-
-    const { data: orders, isLoading: isLoadingOrders } = useQuery({
-        queryKey: ["clientOrders", profile?.id],
-        queryFn: () => fetchClientOrders(profile!.id),
-        enabled: !!profile?.id,
-    });
-
-    const { data: favorites, isLoading: isLoadingFavorites } = useQuery({
-        queryKey: ["clientFavorites", profile?.id],
-        queryFn: () => fetchClientFavorites(profile!.id),
-        enabled: !!profile?.id,
-    });
-
-    const { data: warranties, isLoading: isLoadingWarranties } = useQuery({
-        queryKey: ["clientWarranties", profile?.id],
-        queryFn: () => fetchClientWarranties(profile!.id),
-        enabled: !!profile?.id,
-    });
-
-    const { data: addresses, isLoading: isLoadingAddresses } = useQuery({
-        queryKey: ["clientAddresses", profile?.id],
-        queryFn: () => fetchClientAddresses(profile!.id),
-        enabled: !!profile?.id,
-    });
-
     useEffect(() => {
-        if (isLoggedIn && profile) {
-            profileForm.reset({ name: profile.name, phone: profile.phone });
+        if (!isLoadingSession && !user) {
+            navigate("/login");
         }
-    }, [isLoggedIn, profile, profileForm]);
+    }, [user, isLoadingSession, navigate]);
 
-    useEffect(() => {
-        if (!isLoadingSession && !isLoggedIn) {
-            navigate("/login", {
-                state: { from: location.pathname },
-                replace: true,
-            });
+    const { data: orders, isLoading: loadingOrders } = useQuery<Order[]>({
+        queryKey: ["clientOrders", user?.id],
+        queryFn: () => fetchClientOrders(user!.id),
+        enabled: !!user,
+    });
+
+    const { data: favorites, isLoading: loadingFavs } = useQuery<Product[]>({
+        queryKey: ["clientFavorites", user?.id],
+        queryFn: () => fetchClientFavorites(user!.id),
+        enabled: !!user,
+    });
+
+    const { data: addresses, isLoading: loadingAddr } = useQuery<Address[]>({
+        queryKey: ["clientAddresses", user?.id],
+        queryFn: () => fetchClientAddresses(user!.id),
+        enabled: !!user,
+    });
+    
+    const { data: warranties } = useQuery<Warranty[]>({
+        queryKey: ["clientWarranties", user?.id],
+        queryFn: () => fetchClientWarranties(user!.id),
+        enabled: !!user,
+    });
+
+    const deleteAddrMutation = useMutation({
+        mutationFn: deleteAddress,
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clientAddresses"] }),
+    });
+
+    if (isLoadingSession) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+
+    // --- COMPONENTE DE RASTREAMENTO VISUAL ---
+    const OrderTracker = ({ status }: { status: string }) => {
+        if (status === 'cancelled') {
+            return (
+                <div className="flex items-center gap-2 text-destructive font-bold mt-4 bg-destructive/10 p-3 rounded-lg">
+                    <XCircle className="h-5 w-5" /> Pedido Cancelado
+                </div>
+            );
         }
-    }, [isLoggedIn, isLoadingSession, navigate, location.pathname]);
 
-    const updateProfileMutation = useMutation({
-        mutationFn: (data: CustomerUpdatePayload) =>
-            updateCustomerProfile(data),
-        onSuccess: async () => {
-            await supabase.auth.updateUser({
-                data: {
-                    full_name: profileForm.getValues("name"),
-                    phone: profileForm.getValues("phone"),
-                },
-            });
-            await refetchProfile();
-            toast({ title: "Sucesso!", description: "Perfil atualizado." });
-        },
-        onError: (error) =>
-            toast({
-                variant: "destructive",
-                title: "Erro",
-                description: error.message,
-            }),
-    });
-
-    const createAddressMutation = useMutation({
-        mutationFn: (data: AddressInsertPayload) => createAddress(data),
-        onSuccess: () => {
-            toast({ title: "Endereço salvo!" });
-            queryClient.invalidateQueries({ queryKey: ["clientAddresses"] });
-            setIsAddressDialogOpen(false);
-            addressForm.reset();
-        },
-        onError: (error) =>
-            toast({
-                variant: "destructive",
-                title: "Erro",
-                description: error.message,
-            }),
-    });
-
-    const deleteAddressMutation = useMutation({
-        mutationFn: (id: string) => deleteAddress(id),
-        onSuccess: () => {
-            toast({ title: "Endereço removido." });
-            queryClient.invalidateQueries({ queryKey: ["clientAddresses"] });
-        },
-    });
-
-    const onProfileSubmit = (data: ProfileFormValues) => {
-        if (!profile?.id) return;
-        updateProfileMutation.mutate({
-            id: profile.id,
-            name: data.name,
-            phone: data.phone,
-        });
-    };
-
-    const onAddressSubmit = (data: AddressFormValues) => {
-        if (!profile?.id) return;
-        //@ts-ignore
-        createAddressMutation.mutate({ ...data, client_id: profile.id });
-    };
-
-    const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
-        const cep = e.target.value.replace(/\D/g, "");
-        if (cep.length === 8) {
-            setIsLoadingCep(true);
-            const data = await fetchAddressByCEP(cep);
-            setIsLoadingCep(false);
-            if (data) {
-                addressForm.setValue("street", data.street || "");
-                addressForm.setValue("neighborhood", data.neighborhood || "");
-                addressForm.setValue("city", data.city || "");
-                addressForm.setValue("state", data.state || "");
-                addressForm.setFocus("number");
-            } else {
-                toast({ variant: "destructive", title: "CEP não encontrado" });
+        // Mapeia status para passos (0 a 3)
+        const getStep = (s: string) => {
+            switch(s) {
+                case 'pending': return 0; // Recebido
+                case 'processing': return 1; // Preparando/Separado
+                case 'ready': return 1; // Pronto pra retirada
+                case 'delivering': return 2; // Enviado/Em Rota
+                case 'completed': return 3; // Entregue
+                default: return 0;
             }
-        }
-    };
+        };
+        
+        const currentStep = getStep(status);
+        const steps = [
+            { label: "Recebido", icon: Clock },
+            { label: "Separado", icon: Package },
+            { label: "Enviado", icon: Truck },
+            { label: "Entregue", icon: CheckCircle },
+        ];
 
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case "completed":
-                return (
-                    <Badge className="bg-green-500">
-                        <CheckCircle className="w-3 h-3 mr-1" /> Concluído
-                    </Badge>
-                );
-            case "cancelled":
-                return (
-                    <Badge variant="destructive">
-                        <XCircle className="w-3 h-3 mr-1" /> Cancelado
-                    </Badge>
-                );
-            default:
-                return (
-                    <Badge variant="secondary">
-                        <Clock className="w-3 h-3 mr-1" /> Pendente
-                    </Badge>
-                );
-        }
-    };
-
-    const parseItems = (items: any): OrderCartItem[] => {
-        if (typeof items === "string") {
-            try {
-                return JSON.parse(items);
-            } catch {
-                return [];
-            }
-        }
-        return items as OrderCartItem[];
-    };
-
-    if (isLoadingSession || (!profile && isLoggedIn)) {
         return (
-            <div className="min-h-screen bg-background pt-20 text-center">
-                Carregando...
+            <div className="w-full mt-6 mb-2">
+                <div className="relative flex justify-between items-center">
+                    {/* Linha de Fundo */}
+                    <div className="absolute top-1/2 left-0 w-full h-1 bg-muted -z-10" />
+                    {/* Linha de Progresso (Colorida) */}
+                    <div 
+                        className="absolute top-1/2 left-0 h-1 bg-green-500 -z-10 transition-all duration-500" 
+                        style={{ width: `${(currentStep / (steps.length - 1)) * 100}%` }} 
+                    />
+
+                    {steps.map((step, idx) => {
+                        const Icon = step.icon;
+                        const isActive = idx <= currentStep;
+                        const isCurrent = idx === currentStep;
+                        
+                        return (
+                            <div key={idx} className="flex flex-col items-center gap-2 bg-background px-2">
+                                <div className={`
+                                    w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all
+                                    ${isActive ? 'bg-green-500 border-green-500 text-white' : 'bg-background border-muted text-muted-foreground'}
+                                    ${isCurrent ? 'ring-4 ring-green-100 scale-110' : ''}
+                                `}>
+                                    <Icon className="h-4 w-4" />
+                                </div>
+                                <span className={`text-[10px] md:text-xs font-medium ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                    {step.label}
+                                </span>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
         );
-    }
-
-    if (!isLoggedIn) return null;
+    };
 
     return (
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
             <Navbar />
-            <main className="container py-8 animate-fade-in">
-                <Tabs defaultValue="profile" className="max-w-4xl mx-auto">
-                    <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-8 h-auto gap-2 bg-transparent p-0">
-                        <TabsTrigger
-                            value="profile"
-                            className="data-[state=active]:bg-primary data-[state=active]:text-white border bg-card"
-                        >
-                            Dados
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="addresses"
-                            className="data-[state=active]:bg-primary data-[state=active]:text-white border bg-card"
-                        >
-                            Endereços
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="orders"
-                            className="data-[state=active]:bg-primary data-[state=active]:text-white border bg-card"
-                        >
-                            Pedidos
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="favorites"
-                            className="data-[state=active]:bg-primary data-[state=active]:text-white border bg-card"
-                        >
-                            Favoritos
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="warranties"
-                            className="data-[state=active]:bg-primary data-[state=active]:text-white border bg-card"
-                        >
-                            Garantias
-                        </TabsTrigger>
+            <main className="flex-1 container py-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold">Minha Conta</h1>
+                        <p className="text-muted-foreground">Bem-vindo de volta, {profile?.name}</p>
+                    </div>
+                    <Button variant="outline" onClick={logout} className="text-destructive border-destructive/20 hover:bg-destructive/10">
+                        <LogOut className="mr-2 h-4 w-4" /> Sair
+                    </Button>
+                </div>
+
+                <Tabs defaultValue="orders" className="w-full">
+                    <TabsList className="grid w-full grid-cols-3 mb-8">
+                        <TabsTrigger value="orders">Meus Pedidos</TabsTrigger>
+                        <TabsTrigger value="favorites">Favoritos</TabsTrigger>
+                        <TabsTrigger value="account">Endereços & Dados</TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="profile" className="animate-slide-up">
-                        <Card className="max-w-xl mx-auto">
-                            <CardHeader>
-                                <div className="flex items-center gap-3">
-                                    <User className="h-8 w-8 text-primary" />
-                                    <CardTitle>Meus Dados</CardTitle>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <Form {...profileForm}>
-                                    <form
-                                        onSubmit={profileForm.handleSubmit(
-                                            onProfileSubmit
-                                        )}
-                                        className="space-y-4"
-                                    >
-                                        <div className="space-y-2">
-                                            <Label>Email</Label>
-                                            <Input
-                                                value={profile.email}
-                                                disabled
-                                                className="bg-muted"
-                                            />
-                                        </div>
-                                        <FormField
-                                            control={profileForm.control}
-                                            name="name"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Nome</FormLabel>
-                                                    <FormControl>
-                                                        <Input {...field} />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={profileForm.control}
-                                            name="phone"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Telefone
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input {...field} />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <Button
-                                            type="submit"
-                                            className="w-full"
-                                            disabled={
-                                                updateProfileMutation.isPending
-                                            }
-                                        >
-                                            {updateProfileMutation.isPending
-                                                ? "Salvando..."
-                                                : "Salvar Alterações"}
-                                        </Button>
-                                    </form>
-                                </Form>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-
-                    <TabsContent value="addresses" className="animate-slide-up">
-                        <div className="space-y-4 max-w-3xl mx-auto">
-                            <div className="flex justify-between items-center">
-                                <h2 className="text-xl font-semibold">
-                                    Meus Endereços
-                                </h2>
-                                <Dialog
-                                    open={isAddressDialogOpen}
-                                    onOpenChange={setIsAddressDialogOpen}
-                                >
-                                    <DialogTrigger asChild>
-                                        <Button>
-                                            <Plus className="mr-2 h-4 w-4" />{" "}
-                                            Novo Endereço
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent className="max-w-lg">
-                                        <DialogHeader>
-                                            <DialogTitle>
-                                                Adicionar Endereço
-                                            </DialogTitle>
-                                        </DialogHeader>
-                                        <Form {...addressForm}>
-                                            <form
-                                                onSubmit={addressForm.handleSubmit(
-                                                    onAddressSubmit
-                                                )}
-                                                className="space-y-4"
-                                            >
-                                                <FormField
-                                                    control={
-                                                        addressForm.control
-                                                    }
-                                                    name="name"
-                                                    render={({ field }) => (
-                                                        <FormItem>
-                                                            <FormLabel>
-                                                                Nome do Local
-                                                            </FormLabel>
-                                                            <FormControl>
-                                                                <Input
-                                                                    placeholder="Ex: Casa, Trabalho"
-                                                                    {...field}
-                                                                />
-                                                            </FormControl>
-                                                            <FormMessage />
-                                                        </FormItem>
-                                                    )}
-                                                />
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <FormField
-                                                        control={
-                                                            addressForm.control
-                                                        }
-                                                        name="cep"
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel>
-                                                                    CEP
-                                                                </FormLabel>
-                                                                <FormControl>
-                                                                    <div className="relative">
-                                                                        <Input
-                                                                            placeholder="00000-000"
-                                                                            {...field}
-                                                                            onBlur={
-                                                                                handleCepBlur
-                                                                            }
-                                                                            maxLength={
-                                                                                9
-                                                                            }
-                                                                        />
-                                                                        {isLoadingCep && (
-                                                                            <Loader2 className="absolute right-2 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
-                                                                        )}
-                                                                    </div>
-                                                                </FormControl>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                    <FormField
-                                                        control={
-                                                            addressForm.control
-                                                        }
-                                                        name="state"
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel>
-                                                                    Estado
-                                                                </FormLabel>
-                                                                <FormControl>
-                                                                    <Input
-                                                                        {...field}
-                                                                    />
-                                                                </FormControl>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <FormField
-                                                        control={
-                                                            addressForm.control
-                                                        }
-                                                        name="city"
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel>
-                                                                    Cidade
-                                                                </FormLabel>
-                                                                <FormControl>
-                                                                    <Input
-                                                                        {...field}
-                                                                    />
-                                                                </FormControl>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                    <FormField
-                                                        control={
-                                                            addressForm.control
-                                                        }
-                                                        name="neighborhood"
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel>
-                                                                    Bairro
-                                                                </FormLabel>
-                                                                <FormControl>
-                                                                    <Input
-                                                                        {...field}
-                                                                    />
-                                                                </FormControl>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                </div>
-                                                <FormField
-                                                    control={
-                                                        addressForm.control
-                                                    }
-                                                    name="street"
-                                                    render={({ field }) => (
-                                                        <FormItem>
-                                                            <FormLabel>
-                                                                Rua
-                                                            </FormLabel>
-                                                            <FormControl>
-                                                                <Input
-                                                                    {...field}
-                                                                />
-                                                            </FormControl>
-                                                            <FormMessage />
-                                                        </FormItem>
-                                                    )}
-                                                />
-                                                <div className="grid grid-cols-3 gap-4">
-                                                    <FormField
-                                                        control={
-                                                            addressForm.control
-                                                        }
-                                                        name="number"
-                                                        render={({ field }) => (
-                                                            <FormItem className="col-span-1">
-                                                                <FormLabel>
-                                                                    Número
-                                                                </FormLabel>
-                                                                <FormControl>
-                                                                    <Input
-                                                                        {...field}
-                                                                    />
-                                                                </FormControl>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                    <FormField
-                                                        control={
-                                                            addressForm.control
-                                                        }
-                                                        name="complement"
-                                                        render={({ field }) => (
-                                                            <FormItem className="col-span-2">
-                                                                <FormLabel>
-                                                                    Complemento
-                                                                </FormLabel>
-                                                                <FormControl>
-                                                                    <Input
-                                                                        {...field}
-                                                                    />
-                                                                </FormControl>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                </div>
-                                                <Button
-                                                    type="submit"
-                                                    className="w-full"
-                                                    disabled={
-                                                        createAddressMutation.isPending
-                                                    }
-                                                >
-                                                    {createAddressMutation.isPending
-                                                        ? "Salvando..."
-                                                        : "Salvar Endereço"}
-                                                </Button>
-                                            </form>
-                                        </Form>
-                                    </DialogContent>
-                                </Dialog>
+                    {/* ABA PEDIDOS */}
+                    <TabsContent value="orders" className="space-y-6">
+                        {loadingOrders ? <Loader2 className="mx-auto animate-spin" /> : 
+                        !orders || orders.length === 0 ? (
+                            <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-lg border border-dashed">
+                                <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-50" />
+                                <h3 className="text-lg font-semibold">Nenhum pedido ainda</h3>
+                                <Button asChild variant="link" className="mt-2"><Link to="/">Começar a comprar</Link></Button>
                             </div>
-
-                            {isLoadingAddresses ? (
-                                <div className="text-center py-8">
-                                    Carregando...
-                                </div>
-                            ) : !addresses || addresses.length === 0 ? (
-                                <EmptyState
-                                    icon={MapPin}
-                                    title="Nenhum endereço"
-                                    description="Cadastre endereços para agilizar suas entregas."
-                                />
-                            ) : (
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                    {addresses.map((addr) => (
-                                        <Card
-                                            key={addr.id}
-                                            className="relative group hover:shadow-md transition-all"
-                                        >
-                                            <CardHeader className="pb-2">
-                                                <CardTitle className="text-base flex items-center gap-2">
-                                                    <MapPin className="h-4 w-4 text-primary" />{" "}
-                                                    {addr.name}
-                                                </CardTitle>
-                                            </CardHeader>
-                                            <CardContent className="text-sm text-muted-foreground">
-                                                <p>
-                                                    {addr.street}, {addr.number}
-                                                </p>
-                                                {addr.complement && (
-                                                    <p>{addr.complement}</p>
+                        ) : (
+                            <div className="grid gap-6">
+                                {orders.map(order => (
+                                    <Card key={order.id} className="overflow-hidden border-l-4 border-l-primary">
+                                        <CardHeader className="bg-muted/30 pb-4">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <CardTitle className="text-lg">Pedido #{order.id.substring(0, 8).toUpperCase()}</CardTitle>
+                                                    <CardDescription>{format(new Date(order.created_at), "PPP 'às' HH:mm", { locale: ptBR })}</CardDescription>
+                                                </div>
+                                                <Badge variant="outline" className="capitalize">{order.status === 'completed' ? 'Concluído' : order.status === 'cancelled' ? 'Cancelado' : 'Em Andamento'}</Badge>
+                                            </div>
+                                            
+                                            {/* RASTREADOR VISUAL */}
+                                            <OrderTracker status={order.status} />
+                                            
+                                        </CardHeader>
+                                        <CardContent className="pt-6">
+                                            <div className="space-y-4">
+                                                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                                                {(order.items as any[]).map((item, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center text-sm">
+                                                        <span className="font-medium">{item.quantity}x {item.name}</span>
+                                                        <span>{formatCurrency(item.price * item.quantity)}</span>
+                                                    </div>
+                                                ))}
+                                                <div className="flex justify-between items-center border-t pt-4 font-bold text-lg">
+                                                    <span>Total</span>
+                                                    <span className="text-primary">{formatCurrency(order.total_price)}</span>
+                                                </div>
+                                                
+                                                {/* Se tiver delivery */}
+                                                {order.delivery_type === 'delivery' && (
+                                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded text-sm text-blue-700 dark:text-blue-300 flex gap-2 items-start">
+                                                        <Truck className="h-4 w-4 mt-0.5" />
+                                                        <div>
+                                                            <strong>Entrega em:</strong><br/>
+                                                            {order.Stores?.name ? `Saindo de: ${order.Stores.name}` : "Centro de Distribuição"}
+                                                        </div>
+                                                    </div>
                                                 )}
-                                                <p>
-                                                    {addr.neighborhood} -{" "}
-                                                    {addr.city}/{addr.state}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                        
+                        {/* ÁREA DE GARANTIAS */}
+                        {warranties && warranties.length > 0 && (
+                            <div className="mt-12">
+                                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><ShieldCheck className="h-6 w-6 text-green-600" /> Minhas Garantias</h2>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    {warranties.map(warranty => (
+                                        <Card key={warranty.id}>
+                                            <CardHeader>
+                                                <CardTitle className="text-base">{warranty.product_model}</CardTitle>
+                                                <CardDescription>S/N: {warranty.serial_number}</CardDescription>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <p className="text-sm text-muted-foreground mb-4">
+                                                    Válido até: {format(new Date(warranty.warranty_end_date), "dd/MM/yyyy")}
                                                 </p>
-                                                <p>{addr.cep}</p>
+                                                <Button variant="outline" size="sm" onClick={() => generateWarrantyPDF(warranty, warranty.Stores || { name: "BV Celular" } as any, profile!)}>
+                                                    Baixar Certificado PDF
+                                                </Button>
                                             </CardContent>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
-                                                onClick={() =>
-                                                    deleteAddressMutation.mutate(
-                                                        addr.id
-                                                    )
-                                                }
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
                                         </Card>
                                     ))}
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </TabsContent>
 
-                    <TabsContent value="orders" className="animate-slide-up">
-                        <div className="space-y-4 max-w-2xl mx-auto">
-                            {isLoadingOrders ? (
-                                <div className="text-center py-8">
-                                    Carregando pedidos...
-                                </div>
-                            ) : !orders || orders.length === 0 ? (
-                                <EmptyState
-                                    icon={Package}
-                                    title="Sem pedidos"
-                                    description="Você ainda não realizou nenhuma compra."
-                                    actionLabel="Ver Produtos"
-                                    actionLink="/aparelhos"
-                                />
-                            ) : (
-                                orders.map((order) => (
-                                    <Card
-                                        key={order.id}
-                                        className="hover:border-primary transition-all"
-                                    >
-                                        <CardHeader className="pb-3">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <CardTitle className="text-base">
-                                                        Pedido #
-                                                        {order.id.substring(
-                                                            0,
-                                                            8
-                                                        )}
-                                                    </CardTitle>
-                                                    <CardDescription>
-                                                        {format(
-                                                            new Date(
-                                                                order.created_at
-                                                            ),
-                                                            "dd 'de' MMMM 'às' HH:mm",
-                                                            { locale: ptBR }
-                                                        )}
-                                                    </CardDescription>
-                                                </div>
-                                                {getStatusBadge(order.status)}
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="space-y-2 mb-4">
-                                                {parseItems(order.items).map(
-                                                    (item, idx) => (
-                                                        <div
-                                                            key={idx}
-                                                            className="flex justify-between text-sm"
-                                                        >
-                                                            <span>
-                                                                {item.quantity}x{" "}
-                                                                {item.name}
-                                                            </span>
-                                                            <span className="font-medium">
-                                                                {formatCurrency(
-                                                                    item.price *
-                                                                        item.quantity
-                                                                )}
-                                                            </span>
-                                                        </div>
-                                                    )
-                                                )}
-                                            </div>
-                                            <div className="flex justify-between items-center pt-4 border-t">
-                                                <span className="text-sm text-muted-foreground">
-                                                    Loja:{" "}
-                                                    {order.Stores?.name ||
-                                                        "Online"}
-                                                </span>
-                                                <span className="font-bold text-lg text-primary">
-                                                    {formatCurrency(
-                                                        order.total_price
-                                                    )}
-                                                </span>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))
-                            )}
-                        </div>
+                    {/* ABA FAVORITOS */}
+                    <TabsContent value="favorites">
+                         {loadingFavs ? <Loader2 className="mx-auto animate-spin" /> : 
+                            !favorites || favorites.length === 0 ? <p className="text-center text-muted-foreground py-8">Sua lista de desejos está vazia.</p> :
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {favorites.map(product => <ProductCard key={product.id} product={product} />)}
+                            </div>
+                         }
                     </TabsContent>
 
-                    <TabsContent value="favorites" className="animate-slide-up">
-                        <div className="space-y-4">
-                            {isLoadingFavorites ? (
-                                <div className="text-center py-8">
-                                    Carregando favoritos...
-                                </div>
-                            ) : !favorites || favorites.length === 0 ? (
-                                <EmptyState
-                                    icon={Heart}
-                                    title="Lista vazia"
-                                    description="Salve seus produtos favoritos para ver aqui."
-                                    actionLabel="Explorar"
-                                    actionLink="/aparelhos"
-                                />
-                            ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {favorites.map((product) => (
-                                        <ProductCard
-                                            key={product.id}
-                                            product={product}
-                                        />
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent
-                        value="warranties"
-                        className="animate-slide-up"
-                    >
-                        <div className="space-y-4 max-w-2xl mx-auto">
-                            {isLoadingWarranties ? (
-                                <div className="text-center py-8">
-                                    Carregando garantias...
-                                </div>
-                            ) : !warranties || warranties.length === 0 ? (
-                                <EmptyState
-                                    icon={ShieldCheck}
-                                    title="Nenhuma garantia"
-                                    description="Seus certificados aparecerão aqui."
-                                />
-                            ) : (
-                                warranties.map((warranty) => (
-                                    <Card key={warranty.id}>
-                                        <CardHeader className="pb-3">
-                                            <div className="flex justify-between items-start">
+                    {/* ABA DADOS */}
+                    <TabsContent value="account" className="space-y-8">
+                        <Card>
+                            <CardHeader><CardTitle>Meus Endereços</CardTitle></CardHeader>
+                            <CardContent className="space-y-4">
+                                {loadingAddr ? <Loader2 className="animate-spin" /> : 
+                                    !addresses || addresses.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum endereço salvo.</p> :
+                                    addresses.map(addr => (
+                                        <div key={addr.id} className="flex justify-between items-center border p-3 rounded-lg">
+                                            <div className="flex items-start gap-3">
+                                                <MapPin className="h-5 w-5 text-primary mt-0.5" />
                                                 <div>
-                                                    <CardTitle className="text-base">
-                                                        {warranty.product_model}
-                                                    </CardTitle>
-                                                    <CardDescription>
-                                                        S/N:{" "}
-                                                        {warranty.serial_number}
-                                                    </CardDescription>
-                                                </div>
-                                                <Badge
-                                                    variant="outline"
-                                                    className="bg-green-50 text-green-700 border-green-200"
-                                                >
-                                                    Ativa
-                                                </Badge>
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                                <div>
-                                                    <p className="text-muted-foreground">
-                                                        Data da Compra
-                                                    </p>
-                                                    <p className="font-medium">
-                                                        {format(
-                                                            new Date(
-                                                                warranty.purchase_date
-                                                            ),
-                                                            "dd/MM/yyyy"
-                                                        )}
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground">
-                                                        Válida Até
-                                                    </p>
-                                                    <p className="font-bold text-primary">
-                                                        {format(
-                                                            new Date(
-                                                                warranty.warranty_end_date
-                                                            ),
-                                                            "dd/MM/yyyy"
-                                                        )}
-                                                    </p>
-                                                </div>
-                                                <div className="col-span-2 pt-2 border-t mt-2">
-                                                    <p className="text-muted-foreground text-xs">
-                                                        Loja:{" "}
-                                                        {warranty.Stores?.name}
-                                                    </p>
-                                                    {warranty.Stores
-                                                        ?.address && (
-                                                        <p className="text-muted-foreground text-xs">
-                                                            {
-                                                                warranty.Stores
-                                                                    .address
-                                                            }
-                                                        </p>
-                                                    )}
+                                                    <p className="font-medium">{addr.name}</p>
+                                                    <p className="text-sm text-muted-foreground">{addr.street}, {addr.number} - {addr.neighborhood}</p>
+                                                    <p className="text-xs text-muted-foreground">{addr.city} - {addr.state}</p>
                                                 </div>
                                             </div>
-                                        </CardContent>
-                                    </Card>
-                                ))
-                            )}
-                        </div>
+                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteAddrMutation.mutate(addr.id)}><Trash2 className="h-4 w-4" /></Button>
+                                        </div>
+                                    ))
+                                }
+                                {/* O cliente pode adicionar endereço direto no carrinho, então aqui é só visualização/delete */}
+                                <p className="text-xs text-muted-foreground pt-2">Para adicionar novos endereços, simule uma compra.</p>
+                            </CardContent>
+                        </Card>
                     </TabsContent>
                 </Tabs>
             </main>
+            <Footer />
         </div>
     );
 };

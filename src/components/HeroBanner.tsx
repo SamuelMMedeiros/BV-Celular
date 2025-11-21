@@ -75,7 +75,7 @@ export const HeroBanner = () => {
                 <CarouselContent>
                     {items.map((item, index) => (
                         <CarouselItem key={index}>
-                            {/* AJUSTE DE ALTURA AQUI: min-h-[400px] mobile / h-[350px] desktop */}
+                            {/* Altura ajustada: min-h-[400px] mobile / h-[350px] desktop */}
                             <div
                                 className="relative min-h-[400px] md:h-[350px] w-full flex items-center overflow-hidden bg-slate-950"
                                 style={
@@ -89,82 +89,104 @@ export const HeroBanner = () => {
                                 }
                             >
                                 {item.type === "banner" ? (
-                                    // --- BANNER MANUAL ---
-                                    <>
-                                        {item.data.image_url && (
+                                    // --- LÓGICA DE BANNER ---
+                                    item.data.image_only ? (
+                                        // CASO 1: APENAS IMAGEM (Full Link)
+                                        <Link
+                                            to={item.data.link_url}
+                                            className="w-full h-full block relative group"
+                                            target={
+                                                item.data.link_url.startsWith(
+                                                    "http"
+                                                )
+                                                    ? "_blank"
+                                                    : "_self"
+                                            }
+                                        >
                                             <img
-                                                src={item.data.image_url}
+                                                src={item.data.image_url || ""}
                                                 alt={item.data.title}
-                                                className="absolute inset-0 w-full h-full object-cover opacity-60 md:opacity-100"
+                                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                             />
-                                        )}
+                                        </Link>
+                                    ) : (
+                                        // CASO 2: BANNER PADRÃO (Texto + Botão)
+                                        <>
+                                            {item.data.image_url && (
+                                                <img
+                                                    src={item.data.image_url}
+                                                    alt={item.data.title}
+                                                    className="absolute inset-0 w-full h-full object-cover opacity-60 md:opacity-100"
+                                                />
+                                            )}
 
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent md:bg-gradient-to-r md:from-black/80 md:via-black/40 md:to-transparent" />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent md:bg-gradient-to-r md:from-black/80 md:via-black/40 md:to-transparent" />
 
-                                        <div className="container mx-auto px-6 py-8 flex flex-col items-center md:items-start justify-end md:justify-center relative z-10 h-full text-center md:text-left pb-16 md:pb-0">
-                                            <div className="space-y-4 max-w-2xl animate-fade-in">
-                                                <h2
-                                                    className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-tight drop-shadow-xl"
-                                                    style={{
-                                                        color:
-                                                            item.data
-                                                                .text_color ||
-                                                            "white",
-                                                    }}
-                                                >
-                                                    {item.data.title}
-                                                </h2>
-                                                {item.data.subtitle && (
-                                                    <p
-                                                        className="text-base sm:text-lg md:text-xl font-light drop-shadow-md line-clamp-2"
+                                            <div className="container mx-auto px-6 py-8 flex flex-col items-center md:items-start justify-end md:justify-center relative z-10 h-full text-center md:text-left pb-16 md:pb-0">
+                                                <div className="space-y-4 max-w-2xl animate-fade-in">
+                                                    <h2
+                                                        className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-tight drop-shadow-xl"
                                                         style={{
                                                             color:
                                                                 item.data
                                                                     .text_color ||
                                                                 "white",
-                                                            opacity: 0.9,
                                                         }}
                                                     >
-                                                        {item.data.subtitle}
-                                                    </p>
-                                                )}
-                                                <div className="pt-2">
-                                                    <Button
-                                                        asChild
-                                                        size="lg"
-                                                        className="text-sm md:text-base h-12 px-8 rounded-full shadow-xl hover:scale-105 transition-transform bg-white text-black hover:bg-gray-100 border-none font-bold"
-                                                    >
-                                                        <a
-                                                            href={
-                                                                item.data
-                                                                    .link_url
-                                                            }
-                                                            target={
-                                                                item.data.link_url.startsWith(
-                                                                    "http"
-                                                                )
-                                                                    ? "_blank"
-                                                                    : "_self"
-                                                            }
-                                                            rel="noopener noreferrer"
+                                                        {item.data.title}
+                                                    </h2>
+                                                    {item.data.subtitle && (
+                                                        <p
+                                                            className="text-base sm:text-lg md:text-xl font-light drop-shadow-md line-clamp-2"
+                                                            style={{
+                                                                color:
+                                                                    item.data
+                                                                        .text_color ||
+                                                                    "white",
+                                                                opacity: 0.9,
+                                                            }}
                                                         >
-                                                            {
-                                                                item.data
-                                                                    .button_text
-                                                            }
-                                                            {item.data.link_url.includes(
-                                                                "wa.me"
-                                                            ) ? (
-                                                                <ExternalLink className="ml-2 h-4 w-4" />
-                                                            ) : (
-                                                                <ArrowRight className="ml-2 h-4 w-4" />
-                                                            )}
-                                                        </a>
-                                                    </Button>
+                                                            {item.data.subtitle}
+                                                        </p>
+                                                    )}
+                                                    <div className="pt-2">
+                                                        <Button
+                                                            asChild
+                                                            size="lg"
+                                                            className="text-sm md:text-base h-12 px-8 rounded-full shadow-xl hover:scale-105 transition-transform bg-white text-black hover:bg-gray-100 border-none font-bold"
+                                                        >
+                                                            <a
+                                                                href={
+                                                                    item.data
+                                                                        .link_url
+                                                                }
+                                                                target={
+                                                                    item.data.link_url.startsWith(
+                                                                        "http"
+                                                                    )
+                                                                        ? "_blank"
+                                                                        : "_self"
+                                                                }
+                                                                rel="noopener noreferrer"
+                                                            >
+                                                                {
+                                                                    item.data
+                                                                        .button_text
+                                                                }
+                                                                {item.data.link_url.includes(
+                                                                    "wa.me"
+                                                                ) ? (
+                                                                    <ExternalLink className="ml-2 h-4 w-4" />
+                                                                ) : (
+                                                                    <ArrowRight className="ml-2 h-4 w-4" />
+                                                                )}
+                                                            </a>
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </>
+                                        </>
+                                    )
                                 ) : (
                                     // --- PRODUTO EM PROMOÇÃO (VITRINE) ---
                                     <>

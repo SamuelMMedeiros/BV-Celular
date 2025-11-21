@@ -844,19 +844,20 @@ export const CartDrawer = () => {
                             )}
                     </div>
                 )}
-
-                <SheetFooter className="bg-background border-t pt-4 flex-col gap-3 mt-auto">
+                {/* FOOTER REORGANIZADO (Vertical) */}
+                <SheetFooter className="bg-background border-t p-6 flex flex-col gap-5 mt-auto shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-20">
                     {step === "cart" ? (
                         itemCount > 0 ? (
                             <>
+                                {/* 1. Área de Cupom */}
                                 {!isWholesale && (
-                                    <div className="flex gap-2 items-center">
+                                    <div className="flex gap-2 items-center w-full">
                                         <div className="relative flex-1">
-                                            <Ticket className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                             <Input
                                                 ref={couponInputRef}
-                                                placeholder="Cupom"
-                                                className="pl-9"
+                                                placeholder="Código do cupom"
+                                                className="pl-9 h-10"
                                                 disabled={!!coupon}
                                             />
                                         </div>
@@ -865,6 +866,7 @@ export const CartDrawer = () => {
                                                 variant="destructive"
                                                 size="icon"
                                                 onClick={removeCoupon}
+                                                className="h-10 w-10 shrink-0"
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
@@ -873,6 +875,7 @@ export const CartDrawer = () => {
                                                 variant="secondary"
                                                 onClick={handleApplyCoupon}
                                                 disabled={isApplyingCoupon}
+                                                className="h-10"
                                             >
                                                 {isApplyingCoupon ? (
                                                     <Loader2 className="animate-spin h-4 w-4" />
@@ -883,53 +886,62 @@ export const CartDrawer = () => {
                                         )}
                                     </div>
                                 )}
-                                <div className="space-y-1">
+
+                                <Separator />
+
+                                {/* 2. Resumo de Valores */}
+                                <div className="space-y-2 w-full">
+                                    <div className="flex justify-between text-sm text-muted-foreground">
+                                        <span>Subtotal:</span>
+                                        <span>{formatCurrency(subtotal)}</span>
+                                    </div>
+
                                     {coupon && (
-                                        <>
-                                            <div className="flex justify-between text-sm text-muted-foreground">
-                                                <span>Subtotal:</span>
-                                                <span>
-                                                    {formatCurrency(subtotal)}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between text-sm text-green-600 font-medium">
-                                                <span>Desconto:</span>
-                                                <span>
-                                                    -
-                                                    {formatCurrency(
-                                                        discountAmount
-                                                    )}
-                                                </span>
-                                            </div>
-                                            <Separator className="my-1" />
-                                        </>
+                                        <div className="flex justify-between text-sm text-green-600 font-medium animate-in fade-in">
+                                            <span>
+                                                Desconto ({coupon.code}):
+                                            </span>
+                                            <span>
+                                                -
+                                                {formatCurrency(discountAmount)}
+                                            </span>
+                                        </div>
                                     )}
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xl font-bold text-primary ml-auto">
+
+                                    <div className="flex justify-between items-end pt-2">
+                                        <span className="text-base font-semibold">
+                                            Total:
+                                        </span>
+                                        <span className="text-2xl font-bold text-primary">
                                             {formatCurrency(totalPrice)}
                                         </span>
                                     </div>
                                 </div>
-                                <div className="flex w-full gap-3 pt-2">
-                                    <Button
-                                        variant="ghost"
-                                        onClick={clearCart}
-                                        className="text-muted-foreground hover:text-destructive"
-                                    >
-                                        Limpar
-                                    </Button>
+
+                                {/* 3. Botões de Ação */}
+                                <div className="flex flex-col gap-3 w-full pt-2">
                                     <Button
                                         size="lg"
-                                        className="w-full"
+                                        className="w-full h-12 text-base font-bold shadow-md"
                                         onClick={handleProceed}
                                     >
                                         Finalizar Compra
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={clearCart}
+                                        className="w-full text-muted-foreground hover:text-destructive border-dashed"
+                                    >
+                                        Esvaziar Carrinho
                                     </Button>
                                 </div>
                             </>
                         ) : (
                             <SheetClose asChild>
-                                <Button variant="outline" className="w-full">
+                                <Button
+                                    variant="outline"
+                                    className="w-full h-12"
+                                >
                                     Continuar comprando
                                 </Button>
                             </SheetClose>
@@ -937,8 +949,9 @@ export const CartDrawer = () => {
                     ) : (
                         step === "checkout" &&
                         (paymentMode === "whatsapp" || isWholesale) && (
-                            <>
-                                <div className="space-y-1">
+                            // ... (Mantenha o footer do checkout igual ou adapte para vertical também se preferir)
+                            <div className="w-full space-y-4">
+                                <div className="space-y-2 bg-muted/30 p-3 rounded-lg">
                                     {deliveryType === "delivery" &&
                                         deliveryCost > 0 && (
                                             <div className="flex justify-between text-sm text-muted-foreground">
@@ -956,15 +969,19 @@ export const CartDrawer = () => {
                                                 </span>
                                             </div>
                                         )}
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xl font-bold text-primary ml-auto">
+                                    <div className="flex justify-between items-center pt-1 border-t border-dashed border-gray-300">
+                                        <span className="font-semibold">
+                                            Total a Pagar:
+                                        </span>
+                                        <span className="text-xl font-bold text-primary">
                                             {formatCurrency(finalTotal)}
                                         </span>
                                     </div>
                                 </div>
+
                                 <Button
                                     size="lg"
-                                    className="w-full bg-green-600 hover:bg-green-700"
+                                    className="w-full bg-green-600 hover:bg-green-700 h-12 text-base shadow-md"
                                     onClick={() => handleFinishOrder(false)}
                                     disabled={isSavingOrder}
                                 >
@@ -973,9 +990,9 @@ export const CartDrawer = () => {
                                     ) : (
                                         <ShoppingCart className="mr-2 h-5 w-5" />
                                     )}
-                                    Finalizar no WhatsApp
+                                    Enviar Pedido no WhatsApp
                                 </Button>
-                            </>
+                            </div>
                         )
                     )}
                 </SheetFooter>

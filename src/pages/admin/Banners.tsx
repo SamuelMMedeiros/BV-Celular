@@ -46,10 +46,8 @@ import {
     updateBanner,
     deleteBanner,
     uploadBannerImage,
-    BannerInsertPayload,
-    BannerUpdatePayload,
 } from "@/lib/api";
-import { Banner } from "@/types";
+import { Banner, BannerInsertPayload, BannerUpdatePayload } from "@/types";
 import {
     Loader2,
     Plus,

@@ -114,3 +114,40 @@
 .bg-gradient-primary {
   @apply bg-gradient-to-br from-blue-600 to-purple-600;
 }
+
+
+/* --- ESTILOS DE IMPRESSÃO (CUPOM) --- */
+@media print {
+  /* Esconde tudo por padrão */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Mostra apenas o container de impressão e seus filhos */
+  .printable-content, .printable-content * {
+    visibility: visible;
+  }
+
+  /* Posiciona o cupom no topo da folha */
+  .printable-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: white;
+    color: black;
+  }
+
+  /* Garante que botões de fechar/imprimir não saiam no papel */
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Remove margens e rodapés automáticos do navegador (se suportado) */
+  @page {
+    margin: 0;
+    size: auto; 
+  }
+}

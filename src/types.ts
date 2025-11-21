@@ -1,6 +1,3 @@
-//
-// === CÓDIGO COMPLETO PARA: src/types.ts ===
-//
 import { Database } from "@/integrations/supabase/types";
 
 // --- ENTIDADES ---
@@ -152,6 +149,7 @@ export type Banner = {
     active: boolean;
     background_color: string;
     text_color: string;
+    image_only?: boolean;
 };
 
 export type Warranty = {
@@ -331,10 +329,12 @@ export type BannerInsertPayload = {
     active?: boolean;
     background_color?: string;
     text_color?: string;
+    image_only?: boolean;
 };
 
 export type BannerUpdatePayload = Partial<BannerInsertPayload> & {
     id: string;
+
 };
 
 export type PublicLinkInsertPayload = {
