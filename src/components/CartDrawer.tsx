@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable react-hooks/rules-of-hooks */
 import { useState, useRef, useEffect } from "react";
 import {
@@ -35,7 +36,8 @@ import {
     upsertClient,
     createCouponUsage,
     fetchClientAddresses,
-} from "@/lib/api";
+    sendOrderEmail,
+} from "@/lib/api"; // <-- IMPORTAR sendOrderEmail
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCart } from "@/contexts/CartContext";
 import { useNavigate, useLocation, Link } from "react-router-dom";
@@ -55,7 +57,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Store, Address } from "@/types";
 import { StripeCheckout } from "./StripeCheckout";
-import { Separator } from "@radix-ui/react-select";
+import { Separator } from "@/components/ui/separator";
 
 export const CartDrawer = () => {
     const {
@@ -124,24 +126,47 @@ export const CartDrawer = () => {
             !isWholesale,
     });
 
-    // Lógica para forçar loja de Atacado
     useEffect(() => {
         if (isWholesale && wholesaleProfile?.store_id) {
-            setSelectedStoreId(wholesaleProfile.store_id);
+            if (selectedStoreId !== wholesaleProfile.store_id) {
+                setSelectedStoreId(wholesaleProfile.store_id);
+            }
         }
-    }, [isWholesale, wholesaleProfile]);
+    }, [isWholesale, wholesaleProfile, selectedStoreId]);
+
+    const normalize = (str: string | undefined | null) =>
+        str
+            ? str
+                  .toLowerCase()
+                  .normalize("NFD")
+                  .replace(/[\u0300-\u036f]/g, "")
+                  .trim()
+            : "";
 
     const selectedStore = stores?.find((s) => s.id === selectedStoreId);
-    const deliveryFee =
-        deliveryType === "delivery" && selectedStore
-            ? (selectedStore.delivery_fixed_fee || 0) * 100
-            : 0;
-    const finalDeliveryFee =
-        selectedStore?.free_shipping_min_value &&
-        subtotal >= selectedStore.free_shipping_min_value * 100
-            ? 0
-            : deliveryFee;
-    const finalTotal = totalPrice + finalDeliveryFee;
+    const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
+
+    const isSameCity =
+        selectedStore &&
+        selectedAddress &&
+        normalize(selectedStore.city) === normalize(selectedAddress.city);
+
+    let deliveryCost = 0;
+    if (deliveryType === "delivery") {
+        if (isSameCity && selectedStore) {
+            const fixedFee = (selectedStore.delivery_fixed_fee || 0) * 100;
+            const minFree = (selectedStore.free_shipping_min_value || 0) * 100;
+            if (minFree > 0 && subtotal >= minFree) {
+                deliveryCost = 0;
+            } else {
+                deliveryCost = fixedFee;
+            }
+        } else if (shippingQuote) {
+            deliveryCost = shippingQuote.price;
+        }
+    }
+
+    const finalTotal = subtotal - discountAmount + deliveryCost;
 
     const handleAddressChange = (addrId: string) => {
         setSelectedAddressId(addrId);
@@ -177,7 +202,10 @@ export const CartDrawer = () => {
         setSelectedStoreId(storeId);
     };
 
-    const handleFinishOrder = async (paidOnline = false) => {
+    const handleFinishOrder = async (
+        paidOnline = false,
+        paymentId?: string
+    ) => {
         if (deliveryType === "pickup" && !selectedStoreId) {
             toast({
                 variant: "destructive",
@@ -209,7 +237,6 @@ export const CartDrawer = () => {
         if (isLoggedIn && (profile || wholesaleProfile)) {
             setIsSavingOrder(true);
             try {
-                // Se for cliente normal, garante upsert. Se for atacado, já existe.
                 if (!isWholesale && profile) {
                     await upsertClient({
                         id: profile.id,
@@ -242,7 +269,7 @@ export const CartDrawer = () => {
                     delivery_type: deliveryType,
                     address_id:
                         deliveryType === "delivery" ? selectedAddressId : null,
-                    delivery_fee: finalDeliveryFee,
+                    delivery_fee: deliveryCost,
                     payment_method: paidOnline
                         ? "credit_card_online"
                         : paymentMethod,
@@ -250,18 +277,37 @@ export const CartDrawer = () => {
                         ? parseFloat(changeFor) * 100
                         : undefined,
                     status: paidOnline ? "completed" : "pending",
+                    // @ts-ignore - Se o tipo não estiver atualizado no OrderInsertPayload ainda
+                    stripe_payment_id: paymentId || null,
                 });
 
                 if (coupon && !isWholesale)
                     await createCouponUsage(clientId, coupon.id);
 
+                // --- ENVIO DE EMAIL ---
+                const clientName = isWholesale
+                    ? wholesaleProfile?.company_name
+                    : profile?.name;
+                const clientEmail = isWholesale
+                    ? wholesaleProfile?.email
+                    : profile?.email;
+
+                if (clientEmail && clientName) {
+                    // Dispara o email sem esperar (fire and forget) para não travar o UI
+                    sendOrderEmail(
+                        clientEmail,
+                        clientName,
+                        newOrder.id,
+                        formatCurrency(finalTotal),
+                        orderItems
+                    );
+                }
+                // ---------------------
+
                 if (!paidOnline) {
                     const itemsText = cartItems
                         .map((item) => `${item.quantity}x ${item.name}`)
                         .join("%0A");
-                    const clientName = isWholesale
-                        ? wholesaleProfile?.company_name
-                        : profile?.name;
 
                     let msg = `Olá, *${
                         store?.name
@@ -279,6 +325,18 @@ export const CartDrawer = () => {
                         msg += `🚚 *Entrega* para:%0A${address?.street}, ${address?.number} - ${address?.neighborhood}%0A(${address?.city})%0A`;
                         if (address?.complement)
                             msg += `Comp: ${address.complement}%0A`;
+
+                        if (isSameCity) {
+                            msg += `Frete Local: ${
+                                deliveryCost === 0
+                                    ? "GRÁTIS"
+                                    : formatCurrency(deliveryCost)
+                            }`;
+                        } else if (shippingQuote) {
+                            msg += `Frete: ${formatCurrency(
+                                shippingQuote.price
+                            )} (${shippingQuote.days} dias)`;
+                        }
                     }
 
                     msg += `%0A💳 Pagamento: ${
@@ -313,7 +371,7 @@ export const CartDrawer = () => {
                 clearCart();
                 setIsSheetOpen(false);
                 setStep("cart");
-                navigate("/minha-conta");
+                navigate(`/success?orderId=${newOrder.id}`);
             } catch (error: any) {
                 console.error("Falha ao salvar pedido:", error);
                 toast({
@@ -475,7 +533,6 @@ export const CartDrawer = () => {
                 {step === "stores" && (
                     <div className="flex-1 flex flex-col gap-6 py-4">
                         {isWholesale ? (
-                            // VISUAL ATACADO (Loja Travada)
                             <div className="text-center space-y-4 border p-6 rounded-lg bg-muted/30">
                                 <div className="bg-primary/10 p-4 rounded-full w-fit mx-auto">
                                     <Building2 className="h-8 w-8 text-primary" />
@@ -500,7 +557,6 @@ export const CartDrawer = () => {
                                 </Button>
                             </div>
                         ) : (
-                            // VISUAL VAREJO (Escolha de Loja)
                             <div className="p-4 flex-1 flex flex-col justify-center space-y-3">
                                 <Label className="text-base font-semibold text-center block">
                                     Selecione a loja para retirar:
@@ -536,7 +592,6 @@ export const CartDrawer = () => {
 
                 {step === "checkout" && (
                     <div className="flex-1 flex flex-col gap-6 py-4">
-                        {/* 1. MODO DE PAGAMENTO */}
                         {!isWholesale && (
                             <div className="bg-muted/20 p-4 rounded-lg border">
                                 <Label className="text-base font-semibold mb-3 block">
@@ -581,7 +636,6 @@ export const CartDrawer = () => {
                             </div>
                         )}
 
-                        {/* 2. LOJA (Info apenas) */}
                         <div className="space-y-1 border-b pb-4">
                             <Label className="text-sm font-semibold text-muted-foreground">
                                 Loja Responsável
@@ -595,7 +649,6 @@ export const CartDrawer = () => {
                             </p>
                         </div>
 
-                        {/* 3. TIPO DE ENTREGA */}
                         <div className="space-y-3">
                             <Label className="text-base font-semibold">
                                 Recebimento
@@ -696,7 +749,7 @@ export const CartDrawer = () => {
                                                     <span className="font-bold block">
                                                         {addr.name}
                                                     </span>
-                                                    <span className="text-xs text-muted-foreground block">
+                                                    <span className="text-muted-foreground block">
                                                         {addr.street},{" "}
                                                         {addr.number}
                                                     </span>
@@ -708,7 +761,6 @@ export const CartDrawer = () => {
                             </div>
                         )}
 
-                        {/* SE FOR WHATSAPP OU ATACADO: MOSTRA OPÇÕES DE PGTO MANUAL */}
                         {(paymentMode === "whatsapp" || isWholesale) && (
                             <div className="space-y-3 animate-in fade-in">
                                 <Label className="text-base font-semibold">
@@ -751,7 +803,6 @@ export const CartDrawer = () => {
                             </div>
                         )}
 
-                        {/* SE FOR ONLINE: RENDERIZA STRIPE */}
                         {paymentMode === "stripe" &&
                             !isWholesale &&
                             selectedStore &&
@@ -764,13 +815,24 @@ export const CartDrawer = () => {
                                         selectedStore.stripe_public_key
                                     }
                                     onCancel={() => setPaymentMode("whatsapp")}
-                                    onSuccess={() => handleFinishOrder(true)}
+                                    onSuccess={(pid) =>
+                                        handleFinishOrder(true, pid)
+                                    }
                                 />
+                            )}
+
+                        {paymentMode === "stripe" &&
+                            selectedStore &&
+                            !selectedStore.stripe_enabled && (
+                                <div className="p-4 bg-amber-100 text-amber-800 rounded-md text-sm text-center">
+                                    Pagamento online indisponível nesta loja.{" "}
+                                    <br />
+                                    Por favor, escolha outra opção.
+                                </div>
                             )}
                     </div>
                 )}
 
-                {/* FOOTER UNIFICADO */}
                 <SheetFooter className="bg-background border-t pt-4 flex-col gap-3 mt-auto">
                     {step === "cart" ? (
                         itemCount > 0 ? (
@@ -831,11 +893,7 @@ export const CartDrawer = () => {
                                         </>
                                     )}
                                     <div className="flex justify-between items-center">
-                                        //@ts-ignore
-                                        <span className="text-base text-muted-foreground">
-                                            Total:
-                                        </span>
-                                        <span className="text-xl font-bold text-primary">
+                                        <span className="text-xl font-bold text-primary ml-auto">
                                             {formatCurrency(totalPrice)}
                                         </span>
                                     </div>
@@ -870,24 +928,24 @@ export const CartDrawer = () => {
                             <>
                                 <div className="space-y-1">
                                     {deliveryType === "delivery" &&
-                                        shippingQuote && (
+                                        deliveryCost > 0 && (
                                             <div className="flex justify-between text-sm text-muted-foreground">
                                                 <span>
-                                                    Frete ({shippingQuote.type}
-                                                    ):
+                                                    Frete{" "}
+                                                    {isSameCity
+                                                        ? "(Local)"
+                                                        : "(Correios)"}
+                                                    :
                                                 </span>
                                                 <span>
                                                     {formatCurrency(
-                                                        shippingQuote.price
+                                                        deliveryCost
                                                     )}
                                                 </span>
                                             </div>
                                         )}
                                     <div className="flex justify-between items-center">
-                                        <span className="text-base text-muted-foreground">
-                                            Total Final:
-                                        </span>
-                                        <span className="text-xl font-bold text-primary">
+                                        <span className="text-xl font-bold text-primary ml-auto">
                                             {formatCurrency(finalTotal)}
                                         </span>
                                     </div>

@@ -1215,3 +1215,28 @@ export const togglePublicLinkStatus = async (id: string, currentStatus: boolean)
 
     if (error) throw new Error(error.message);
 };
+
+// ==================================================================
+// FUNÇÕES DE EMAIL (RESEND)
+// ==================================================================
+
+export const sendOrderEmail = async (
+    to: string, 
+    clientName: string, 
+    orderId: string, 
+    totalFormatted: string,
+    items: any[]
+): Promise<void> => {
+    const { error } = await supabase.functions.invoke('send-order-email', {
+        body: {
+            to,
+            subject: `Pedido Recebido #${orderId.substring(0, 8).toUpperCase()} - BV Celular`,
+            clientName,
+            orderId,
+            total: totalFormatted,
+            items
+        }
+    });
+
+    if (error) console.error("Erro ao enviar e-mail:", error);
+};

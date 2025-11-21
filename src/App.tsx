@@ -28,6 +28,7 @@ import Aparelhos from "./pages/Aparelhos";
 import Promocoes from "./pages/Promocoes";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
+import CheckoutSuccess from "./pages/CheckoutSuccess";
 
 import AdminProducts from "./pages/admin/Products";
 import AdminProductForm from "./pages/admin/ProductForm";
@@ -41,7 +42,7 @@ import AdminWarranties from "./pages/admin/Warranties";
 import AdminCoupons from "./pages/admin/Coupons";
 import AdminLogistics from "./pages/admin/Logistics";
 import AdminWholesale from "./pages/admin/Wholesale";
-import AdminLinks from "./pages/admin/Links"; // <-- NOVO IMPORT
+import AdminLinks from "./pages/admin/Links";
 
 import DriverDashboard from "./pages/driver/Dashboard";
 import DriverLogin from "./pages/DriverLogin";
@@ -52,7 +53,7 @@ import WholesaleLogin from "./pages/WholesaleLogin";
 import MinhaConta from "./pages/MinhaConta";
 import ProductDetails from "./pages/ProductDetails";
 import WarrantyPage from "./pages/Warranty";
-import LinksPage from "./pages/LinksPage"; // <-- NOVO IMPORT
+import LinksPage from "./pages/LinksPage";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -142,6 +143,10 @@ const App = () => (
                             <Route
                                 path="/garantia"
                                 element={<WarrantyPage />}
+                            />
+                            <Route
+                                path="/success"
+                                element={<CheckoutSuccess />}
                             />
 
                             {/* ROTA PÚBLICA DO LINKTREE */}
