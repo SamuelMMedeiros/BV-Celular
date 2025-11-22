@@ -1,3 +1,4 @@
+// src/components/Navbar.tsx
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,12 +11,23 @@ export function Navbar() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
-  const handleLogout = async () => {
+  const handleLogout = async (e: React.MouseEvent) => {
+    // Previne qualquer comportamento padrão do botão
+    e.preventDefault();
+    
+    console.log("🔴 [Navbar] 1. Botão clicado");
+
     try {
+      console.log("🔴 [Navbar] 2. Chamando signOut do contexto...");
+      
+      // Adicionei um await explícito aqui
       await signOut();
+      
+      console.log("🔴 [Navbar] 3. SignOut finalizado com sucesso. Navegando...");
       navigate("/login");
+      
     } catch (err) {
-      console.error("Erro ao sair", err);
+      console.error("🔴 [Navbar] Erro ao sair:", err);
     }
   };
 
@@ -66,11 +78,15 @@ export function Navbar() {
                    <span className="truncate max-w-[150px]">{user.email}</span>
                    {role === 'wholesale' && <span className="text-xs bg-blue-800 px-2 py-0.5 rounded">Atacado</span>}
                 </div>
+                
+                {/* TESTE: Se o componente Button falhar, tente descomentar a linha abaixo e usar o button nativo */}
+                {/* <button onClick={handleLogout} className="bg-red-600 p-2 rounded text-white">SAIR (Teste)</button> */}
+
                 <Button 
-                  onClick={handleLogout} 
+                  onClick={(e) => handleLogout(e)} 
                   variant="destructive" 
                   size="sm"
-                  className="w-full md:w-auto flex items-center gap-2"
+                  className="w-full md:w-auto flex items-center gap-2 cursor-pointer" // Forcei cursor-pointer
                 >
                   <LogOut size={16} /> Sair
                 </Button>
@@ -89,5 +105,4 @@ export function Navbar() {
   );
 }
 
-// Default export para manter compatibilidade
 export default Navbar;
