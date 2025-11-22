@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, X, Info, Check, Trash2, HelpCircle, AlertCircle, Package, Eye } from 'lucide-react';
+import { Plus, X, Info, Check, Trash2, AlertCircle, Package, Eye } from 'lucide-react';
 
 // --- TIPOS ---
 type Variation = {
@@ -41,6 +41,7 @@ export default function ProductForm() {
   // --- EFEITO: GERAR SKUs AUTOMATICAMENTE ---
   useEffect(() => {
     generateSKUs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variations]);
 
   const generateSKUs = () => {
@@ -299,7 +300,7 @@ export default function ProductForm() {
                         <input
                           type="text"
                           value={currentOptionInputs[variation.id] || ''}
-                          onChange={(e) => setCurrentOptionInputs({...currentOptionInputs, [variationId: variation.id]: e.target.value})}
+                          onChange={(e) => setCurrentOptionInputs({...currentOptionInputs, [variation.id]: e.target.value})}
                           onKeyDown={(e) => e.key === 'Enter' && addOptionToVariation(variation.id)}
                           placeholder="Digite e dê Enter..."
                           className="flex-1 bg-transparent outline-none text-sm min-w-[100px]"
