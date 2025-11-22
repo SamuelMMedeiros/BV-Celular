@@ -1,3 +1,4 @@
+// src/contexts/AuthContext.tsx
 import React, { createContext, useCallback, useEffect, useMemo, useState, useContext } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,8 +11,10 @@ interface AuthContextType {
     wholesaleProfile: WholesaleClient | null;
     isWholesale: boolean;
     loading: boolean;
+    role: 'admin' | 'wholesale' | 'customer' | null;
     signIn: (email: string, pass: string) => Promise<void>;
     logout: () => Promise<void>;
+    signOut: () => Promise<void>; // Adicionado para compatibilidade com Navbar
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,18 +37,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const log = (msg: string, data?: any) => console.log(`%c[AUTH] ${msg}`, 'color: #00ffff', data || '');
 
+    // --- LOGOUT OTIMISTA E ROBUSTO ---
     const logout = useCallback(async () => {
-        setLoading(true);
-        setLoadingMessage("Saindo...");
-        await supabase.auth.signOut();
-        localStorage.clear(); // Limpa tudo para garantir
-        window.location.href = "/"; 
+        log("🚪 Iniciando Logout...");
+        
+        try {
+            // 1. Limpa estados do React imediatamente
+            setSession(null);
+            setUser(null);
+            setEmployeeProfile(null);
+            setWholesaleProfile(null);
+
+            // 2. Limpa LocalStorage Específico
+            localStorage.removeItem(ADMIN_PROFILE_KEY);
+            localStorage.removeItem(WHOLESALE_PROFILE_KEY);
+            
+            // 3. Remove chaves de sessão do Supabase
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('sb-')) localStorage.removeItem(key);
+            });
+
+            // 4. Tenta avisar o Supabase (sem travar a UI se falhar)
+            const { error } = await supabase.auth.signOut();
+            if (error) log("⚠️ Aviso: Erro no signOut do servidor (ignorado)", error);
+
+        } catch (err) {
+            console.error("Erro crítico no logout:", err);
+        } finally {
+            // 5. Força recarregamento total para limpar memória
+            window.location.href = "/login";
+        }
     }, []);
 
-    // FETCH COM TIMEOUT E ABORT CONTROLLER
+    // --- FETCH DE PERFIL COM TIMEOUT ---
     const fetchProfileFromBackend = async (token: string) => {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos max
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
         try {
             log("📡 Buscando perfil (max 5s)...");
@@ -94,13 +121,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             } else {
                 log("🔥 Erro no fetch de perfil:", error);
             }
-            // Mantém o que tiver no cache ou assume cliente comum
         } finally {
             clearTimeout(timeoutId);
         }
     };
 
-    // Inicialização
+    // --- INICIALIZAÇÃO E LISTENERS ---
     useEffect(() => {
         let mounted = true;
         
@@ -110,9 +136,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 const { data: { session: initSession } } = await supabase.auth.getSession();
                 
                 if (initSession?.user) {
-                    log("👤 Sessão encontrada");
-                    setSession(initSession);
-                    setUser(initSession.user);
+                    log("👤 Sessão encontrada na inicialização");
+                    if(mounted) {
+                        setSession(initSession);
+                        setUser(initSession.user);
+                    }
                     await fetchProfileFromBackend(initSession.access_token);
                 } else {
                     log("👤 Sem sessão (Visitante)");
@@ -129,18 +157,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
             log(`🔄 Evento: ${event}`);
             
+            if (!mounted) return;
+
             if (newSession?.user) {
                 setSession(newSession);
                 setUser(newSession.user);
                 
-                // Só bloqueia a tela no LOGIN EXPLICITO. No refresh de token, faz em background.
                 if (event === 'SIGNED_IN') {
                     setLoading(true);
                     setLoadingMessage("Carregando perfil...");
                     await fetchProfileFromBackend(newSession.access_token);
                     setLoading(false);
                 } else if (event === 'TOKEN_REFRESHED') {
-                    // Background update
                     fetchProfileFromBackend(newSession.access_token);
                 }
             } else if (event === 'SIGNED_OUT') {
@@ -160,11 +188,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (error) throw error;
     }, []);
 
-    const value = useMemo(() => ({
-        session, user, employeeProfile, wholesaleProfile, isWholesale: !!wholesaleProfile, loading, signIn, logout
-    }), [session, user, employeeProfile, wholesaleProfile, loading, signIn, logout]);
+    // Helper para verificar role
+    const role = useMemo(() => {
+        if (employeeProfile) return 'admin';
+        if (wholesaleProfile) return 'wholesale';
+        if (user) return 'customer';
+        return null;
+    }, [employeeProfile, wholesaleProfile, user]);
 
-    // TELA DE LOADING COM BOTÃO DE EMERGÊNCIA
+    const value = useMemo(() => ({
+        session, 
+        user, 
+        employeeProfile, 
+        wholesaleProfile, 
+        isWholesale: !!wholesaleProfile, 
+        loading, 
+        signIn, 
+        logout,
+        signOut: logout, // Alias: conecta signOut (usado na Navbar) ao logout
+        role
+    }), [session, user, employeeProfile, wholesaleProfile, loading, signIn, logout, role]);
+
+    // --- TELA DE LOADING COM BOTÃO DE EMERGÊNCIA ---
     if (loading) {
         return (
             <div className="fixed inset-0 bg-black text-green-400 z-[9999] flex flex-col items-center justify-center p-4 font-mono">
@@ -172,10 +217,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 <div className="text-xs text-gray-500 mb-8">Aguardando resposta do servidor...</div>
                 
                 <button 
-                    onClick={() => setLoading(false)}
+                    onClick={() => {
+                        setLoading(false);
+                        logout(); // Força logout se estiver travado
+                    }}
                     className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-900 rounded text-sm transition-colors"
                 >
-                    ⚠️ DEMORANDO MUITO? CLIQUE AQUI PARA ENTRAR
+                    ⚠️ DEMORANDO MUITO? CLIQUE AQUI PARA REINICIAR
                 </button>
             </div>
         );
