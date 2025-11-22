@@ -1,194 +1,142 @@
-//
-// === CÓDIGO COMPLETO PARA: src/contexts/AuthContext.tsx ===
-//
-import {
-    createContext,
-    useEffect,
-    useState,
-    useMemo,
-    useCallback,
-} from "react";
-import { Session, User } from "@supabase/supabase-js";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Employee, WholesaleClient } from "@/types";
-import { fetchEmployeeProfile, fetchWholesaleProfile } from "@/lib/api";
+import { Session, User } from "@supabase/supabase-js";
+
+type Role = 'admin' | 'wholesale' | 'customer' | null;
 
 interface AuthContextType {
-    session: Session | null;
-    user: User | null;
-    employeeProfile: Employee | null;
-    wholesaleProfile: WholesaleClient | null;
-    isWholesale: boolean;
-    loading: boolean;
-    signIn: (email: string, pass: string) => Promise<void>;
-    logout: () => Promise<void>;
+  session: Session | null;
+  user: User | null;
+  role: Role;
+  loading: boolean;
+  signIn: (email: string, password: string) => Promise<any>;
+  signOut: () => Promise<void>;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(
-    undefined
-);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ADMIN_PROFILE_KEY = "bv_admin_profile";
-const WHOLESALE_PROFILE_KEY = "bv_wholesale_profile";
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<Role>(null);
+  const [loading, setLoading] = useState(true);
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-    const [session, setSession] = useState<Session | null>(null);
-    const [user, setUser] = useState<User | null>(null);
+  // Função interna para determinar a role baseada nas APIs Serverless
+  // Isso garante segurança, pois o cliente não decide sua própria role
+  const fetchUserRole = async (currentUser: User, token: string) => {
+    try {
+      // 1. Tenta Admin
+      const adminRes = await fetch("/api/get-admin-profile", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        },
+      });
+      if (adminRes.ok) {
+        setRole("admin");
+        return;
+      }
 
-    const [employeeProfile, setEmployeeProfile] = useState<Employee | null>(
-        () => {
-            try {
-                const stored = localStorage.getItem(ADMIN_PROFILE_KEY);
-                return stored ? JSON.parse(stored) : null;
-            } catch {
-                return null;
-            }
+      // 2. Tenta Atacado
+      const wholesaleRes = await fetch("/api/get-wholesale-profile", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        },
+      });
+      if (wholesaleRes.ok) {
+        setRole("wholesale");
+        return;
+      }
+
+      // 3. Fallback para Cliente
+      setRole("customer");
+    } catch (error) {
+      console.error("Erro ao buscar role:", error);
+      setRole("customer");
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeAuth = async () => {
+      try {
+        // Pega sessão inicial (localStorage)
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        
+        if (mounted) {
+          setSession(initialSession);
+          setUser(initialSession?.user ?? null);
+          
+          if (initialSession?.user && initialSession?.access_token) {
+            await fetchUserRole(initialSession.user, initialSession.access_token);
+          } else {
+             setRole(null);
+          }
         }
-    );
+      } catch (err) {
+        console.error("Auth init error:", err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
 
-    const [wholesaleProfile, setWholesaleProfile] =
-        useState<WholesaleClient | null>(() => {
-            try {
-                const stored = localStorage.getItem(WHOLESALE_PROFILE_KEY);
-                return stored ? JSON.parse(stored) : null;
-            } catch {
-                return null;
-            }
-        });
+    initializeAuth();
 
-    // Loading state inicia true se não tivermos dados cacheados
-    const [loading, setLoading] = useState(
-        !employeeProfile && !wholesaleProfile
-    );
-
-    const logout = useCallback(async () => {
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-        setEmployeeProfile(null);
-        setWholesaleProfile(null);
-        localStorage.removeItem(ADMIN_PROFILE_KEY);
-        localStorage.removeItem(WHOLESALE_PROFILE_KEY);
-        setLoading(false);
-    }, []);
-
-    // FUNÇÃO CENTRAL DE CARREGAMENTO DE PERFIS
-    const loadProfiles = useCallback(async (currentUser: User) => {
-        try {
-            // 1. Tenta Admin (Prioridade)
-            const admin = await fetchEmployeeProfile(currentUser.id);
-            if (admin) {
-                setEmployeeProfile(admin);
-                setWholesaleProfile(null); // Garante que não misture
-                localStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(admin));
-                localStorage.removeItem(WHOLESALE_PROFILE_KEY);
-                return; // Encerra se achou admin
-            }
-
-            // 2. Se não é Admin, tenta Atacado
-            // Nota: fetchWholesaleProfile usa auth.uid() internamente no backend, não precisa de ID
-            const wholesale = await fetchWholesaleProfile();
-            if (wholesale) {
-                setWholesaleProfile(wholesale);
-                setEmployeeProfile(null);
-                localStorage.setItem(
-                    WHOLESALE_PROFILE_KEY,
-                    JSON.stringify(wholesale)
-                );
-                localStorage.removeItem(ADMIN_PROFILE_KEY);
-                return; // Encerra se achou atacado
-            }
-
-            // 3. Se não achou nenhum dos dois, limpa perfis especiais
-            // (O usuário pode ser um cliente varejo comum, então não damos logout forçado aqui)
-            setEmployeeProfile(null);
-            setWholesaleProfile(null);
-            localStorage.removeItem(ADMIN_PROFILE_KEY);
-            localStorage.removeItem(WHOLESALE_PROFILE_KEY);
-        } catch (error) {
-            console.error("Erro ao carregar perfis:", error);
-            // Em caso de erro de rede, mantemos o estado anterior ou limpamos sem logout forçado
+    // Escuta mudanças (Login, Logout, Auto-Refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      if (mounted) {
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+        
+        // Se houve login ou refresh de token, revalida a role
+        if (newSession?.user && newSession?.access_token) {
+           // Pequena otimização: se a role já estiver setada e o user for o mesmo, 
+           // talvez não precise re-buscar, mas por segurança re-buscamos.
+           await fetchUserRole(newSession.user, newSession.access_token);
+        } else {
+           setRole(null);
+           setLoading(false); // Garante que saia do loading no logout
         }
-    }, []);
+      }
+    });
 
-    useEffect(() => {
-        let mounted = true;
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
-        const processSession = async (s: Session | null) => {
-            if (!mounted) return;
+  const signIn = async (email: string, password: string) => {
+    setLoading(true);
+    const result = await supabase.auth.signInWithPassword({ email, password });
+    if (result.error) setLoading(false); // Só desativa loading se der erro, senão o onAuthStateChange cuida
+    return result;
+  };
 
-            setSession(s);
-            setUser(s?.user ?? null);
+  const signOut = async () => {
+    setLoading(true);
+    await supabase.auth.signOut();
+    // O onAuthStateChange vai limpar o estado
+  };
 
-            if (s?.user) {
-                await loadProfiles(s.user);
-            } else {
-                // Logout / Sem sessão
-                if (mounted) {
-                    setEmployeeProfile(null);
-                    setWholesaleProfile(null);
-                    localStorage.removeItem(ADMIN_PROFILE_KEY);
-                    localStorage.removeItem(WHOLESALE_PROFILE_KEY);
-                }
-            }
+  const value = useMemo(() => ({
+    session,
+    user,
+    role,
+    loading,
+    signIn,
+    signOut
+  }), [session, user, role, loading]);
 
-            if (mounted) setLoading(false);
-        };
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
 
-        // Inicialização
-        supabase.auth.getSession().then(({ data: { session }, error }) => {
-            if (error) {
-                console.error("Erro de sessão inicial:", error);
-                // Só aqui fazemos logout forçado se a sessão for inválida
-                logout();
-            } else {
-                processSession(session);
-            }
-        });
-
-        const { data: authListener } = supabase.auth.onAuthStateChange(
-            (_event, session) => {
-                processSession(session);
-            }
-        );
-
-        return () => {
-            mounted = false;
-            authListener.subscription.unsubscribe();
-        };
-    }, [logout, loadProfiles]);
-
-    const signIn = useCallback(async (email: string, pass: string) => {
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password: pass,
-        });
-        if (error) throw error;
-    }, []);
-
-    const value = useMemo(
-        () => ({
-            session,
-            user,
-            employeeProfile,
-            wholesaleProfile,
-            isWholesale: !!wholesaleProfile,
-            loading,
-            signIn,
-            logout,
-        }),
-        [
-            session,
-            user,
-            employeeProfile,
-            wholesaleProfile,
-            loading,
-            signIn,
-            logout,
-        ]
-    );
-
-    return (
-        <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-    );
+export const useAuth = () => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
 };

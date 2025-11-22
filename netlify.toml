@@ -1,0 +1,45 @@
+# Nome do arquivo: netlify.toml
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  included_files = ["netlify/functions/**"]
+
+# --- Edge Functions (Middleware de Segurança) ---
+# Protege as rotas sensíveis antes mesmo de carregar o React
+[[edge_functions]]
+  function = "auth-protect"
+  path = "/admin/*"
+
+[[edge_functions]]
+  function = "auth-protect"
+  path = "/dashboard/*"
+
+[[edge_functions]]
+  function = "auth-protect"
+  path = "/atacado/*"
+
+# --- Redirects e Rewrites ---
+
+# Roteia chamadas de API para as Serverless Functions
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# Garante que o fluxo de Auth do Supabase passe direto
+[[redirects]]
+  from = "/auth/*"
+  to = "https://YOUR_PROJECT_REF.supabase.co/:splat"
+  status = 200
+  force = true
+
+# Fallback para SPA (React Router) - Qualquer rota não encontrada vai para o index
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
