@@ -1,31 +1,44 @@
-# netlify.toml
+# ARQUIVO: netlify.toml
 
 [build]
   command = "npm run build"
   publish = "dist"
 
 [functions]
-  # Aponta explicitamente para a pasta
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# REDIRECTS (A ordem importa: API primeiro, depois Auth, depois SPA)
+# --- Edge Functions (Middleware) ---
+[[edge_functions]]
+  function = "auth-protect"
+  path = "/admin/*"
 
-# 1. Redireciona chamadas de API para as Serverless Functions
+[[edge_functions]]
+  function = "auth-protect"
+  path = "/dashboard/*"
+
+[[edge_functions]]
+  function = "auth-protect"
+  path = "/atacado/*"
+
+# --- REDIRECTS (A ORDEM IMPORTA MUITO) ---
+
+# 1. API: Manda pro backend (Serverless Functions)
+# Isso TEM que vir antes da regra do SPA
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
 
-# 2. Deixa o Supabase Auth passar direto (necessário para alguns fluxos de callback)
+# 2. Auth: Deixa o Supabase resolver sozinho
 [[redirects]]
   from = "/auth/*"
   to = "https://jphprbjcmhpeqwolzntq.supabase.co/:splat"
   status = 200
   force = true
 
-# 3. Fallback para Single Page Application (React)
-# Qualquer rota que não seja arquivo estático ou API vai para index.html
+# 3. SPA (Single Page App): O "Catch-All"
+# Só executa se nenhuma das regras acima bater
 [[redirects]]
   from = "/*"
   to = "/index.html"
