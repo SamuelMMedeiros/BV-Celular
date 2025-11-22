@@ -1,1048 +1,441 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { z } from "zod";
-import { useForm, Controller, useFieldArray } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, Link } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { Navbar } from "@/components/Navbar";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-    Form,
-    FormControl,
-    FormDescription,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-    ArrowLeft,
-    X,
-    Calendar as CalendarIcon,
-    Plus,
-    Trash2,
-    Layers,
-} from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import {
-    createProduct,
-    fetchStores,
-    fetchProductById,
-    updateProduct,
-} from "@/lib/api";
-import {
-    ProductInsertPayload,
-    ProductUpdatePayload,
-    Store,
-    Product,
-} from "@/types";
-import { formatCurrency, parseCurrency } from "@/lib/utils";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { Label } from "recharts";
+import React, { useState, useEffect } from 'react';
+import { Plus, X, Info, Check, Trash2, HelpCircle, AlertCircle, Package, Eye } from 'lucide-react';
 
-const SUBCATEGORIES = {
-    aparelho: [
-        { value: "smartphone", label: "Smartphone" },
-        { value: "tablet", label: "Tablet" },
-        { value: "smartwatch", label: "Smartwatch" },
-    ],
-    acessorio: [
-        { value: "case", label: "Capa / Case" },
-        { value: "film", label: "Película" },
-        { value: "charger", label: "Carregador / Cabo" },
-        { value: "audio", label: "Fone / Áudio" },
-        { value: "smartwatch_band", label: "Pulseira de Watch" },
-        { value: "peripheral", label: "Periférico" },
-        { value: "other", label: "Outros" },
-    ],
+// --- TIPOS ---
+type Variation = {
+  id: string;
+  name: string;
+  options: string[];
 };
 
-const variantSchema = z.object({
-    name: z.string().min(1, "Nome obrigatório"),
-    price: z.string().min(1, "Preço obrigatório"),
-    quantity: z.string().min(1, "Estoque obrigatório"),
-    original_price: z.string().optional(),
-});
+type SKU = {
+  id: string;
+  combinationId: string; // Identificador único da combinação (ex: "Azul-P")
+  attributes: { [key: string]: string }; // { "Cor": "Azul", "Tamanho": "P" }
+  price: string; // Preço específico desta variação (opcional)
+  stock: string; // Quantidade em stock
+  skuCode: string; // Código de referência
+};
 
-const commonSchema = z.object({
-    name: z.string().min(3, "Nome muito curto."),
-    description: z.string().optional().nullable(),
-    brand: z.string().min(1, "Marca obrigatória."),
-    subcategory: z.string().optional(),
-    price: z.string().min(1, "Preço obrigatório"),
-    originalPrice: z.string().optional().nullable(),
-    storage: z.string().optional().nullable(),
-    ram: z.string().optional().nullable(),
-    colors: z
-        .string()
-        .optional()
-        .nullable()
-        .transform((val) =>
-            val
-                ? val
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean)
-                : []
-        ),
-    category: z.enum(["aparelho", "acessorio"]),
-    isPromotion: z.boolean().default(false),
-    promotion_end_date: z.date().optional().nullable(),
-    quantity: z.string().optional().default("0"),
-    wholesale_price: z.string().optional(),
-    installment_price: z.string().optional(),
-    max_installments: z.string().optional().default("12"),
-    store_ids: z.array(z.string()).optional(),
-    has_variations: z.boolean().default(false),
-    variants: z.array(variantSchema).optional(),
-});
+type FormErrors = {
+  title?: string;
+  basePrice?: string;
+  variations?: string;
+};
 
-const imageFileSchema = z.array(z.instanceof(File)).optional();
-const createSchema = commonSchema.extend({ image_files: imageFileSchema });
-const editSchema = commonSchema.extend({ image_files: imageFileSchema });
-type FormValues = z.infer<typeof createSchema>;
+export default function ProductForm() {
+  // --- ESTADOS ---
+  const [productTitle, setProductTitle] = useState('');
+  const [basePrice, setBasePrice] = useState('');
+  const [installments, setInstallments] = useState('12');
+  const [variations, setVariations] = useState<Variation[]>([]);
+  const [skus, setSkus] = useState<SKU[]>([]);
+  const [errors, setErrors] = useState<FormErrors>({});
 
-const AdminProductForm = () => {
-    const navigate = useNavigate();
-    const { toast } = useToast();
-    const queryClient = useQueryClient();
-    const { productId } = useParams<{ productId: string }>();
-    const isEditMode = !!productId;
+  // Estado auxiliar para inputs de novas opções
+  const [currentOptionInputs, setCurrentOptionInputs] = useState<{ [key: string]: string }>({});
 
-    const [existingImages, setExistingImages] = useState<string[]>([]);
-    const [imagesToDelete, setImagesToDelete] = useState<string[]>([]);
+  // Estado para o Preview (qual opção está selecionada visualmente)
+  const [previewSelection, setPreviewSelection] = useState<{ [key: string]: string }>({});
 
-    const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
-        queryKey: ["stores"],
-        queryFn: fetchStores,
-    });
+  // --- EFEITO: GERAR SKUs AUTOMATICAMENTE ---
+  useEffect(() => {
+    generateSKUs();
+  }, [variations]);
 
-    const { data: productToEdit, isLoading: isLoadingProduct } =
-        useQuery<Product>({
-            queryKey: ["adminProduct", productId],
-            queryFn: () => fetchProductById(productId!),
-            enabled: isEditMode,
-        });
+  const generateSKUs = () => {
+    if (variations.length === 0) {
+      setSkus([]);
+      return;
+    }
 
-    const form = useForm<FormValues>({
-        resolver: zodResolver(isEditMode ? editSchema : createSchema),
-        defaultValues: {
-            name: "",
-            description: "",
-            brand: "",
-            subcategory: "",
-            price: "",
-            originalPrice: "",
-            storage: "",
-            ram: "",
-            colors: "" as any,
-            category: "aparelho",
-            isPromotion: false,
-            promotion_end_date: null,
-            quantity: "0",
-            wholesale_price: "",
-            installment_price: "",
-            max_installments: "12",
-            store_ids: [],
-            image_files: [],
-            has_variations: false,
-            variants: [],
-        },
-    });
+    // Filtra variações que têm pelo menos uma opção
+    const activeVariations = variations.filter(v => v.options.length > 0 && v.name.trim() !== '');
+    
+    if (activeVariations.length === 0) return;
 
-    const {
-        fields: variantFields,
-        append: appendVariant,
-        remove: removeVariant,
-    } = useFieldArray({
-        control: form.control,
-        name: "variants" as any,
-    });
-
-    const selectedCategory = form.watch("category");
-    const isPromotion = form.watch("isPromotion");
-    const hasVariations = form.watch("has_variations");
-
-    useEffect(() => {
-        if (productToEdit) {
-            const formValues: any = {
-                ...productToEdit,
-                price: productToEdit.price
-                    ? formatCurrency(productToEdit.price)
-                          .replace("R$", "")
-                          .trim()
-                    : "",
-                originalPrice: productToEdit.originalPrice
-                    ? formatCurrency(productToEdit.originalPrice)
-                          .replace("R$", "")
-                          .trim()
-                    : "",
-                quantity: String(productToEdit.quantity || 0),
-                wholesale_price: productToEdit.wholesale_price
-                    ? formatCurrency(productToEdit.wholesale_price)
-                          .replace("R$", "")
-                          .trim()
-                    : "",
-                installment_price: productToEdit.installment_price
-                    ? formatCurrency(productToEdit.installment_price)
-                          .replace("R$", "")
-                          .trim()
-                    : "",
-                max_installments: String(productToEdit.max_installments || 12),
-                colors: Array.isArray(productToEdit.colors)
-                    ? productToEdit.colors.join(", ")
-                    : productToEdit.colors,
-                promotion_end_date: productToEdit.promotion_end_date
-                    ? new Date(productToEdit.promotion_end_date)
-                    : null,
-                store_ids: productToEdit.stores.map((s) => s.id),
-                image_files: [],
-                has_variations: productToEdit.has_variations || false,
-                variants:
-                    productToEdit.variants?.map((v) => ({
-                        name: v.name,
-                        price: formatCurrency(v.price).replace("R$", "").trim(),
-                        quantity: String(v.quantity),
-                        original_price: v.original_price
-                            ? formatCurrency(v.original_price)
-                                  .replace("R$", "")
-                                  .trim()
-                            : "",
-                    })) || [],
-            };
-            form.reset(formValues);
-            setExistingImages(productToEdit.images || []);
-            setImagesToDelete([]);
+    // Algoritmo para criar produto cartesiano das opções
+    const cartesian = (args: string[][]) => {
+      const result: string[][] = [];
+      const max = args.length - 1;
+      function helper(arr: string[], i: number) {
+        for (let j = 0, l = args[i].length; j < l; j++) {
+          const a = arr.slice(0);
+          a.push(args[i][j]);
+          if (i === max) result.push(a);
+          else helper(a, i + 1);
         }
-    }, [productToEdit, form]);
-
-    const createMutation = useMutation({
-        mutationFn: (data: ProductInsertPayload) => createProduct(data),
-        onSuccess: () => {
-            toast({ title: "Sucesso!", description: "Produto criado." });
-            queryClient.invalidateQueries({ queryKey: ["adminProducts"] });
-            // CORREÇÃO: Redireciona para a rota em português
-            navigate("/admin/produtos");
-        },
-        onError: (error) =>
-            toast({
-                variant: "destructive",
-                title: "Erro ao criar",
-                description: error.message,
-            }),
-    });
-
-    const updateMutation = useMutation({
-        mutationFn: (data: ProductUpdatePayload) => updateProduct(data),
-        onSuccess: () => {
-            toast({ title: "Sucesso!", description: "Produto atualizado." });
-            queryClient.invalidateQueries({ queryKey: ["adminProducts"] });
-            // CORREÇÃO: Redireciona para a rota em português
-            navigate("/admin/produtos");
-        },
-        onError: (error) =>
-            toast({
-                variant: "destructive",
-                title: "Erro ao atualizar",
-                description: error.message,
-            }),
-    });
-
-    const onSubmit = (data: any) => {
-        const newFiles = data.image_files || [];
-        if (existingImages.length + newFiles.length === 0 && !isEditMode) {
-            form.setError("image_files", {
-                type: "manual",
-                message: "Imagem obrigatória.",
-            });
-            return;
-        }
-
-        const parseMoney = (val: string) => {
-            const cents = parseCurrency(val);
-            return cents !== undefined ? cents / 100 : 0;
-        };
-        const payloadBase = {
-            store_ids: data.store_ids,
-            promotion_end_date: data.promotion_end_date
-                ? data.promotion_end_date.toISOString()
-                : null,
-            quantity: parseInt(data.quantity || "0"),
-            wholesale_price: parseMoney(data.wholesale_price),
-            installment_price: parseMoney(data.installment_price),
-            max_installments: parseInt(data.max_installments || "12"),
-            brand: data.brand,
-            subcategory: data.subcategory || null,
-            has_variations: data.has_variations,
-            variants: data.has_variations
-                ? data.variants.map((v: any) => ({
-                      name: v.name,
-                      attributes: { name: v.name },
-                      price: parseMoney(v.price),
-                      original_price: v.original_price
-                          ? parseMoney(v.original_price)
-                          : null,
-                      quantity: parseInt(v.quantity || "0"),
-                  }))
-                : [],
-        };
-
-        if (isEditMode) {
-            updateMutation.mutate({
-                ...data,
-                id: productId,
-                images_to_delete: imagesToDelete,
-                ...payloadBase,
-            });
-        } else {
-            createMutation.mutate({
-                ...data,
-                image_files: data.image_files,
-                ...payloadBase,
-            });
-        }
+      }
+      helper([], 0);
+      return result;
     };
 
-    const isLoading = createMutation.isPending || updateMutation.isPending;
+    const optionsArrays = activeVariations.map(v => v.options);
+    const combinations = cartesian(optionsArrays);
 
-    const handlePriceBlur = (e: any, fieldName: any) => {
-        const value = e.target.value;
-        const cents = parseCurrency(value);
-        if (cents !== undefined) {
-            const formatted = (cents / 100)
-                .toLocaleString("pt-BR", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                })
-                .replace(/\s/g, "");
-            form.setValue(fieldName, formatted);
-        } else {
-            form.setValue(fieldName, "");
-        }
-    };
+    // Cria ou atualiza a lista de SKUs preservando dados existentes
+    const newSkus: SKU[] = combinations.map(combo => {
+      const attributes: { [key: string]: string } = {};
+      let combinationId = '';
 
-    const removeNewFile = (index: number) => {
-        const newFiles = form.getValues("image_files") || [];
-        const updatedFiles = newFiles.filter((_, i) => i !== index);
-        form.setValue("image_files", updatedFiles, { shouldValidate: true });
-    };
-    const removeExistingImage = (imageUrl: string) => {
-        setExistingImages(existingImages.filter((img) => img !== imageUrl));
-        setImagesToDelete((prev) => [...prev, imageUrl]);
-    };
-    const newFiles = form.watch("image_files") || [];
-    const newFilePreviews = newFiles.map((file) => ({
-        url: URL.createObjectURL(file),
-        name: file.name,
+      activeVariations.forEach((v, index) => {
+        attributes[v.name] = combo[index];
+        combinationId += `${combo[index]}-`;
+      });
+
+      // Tenta encontrar um SKU existente com essa combinação para manter preço/estoque
+      const existingSku = skus.find(s => s.combinationId === combinationId);
+
+      return {
+        id: existingSku?.id || Math.random().toString(36).substr(2, 9),
+        combinationId,
+        attributes,
+        price: existingSku?.price || '',
+        stock: existingSku?.stock || '0',
+        skuCode: existingSku?.skuCode || '',
+      };
+    });
+
+    setSkus(newSkus);
+  };
+
+  // --- MANIPULADORES DE VARIAÇÃO ---
+  const addVariation = () => {
+    const newId = Math.random().toString(36).substr(2, 9);
+    setVariations([...variations, { id: newId, name: '', options: [] }]);
+  };
+
+  const removeVariation = (id: string) => {
+    setVariations(variations.filter(v => v.id !== id));
+  };
+
+  const updateVariationName = (id: string, name: string) => {
+    setVariations(variations.map(v => v.id === id ? { ...v, name } : v));
+  };
+
+  const addOptionToVariation = (variationId: string) => {
+    const inputValue = currentOptionInputs[variationId]?.trim();
+    if (!inputValue) return;
+
+    setVariations(variations.map(v => {
+      if (v.id === variationId && !v.options.includes(inputValue)) {
+        return { ...v, options: [...v.options, inputValue] };
+      }
+      return v;
     }));
+    setCurrentOptionInputs({ ...currentOptionInputs, [variationId]: '' });
+  };
 
-    return (
-        <div className="min-h-screen bg-background pb-20">
-            <Navbar />
-            <main className="container py-8">
-                <Card className="mx-auto max-w-4xl">
-                    <CardHeader>
-                        {/* CORREÇÃO: Link de voltar aponta para /admin/produtos */}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                            className="mb-2 w-fit justify-self-start p-0"
-                        >
-                            <Link to="/admin/produtos">
-                                <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
-                            </Link>
-                        </Button>
-                        <CardTitle>
-                            {isEditMode
-                                ? "Editar Produto"
-                                : "Adicionar Produto"}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {isEditMode && isLoadingProduct ? (
-                            <Skeleton className="h-96 w-full" />
-                        ) : (
-                            <Form {...form}>
-                                <form
-                                    onSubmit={form.handleSubmit(
-                                        onSubmit as any
-                                    )}
-                                    className="space-y-8"
-                                >
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <FormField
-                                            control={form.control}
-                                            name="category"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Tipo</FormLabel>
-                                                    <Select
-                                                        onValueChange={(
-                                                            val
-                                                        ) => {
-                                                            field.onChange(val);
-                                                            form.setValue(
-                                                                "subcategory",
-                                                                ""
-                                                            );
-                                                        }}
-                                                        value={field.value}
-                                                    >
-                                                        <FormControl>
-                                                            <SelectTrigger>
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                        </FormControl>
-                                                        <SelectContent>
-                                                            <SelectItem value="aparelho">
-                                                                Aparelho
-                                                            </SelectItem>
-                                                            <SelectItem value="acessorio">
-                                                                Acessório
-                                                            </SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="subcategory"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Subcategoria
-                                                    </FormLabel>
-                                                    <Select
-                                                        onValueChange={
-                                                            field.onChange
-                                                        }
-                                                        value={field.value}
-                                                    >
-                                                        <FormControl>
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Selecione" />
-                                                            </SelectTrigger>
-                                                        </FormControl>
-                                                        <SelectContent>
-                                                            {SUBCATEGORIES[
-                                                                selectedCategory as
-                                                                    | "aparelho"
-                                                                    | "acessorio"
-                                                            ]?.map((sub) => (
-                                                                <SelectItem
-                                                                    key={
-                                                                        sub.value
-                                                                    }
-                                                                    value={
-                                                                        sub.value
-                                                                    }
-                                                                >
-                                                                    {sub.label}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <FormField
-                                            control={form.control}
-                                            name="name"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Nome</FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            {...field}
-                                                            value={
-                                                                field.value ||
-                                                                ""
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="brand"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Marca</FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            placeholder="Ex: Apple"
-                                                            {...field}
-                                                            value={
-                                                                field.value ??
-                                                                ""
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                        <FormField
-                                            control={form.control}
-                                            name="price"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Preço Varejo (R$)
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            {...field}
-                                                            onBlur={(e) =>
-                                                                handlePriceBlur(
-                                                                    e,
-                                                                    "price"
-                                                                )
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="originalPrice"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Preço Original
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            {...field}
-                                                            onBlur={(e) =>
-                                                                handlePriceBlur(
-                                                                    e,
-                                                                    "originalPrice"
-                                                                )
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="quantity"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Estoque Total
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            type="number"
-                                                            {...field}
-                                                            disabled={
-                                                                hasVariations
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormDescription>
-                                                        {hasVariations
-                                                            ? "Calculado pelas variações"
-                                                            : "Estoque único"}
-                                                    </FormDescription>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
-                                    <div className="border rounded-lg p-4 bg-slate-50 dark:bg-slate-900 space-y-4">
-                                        <FormField
-                                            control={form.control}
-                                            name="has_variations"
-                                            render={({ field }) => (
-                                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                                    <div className="space-y-0.5">
-                                                        <FormLabel className="text-base font-bold flex items-center gap-2">
-                                                            <Layers className="h-4 w-4" />{" "}
-                                                            Tem variações?
-                                                        </FormLabel>
-                                                    </div>
-                                                    <FormControl>
-                                                        <Switch
-                                                            checked={
-                                                                field.value
-                                                            }
-                                                            onCheckedChange={
-                                                                field.onChange
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                </FormItem>
-                                            )}
-                                        />
-                                        {hasVariations && (
-                                            <div className="space-y-4 animate-in fade-in">
-                                                {variantFields.map(
-                                                    (field, index) => (
-                                                        <div
-                                                            key={field.id}
-                                                            className="grid grid-cols-12 gap-2 items-end border p-2 rounded bg-background"
-                                                        >
-                                                            <div className="col-span-5">
-                                                                <Label className="text-xs">
-                                                                    Nome
-                                                                </Label>
-                                                                <Input
-                                                                    {...form.register(
-                                                                        `variants.${index}.name`
-                                                                    )}
-                                                                    placeholder="Variação"
-                                                                />
-                                                            </div>
-                                                            <div className="col-span-3">
-                                                                <Label className="text-xs">
-                                                                    Preço
-                                                                </Label>
-                                                                <Input
-                                                                    {...form.register(
-                                                                        `variants.${index}.price`
-                                                                    )}
-                                                                    onBlur={(
-                                                                        e
-                                                                    ) =>
-                                                                        handlePriceBlur(
-                                                                            e,
-                                                                            `variants.${index}.price`
-                                                                        )
-                                                                    }
-                                                                    placeholder="0,00"
-                                                                />
-                                                            </div>
-                                                            <div className="col-span-2">
-                                                                <Label className="text-xs">
-                                                                    Qtd
-                                                                </Label>
-                                                                <Input
-                                                                    type="number"
-                                                                    {...form.register(
-                                                                        `variants.${index}.quantity`
-                                                                    )}
-                                                                    placeholder="0"
-                                                                />
-                                                            </div>
-                                                            <div className="col-span-2">
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="destructive"
-                                                                    size="sm"
-                                                                    className="w-full"
-                                                                    onClick={() =>
-                                                                        removeVariant(
-                                                                            index
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                )}
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() =>
-                                                        appendVariant({
-                                                            name: "",
-                                                            price: "",
-                                                            quantity: "",
-                                                            original_price: "",
-                                                        })
-                                                    }
-                                                    className="w-full"
-                                                >
-                                                    <Plus className="h-4 w-4 mr-2" />{" "}
-                                                    Adicionar Variação
-                                                </Button>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-t pt-4 mt-4 bg-muted/10 p-4 rounded-md">
-                                        <div className="col-span-full font-semibold text-sm text-muted-foreground">
-                                            OPÇÕES AVANÇADAS
-                                        </div>
-                                        <FormField
-                                            control={form.control}
-                                            name="wholesale_price"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Preço Atacado (PJ)
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            {...field}
-                                                            onBlur={(e) =>
-                                                                handlePriceBlur(
-                                                                    e,
-                                                                    "wholesale_price"
-                                                                )
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="installment_price"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Base Parcelamento
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            {...field}
-                                                            onBlur={(e) =>
-                                                                handlePriceBlur(
-                                                                    e,
-                                                                    "installment_price"
-                                                                )
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="max_installments"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>
-                                                        Máx. Parcelas
-                                                    </FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            type="number"
-                                                            {...field}
-                                                        />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
-                                    <FormField
-                                        control={form.control}
-                                        name="description"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Descrição</FormLabel>
-                                                <FormControl>
-                                                    <Textarea
-                                                        {...field}
-                                                        className="h-24"
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <Controller
-                                        control={form.control}
-                                        name="image_files"
-                                        render={({
-                                            field: { onChange },
-                                            fieldState: { error },
-                                        }) => (
-                                            <FormItem>
-                                                <FormLabel>Imagens</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="file"
-                                                        multiple
-                                                        accept="image/*"
-                                                        onChange={(e) =>
-                                                            onChange([
-                                                                ...newFiles,
-                                                                ...Array.from(
-                                                                    e.target
-                                                                        .files ||
-                                                                        []
-                                                                ),
-                                                            ])
-                                                        }
-                                                    />
-                                                </FormControl>
-                                                <div className="mt-4 grid grid-cols-4 gap-4">
-                                                    {existingImages.map(
-                                                        (url) => (
-                                                            <div
-                                                                key={url}
-                                                                className="relative aspect-square"
-                                                            >
-                                                                <img
-                                                                    src={url}
-                                                                    className="object-cover w-full h-full rounded border"
-                                                                />
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="destructive"
-                                                                    size="icon"
-                                                                    className="absolute top-1 right-1 h-6 w-6"
-                                                                    onClick={() =>
-                                                                        removeExistingImage(
-                                                                            url
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <X className="h-3 w-3" />
-                                                                </Button>
-                                                            </div>
-                                                        )
-                                                    )}
-                                                    {newFilePreviews.map(
-                                                        (p, i) => (
-                                                            <div
-                                                                key={i}
-                                                                className="relative aspect-square"
-                                                            >
-                                                                <img
-                                                                    src={p.url}
-                                                                    className="object-cover w-full h-full rounded border opacity-80"
-                                                                />
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="destructive"
-                                                                    size="icon"
-                                                                    className="absolute top-1 right-1 h-6 w-6"
-                                                                    onClick={() =>
-                                                                        removeNewFile(
-                                                                            i
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <X className="h-3 w-3" />
-                                                                </Button>
-                                                            </div>
-                                                        )
-                                                    )}
-                                                </div>
-                                                {error && (
-                                                    <FormMessage>
-                                                        {error.message}
-                                                    </FormMessage>
-                                                )}
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="store_ids"
-                                        render={() => (
-                                            <FormItem>
-                                                <FormLabel>Lojas</FormLabel>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    {stores?.map((store) => (
-                                                        <FormField
-                                                            key={store.id}
-                                                            control={
-                                                                form.control
-                                                            }
-                                                            name="store_ids"
-                                                            render={({
-                                                                field,
-                                                            }) => (
-                                                                <FormItem className="flex flex-row items-center space-x-2">
-                                                                    <FormControl>
-                                                                        <Checkbox
-                                                                            checked={field.value?.includes(
-                                                                                store.id
-                                                                            )}
-                                                                            onCheckedChange={(
-                                                                                checked
-                                                                            ) =>
-                                                                                checked
-                                                                                    ? field.onChange(
-                                                                                          [
-                                                                                              ...(field.value ||
-                                                                                                  []),
-                                                                                              store.id,
-                                                                                          ]
-                                                                                      )
-                                                                                    : field.onChange(
-                                                                                          field.value?.filter(
-                                                                                              (
-                                                                                                  v: string
-                                                                                              ) =>
-                                                                                                  v !==
-                                                                                                  store.id
-                                                                                          )
-                                                                                      )
-                                                                            }
-                                                                        />
-                                                                    </FormControl>
-                                                                    <FormLabel className="font-normal">
-                                                                        {
-                                                                            store.name
-                                                                        }
-                                                                    </FormLabel>
-                                                                </FormItem>
-                                                            )}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                                        <FormField
-                                            control={form.control}
-                                            name="isPromotion"
-                                            render={({ field }) => (
-                                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 h-[84px]">
-                                                    <div className="space-y-0.5">
-                                                        <FormLabel className="text-base">
-                                                            Em Promoção?
-                                                        </FormLabel>
-                                                    </div>
-                                                    <FormControl>
-                                                        <Switch
-                                                            checked={
-                                                                field.value
-                                                            }
-                                                            onCheckedChange={
-                                                                field.onChange
-                                                            }
-                                                        />
-                                                    </FormControl>
-                                                </FormItem>
-                                            )}
-                                        />
-                                        {isPromotion && (
-                                            <FormField
-                                                control={form.control}
-                                                name="promotion_end_date"
-                                                render={({ field }) => (
-                                                    <FormItem className="flex flex-col pt-2">
-                                                        <FormLabel>
-                                                            Válida até
-                                                        </FormLabel>
-                                                        <Popover>
-                                                            <PopoverTrigger
-                                                                asChild
-                                                            >
-                                                                <FormControl>
-                                                                    <Button
-                                                                        variant={
-                                                                            "outline"
-                                                                        }
-                                                                        className={cn(
-                                                                            "pl-3 text-left font-normal h-12",
-                                                                            !field.value &&
-                                                                                "text-muted-foreground"
-                                                                        )}
-                                                                    >
-                                                                        {field.value ? (
-                                                                            format(
-                                                                                field.value,
-                                                                                "PPP",
-                                                                                {
-                                                                                    locale: ptBR,
-                                                                                }
-                                                                            )
-                                                                        ) : (
-                                                                            <span>
-                                                                                Selecione
-                                                                                a
-                                                                                data
-                                                                            </span>
-                                                                        )}
-                                                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                                                    </Button>
-                                                                </FormControl>
-                                                            </PopoverTrigger>
-                                                            <PopoverContent
-                                                                className="w-auto p-0"
-                                                                align="start"
-                                                            >
-                                                                <Calendar
-                                                                    mode="single"
-                                                                    selected={
-                                                                        field.value ||
-                                                                        undefined
-                                                                    }
-                                                                    onSelect={
-                                                                        field.onChange
-                                                                    }
-                                                                    disabled={(
-                                                                        date
-                                                                    ) =>
-                                                                        date <
-                                                                        new Date()
-                                                                    }
-                                                                    initialFocus
-                                                                />
-                                                            </PopoverContent>
-                                                        </Popover>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-                                        )}
-                                    </div>
-                                    <Button
-                                        type="submit"
-                                        disabled={isLoading}
-                                        className="w-full h-12 text-lg"
-                                    >
-                                        {isLoading ? "Salvando..." : "Salvar"}
-                                    </Button>
-                                </form>
-                            </Form>
-                        )}
-                    </CardContent>
-                </Card>
-            </main>
+  const removeOptionFromVariation = (variationId: string, optionToRemove: string) => {
+    setVariations(variations.map(v => {
+      if (v.id === variationId) {
+        return { ...v, options: v.options.filter(o => o !== optionToRemove) };
+      }
+      return v;
+    }));
+  };
+
+  // --- MANIPULADORES DE SKU ---
+  const updateSkuField = (skuId: string, field: keyof SKU, value: string) => {
+    setSkus(skus.map(sku => sku.id === skuId ? { ...sku, [field]: value } : sku));
+  };
+
+  // --- VALIDAÇÃO E SALVAR ---
+  const handleSave = () => {
+    const newErrors: FormErrors = {};
+    
+    if (!productTitle.trim()) newErrors.title = 'O nome do produto é obrigatório.';
+    if (!basePrice) newErrors.basePrice = 'O preço base é obrigatório.';
+    
+    // Valida se criou variação mas não colocou opções
+    const emptyVariations = variations.some(v => v.name && v.options.length === 0);
+    if (emptyVariations) newErrors.variations = 'Todas as variações criadas devem ter pelo menos uma opção.';
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length === 0) {
+      alert('Produto pronto para ser salvo! Verifique o console.');
+      console.log({ productTitle, basePrice, installments, variations, skus });
+    }
+  };
+
+  // --- TEMPLATES ---
+  const applyTemplate = (type: 'clothes' | 'tech') => {
+    const newId1 = Math.random().toString(36).substr(2, 9);
+    const newId2 = Math.random().toString(36).substr(2, 9);
+    if (type === 'clothes') {
+      setVariations([
+        { id: newId1, name: 'Tamanho', options: ['P', 'M', 'G'] },
+        { id: newId2, name: 'Cor', options: ['Branco', 'Preto'] }
+      ]);
+    } else if (type === 'tech') {
+      setVariations([
+        { id: newId1, name: 'Modelo', options: ['iPhone 13', 'iPhone 14'] },
+        { id: newId2, name: 'Tipo', options: ['Película 3D', 'Película Privacidade'] }
+      ]);
+    }
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto p-6 bg-gray-50 min-h-screen font-sans">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-800">Novo Produto</h1>
+        <button 
+          onClick={handleSave}
+          className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow transition-colors flex items-center gap-2"
+        >
+          <Check size={20} />
+          Publicar Produto
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* COLUNA DA ESQUERDA: FORMULÁRIO */}
+        <div className="lg:col-span-2 space-y-6">
+          
+          {/* 1. INFORMAÇÕES BÁSICAS */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <Info size={20} className="text-blue-500" />
+              Informações Básicas
+            </h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Produto</label>
+                <input
+                  type="text"
+                  value={productTitle}
+                  onChange={(e) => setProductTitle(e.target.value)}
+                  className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none transition-all ${errors.title ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="Ex: Capa Protetora Anti-impacto"
+                />
+                {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Preço Base</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                    <input
+                      type="number"
+                      value={basePrice}
+                      onChange={(e) => setBasePrice(e.target.value)}
+                      className={`w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none ${errors.basePrice ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                      placeholder="0,00"
+                    />
+                  </div>
+                  {errors.basePrice && <p className="text-red-500 text-xs mt-1">{errors.basePrice}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Parcelamento</label>
+                  <select
+                    value={installments}
+                    onChange={(e) => setInstallments(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="1">À vista</option>
+                    <option value="3">Até 3x sem juros</option>
+                    <option value="6">Até 6x sem juros</option>
+                    <option value="12">Até 12x sem juros</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. VARIAÇÕES */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <Package size={20} className="text-purple-500" />
+                Variações
+              </h2>
+              <div className="flex gap-2">
+                <button onClick={() => applyTemplate('tech')} className="text-xs bg-purple-50 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-100 transition-colors">
+                  + Tech Template
+                </button>
+                <button onClick={() => applyTemplate('clothes')} className="text-xs bg-blue-50 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-100 transition-colors">
+                  + Roupas Template
+                </button>
+              </div>
+            </div>
+
+            {errors.variations && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-center gap-2 text-red-700 text-sm">
+                <AlertCircle size={16} />
+                {errors.variations}
+              </div>
+            )}
+
+            <div className="space-y-6">
+              {variations.map((variation) => (
+                <div key={variation.id} className="relative p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <button onClick={() => removeVariation(variation.id)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500">
+                    <Trash2 size={16} />
+                  </button>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-1">
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nome (Ex: Cor)</label>
+                      <input
+                        type="text"
+                        value={variation.name}
+                        onChange={(e) => updateVariationName(variation.id, e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Opções (Enter para adicionar)</label>
+                      <div className="flex flex-wrap gap-2 p-2 bg-white border border-gray-300 rounded-md min-h-[42px]">
+                        {variation.options.map((opt) => (
+                          <span key={opt} className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                            {opt}
+                            <button onClick={() => removeOptionFromVariation(variation.id, opt)} className="hover:text-purple-900"><X size={12}/></button>
+                          </span>
+                        ))}
+                        <input
+                          type="text"
+                          value={currentOptionInputs[variation.id] || ''}
+                          onChange={(e) => setCurrentOptionInputs({...currentOptionInputs, [variationId: variation.id]: e.target.value})}
+                          onKeyDown={(e) => e.key === 'Enter' && addOptionToVariation(variation.id)}
+                          placeholder="Digite e dê Enter..."
+                          className="flex-1 bg-transparent outline-none text-sm min-w-[100px]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <button onClick={addVariation} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-purple-500 hover:text-purple-600 flex justify-center items-center gap-2 transition-all">
+                <Plus size={20} /> Adicionar Variação
+              </button>
+            </div>
+          </div>
+
+          {/* 3. ESTOQUE / SKUS */}
+          {skus.length > 0 && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">Estoque e Preços por Variação</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50 text-gray-600 uppercase text-xs">
+                    <tr>
+                      <th className="px-4 py-3 rounded-tl-lg">Combinação</th>
+                      <th className="px-4 py-3">Preço (Opcional)</th>
+                      <th className="px-4 py-3">Estoque</th>
+                      <th className="px-4 py-3 rounded-tr-lg">Cód. Ref (SKU)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {skus.map((sku) => (
+                      <tr key={sku.combinationId} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800">
+                          {Object.values(sku.attributes).join(' / ')}
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            placeholder={`Base: R$ ${basePrice || '0'}`}
+                            value={sku.price}
+                            onChange={(e) => updateSkuField(sku.id, 'price', e.target.value)}
+                            className="w-32 px-2 py-1 border border-gray-200 rounded focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            value={sku.stock}
+                            onChange={(e) => updateSkuField(sku.id, 'stock', e.target.value)}
+                            className="w-20 px-2 py-1 border border-gray-200 rounded focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="text"
+                            value={sku.skuCode}
+                            onChange={(e) => updateSkuField(sku.id, 'skuCode', e.target.value)}
+                            className="w-32 px-2 py-1 border border-gray-200 rounded focus:border-blue-500 outline-none"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
-    );
-};
 
-export default AdminProductForm;
+        {/* COLUNA DA DIREITA: PREVIEW */}
+        <div className="lg:col-span-1">
+          <div className="sticky top-6 bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+            <div className="flex items-center gap-2 text-gray-400 mb-4 text-sm uppercase tracking-wider font-bold">
+              <Eye size={16} />
+              Pré-visualização
+            </div>
+
+            <div className="space-y-4">
+              {/* Imagem Placeholder */}
+              <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center text-gray-300">
+                <span className="text-4xl">IMG</span>
+              </div>
+
+              {/* Título e Preço */}
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 leading-tight">
+                  {productTitle || 'Nome do Produto...'}
+                </h3>
+                <div className="mt-2 text-2xl font-bold text-green-600">
+                  R$ {basePrice || '0,00'}
+                  {installments !== '1' && (
+                    <span className="block text-xs font-normal text-gray-500">
+                      em até {installments}x sem juros
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Seletores de Variação (Interativos) */}
+              <div className="space-y-3 pt-4 border-t border-gray-100">
+                {variations.map(v => v.name && v.options.length > 0 && (
+                  <div key={v.id}>
+                    <p className="text-sm font-semibold text-gray-700 mb-2">{v.name}:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {v.options.map(opt => {
+                        const isSelected = previewSelection[v.name] === opt;
+                        return (
+                          <button
+                            key={opt}
+                            onClick={() => setPreviewSelection({ ...previewSelection, [v.name]: opt })}
+                            className={`px-3 py-1 border rounded-md text-sm transition-all ${
+                              isSelected 
+                                ? 'border-blue-600 bg-blue-50 text-blue-700 font-medium ring-1 ring-blue-600' 
+                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                            }`}
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-6">
+                <button className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-transform active:scale-95">
+                  Comprar Agora
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
