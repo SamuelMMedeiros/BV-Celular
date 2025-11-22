@@ -1,142 +1,166 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import React, { createContext, useCallback, useEffect, useMemo, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
-
-type Role = 'admin' | 'wholesale' | 'customer' | null;
+import { supabase } from "@/integrations/supabase/client";
+import { Employee, WholesaleClient } from "@/types";
 
 interface AuthContextType {
-  session: Session | null;
-  user: User | null;
-  role: Role;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<any>;
-  signOut: () => Promise<void>;
+    session: Session | null;
+    user: User | null;
+    employeeProfile: Employee | null;
+    wholesaleProfile: WholesaleClient | null;
+    isWholesale: boolean;
+    role: 'admin' | 'wholesale' | 'customer' | null;
+    loading: boolean;
+    signIn: (email: string, pass: string) => Promise<void>;
+    logout: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<Role>(null);
-  const [loading, setLoading] = useState(true);
+const ADMIN_PROFILE_KEY = "bv_admin_profile";
+const WHOLESALE_PROFILE_KEY = "bv_wholesale_profile";
 
-  // Função interna para determinar a role baseada nas APIs Serverless
-  // Isso garante segurança, pois o cliente não decide sua própria role
-  const fetchUserRole = async (currentUser: User, token: string) => {
-    try {
-      // 1. Tenta Admin
-      const adminRes = await fetch("/api/get-admin-profile", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-        },
-      });
-      if (adminRes.ok) {
-        setRole("admin");
-        return;
-      }
-
-      // 2. Tenta Atacado
-      const wholesaleRes = await fetch("/api/get-wholesale-profile", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-        },
-      });
-      if (wholesaleRes.ok) {
-        setRole("wholesale");
-        return;
-      }
-
-      // 3. Fallback para Cliente
-      setRole("customer");
-    } catch (error) {
-      console.error("Erro ao buscar role:", error);
-      setRole("customer");
-    }
-  };
-
-  useEffect(() => {
-    let mounted = true;
-
-    const initializeAuth = async () => {
-      try {
-        // Pega sessão inicial (localStorage)
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        
-        if (mounted) {
-          setSession(initialSession);
-          setUser(initialSession?.user ?? null);
-          
-          if (initialSession?.user && initialSession?.access_token) {
-            await fetchUserRole(initialSession.user, initialSession.access_token);
-          } else {
-             setRole(null);
-          }
-        }
-      } catch (err) {
-        console.error("Auth init error:", err);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    initializeAuth();
-
-    // Escuta mudanças (Login, Logout, Auto-Refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      if (mounted) {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        
-        // Se houve login ou refresh de token, revalida a role
-        if (newSession?.user && newSession?.access_token) {
-           // Pequena otimização: se a role já estiver setada e o user for o mesmo, 
-           // talvez não precise re-buscar, mas por segurança re-buscamos.
-           await fetchUserRole(newSession.user, newSession.access_token);
-        } else {
-           setRole(null);
-           setLoading(false); // Garante que saia do loading no logout
-        }
-      }
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+    const [session, setSession] = useState<Session | null>(null);
+    const [user, setUser] = useState<User | null>(null);
+    const [role, setRole] = useState<'admin' | 'wholesale' | 'customer' | null>(null);
+    
+    // Inicia lendo do cache para evitar flicker
+    const [employeeProfile, setEmployeeProfile] = useState<Employee | null>(() => {
+        try { return JSON.parse(localStorage.getItem(ADMIN_PROFILE_KEY) || "null"); } catch { return null; }
+    });
+    const [wholesaleProfile, setWholesaleProfile] = useState<WholesaleClient | null>(() => {
+        try { return JSON.parse(localStorage.getItem(WHOLESALE_PROFILE_KEY) || "null"); } catch { return null; }
     });
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
+    const [loading, setLoading] = useState(true);
+
+    const logout = useCallback(async () => {
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setEmployeeProfile(null);
+        setWholesaleProfile(null);
+        localStorage.removeItem(ADMIN_PROFILE_KEY);
+        localStorage.removeItem(WHOLESALE_PROFILE_KEY);
+        window.location.href = "/"; // Força recarregamento limpo
+    }, []);
+
+    const fetchProfileFromNetlify = async (token: string, userId: string) => {
+        try {
+            // 1. Tenta buscar perfil de ADMIN na Function
+            const adminRes = await fetch("/api/get-admin-profile", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` },
+            });
+
+            if (adminRes.ok) {
+                const adminData = await adminRes.json();
+                setEmployeeProfile(adminData);
+                setRole('admin');
+                localStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(adminData));
+                localStorage.removeItem(WHOLESALE_PROFILE_KEY);
+                return;
+            }
+
+            // 2. Se falhou, tenta perfil de ATACADO
+            const wholesaleRes = await fetch("/api/get-wholesale-profile", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` },
+            });
+
+            if (wholesaleRes.ok) {
+                const wholesaleData = await wholesaleRes.json();
+                setWholesaleProfile(wholesaleData);
+                setRole('wholesale');
+                localStorage.setItem(WHOLESALE_PROFILE_KEY, JSON.stringify(wholesaleData));
+                localStorage.removeItem(ADMIN_PROFILE_KEY);
+                return;
+            }
+
+            // 3. Se não é nenhum, é Customer
+            setRole('customer');
+            setEmployeeProfile(null);
+            setWholesaleProfile(null);
+            localStorage.removeItem(ADMIN_PROFILE_KEY);
+            localStorage.removeItem(WHOLESALE_PROFILE_KEY);
+
+        } catch (error) {
+            console.error("Erro ao buscar perfil:", error);
+            // Não deslogamos em erro de rede, apenas assumimos customer temporariamente
+            setRole('customer');
+        }
     };
-  }, []);
 
-  const signIn = async (email: string, password: string) => {
-    setLoading(true);
-    const result = await supabase.auth.signInWithPassword({ email, password });
-    if (result.error) setLoading(false); // Só desativa loading se der erro, senão o onAuthStateChange cuida
-    return result;
-  };
+    useEffect(() => {
+        let mounted = true;
 
-  const signOut = async () => {
-    setLoading(true);
-    await supabase.auth.signOut();
-    // O onAuthStateChange vai limpar o estado
-  };
+        const initSession = async () => {
+            try {
+                const { data: { session: initialSession } } = await supabase.auth.getSession();
+                
+                if (mounted) {
+                    setSession(initialSession);
+                    setUser(initialSession?.user ?? null);
 
-  const value = useMemo(() => ({
-    session,
-    user,
-    role,
-    loading,
-    signIn,
-    signOut
-  }), [session, user, role, loading]);
+                    if (initialSession?.access_token && initialSession?.user) {
+                        await fetchProfileFromNetlify(initialSession.access_token, initialSession.user.id);
+                    } else {
+                        // Sem sessão
+                        setEmployeeProfile(null);
+                        setWholesaleProfile(null);
+                        setRole(null);
+                    }
+                }
+            } catch (err) {
+                console.error("Erro auth init:", err);
+            } finally {
+                if (mounted) setLoading(false);
+            }
+        };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+        initSession();
 
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+            if (!mounted) return;
+            
+            setSession(newSession);
+            setUser(newSession?.user ?? null);
+
+            if (newSession?.access_token && newSession?.user) {
+                // Se o usuário mudou ou token mudou, revalida
+                await fetchProfileFromNetlify(newSession.access_token, newSession.user.id);
+            } else {
+                setRole(null);
+                setEmployeeProfile(null);
+                setWholesaleProfile(null);
+            }
+            setLoading(false);
+        });
+
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+        };
+    }, []);
+
+    const signIn = useCallback(async (email: string, pass: string) => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+        if (error) throw error;
+    }, []);
+
+    const value = useMemo(() => ({
+        session,
+        user,
+        employeeProfile,
+        wholesaleProfile,
+        isWholesale: !!wholesaleProfile,
+        role,
+        loading,
+        signIn,
+        logout
+    }), [session, user, employeeProfile, wholesaleProfile, role, loading, signIn, logout]);
+
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
