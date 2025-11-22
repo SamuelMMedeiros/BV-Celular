@@ -3,7 +3,6 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Employee, WholesaleClient } from "@/types";
 
-// --- MANTENDO INTERFACES ---
 interface AuthContextType {
     session: Session | null;
     user: User | null;
@@ -40,6 +39,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         window.location.href = "/"; 
     }, []);
 
+    // --- FUNÇÃO DE LOGIN (AGORA IMPLEMENTADA CORRETAMENTE) ---
+    const signIn = useCallback(async (email: string, pass: string) => {
+        log(`🔐 Tentando login para: ${email}`);
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+        
+        if (error) {
+            log("🔥 Erro no login (Supabase):", error);
+            throw error;
+        }
+        
+        log("✅ Login Supabase bem sucedido!", data);
+        // O onAuthStateChange vai capturar a mudança de sessão e carregar o perfil
+    }, []);
+
     const fetchProfileFromBackend = async (token: string) => {
         log("📡 Iniciando fetch no backend...");
         try {
@@ -58,8 +71,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 localStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(data));
                 return;
             } else {
-                const text = await adminRes.text();
-                log("❌ Erro Admin Body:", text);
+                try {
+                    const text = await adminRes.text();
+                    log("❌ Erro Admin Body:", text);
+                } catch (e) { log("❌ Erro ao ler body do erro admin"); }
             }
 
             // ATACADO
@@ -73,11 +88,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 const data = await wholesaleRes.json();
                 log("✅ Atacado encontrado:", data);
                 setWholesaleProfile(data);
+                localStorage.setItem(WHOLESALE_PROFILE_KEY, JSON.stringify(data));
                 return;
             }
 
-            log("⚠️ Nenhum perfil encontrado no backend.");
+            log("⚠️ Nenhum perfil especial encontrado. Usuário é Cliente Comum.");
             setEmployeeProfile(null);
+            setWholesaleProfile(null);
 
         } catch (error) {
             log("🔥 ERRO CRÍTICO NO FETCH:", error);
@@ -90,20 +107,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         const initAuth = async () => {
             try {
-                log("🔍 Buscando sessão no Supabase...");
+                log("🔍 Buscando sessão inicial...");
                 const { data: { session: initialSession }, error } = await supabase.auth.getSession();
                 
                 if (error) log("❌ Erro getSession:", error);
 
                 if (initialSession?.user) {
-                    log("👤 Sessão encontrada para:", initialSession.user.email);
+                    log("👤 Sessão restaurada para:", initialSession.user.email);
                     if (mounted) {
                         setSession(initialSession);
                         setUser(initialSession.user);
                         await fetchProfileFromBackend(initialSession.access_token);
                     }
                 } else {
-                    log("💨 Nenhuma sessão encontrada (Usuário deslogado)");
+                    log("💨 Nenhuma sessão inicial (Deslogado)");
                 }
             } catch (err) {
                 log("🔥 Erro Geral Init:", err);
@@ -116,14 +133,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         initAuth();
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-            log(`🔄 Evento Auth: ${event}`);
-            if (event === 'SIGNED_IN' && newSession) {
-                setLoading(true); // Trava a tela pra carregar perfil
-                await fetchProfileFromBackend(newSession.access_token);
-                setLoading(false);
-            }
-            if (event === 'SIGNED_OUT') {
-                 setSession(null); setUser(null);
+            log(`🔄 Evento Auth Detectado: ${event}`);
+            
+            if (newSession?.user) {
+                setSession(newSession);
+                setUser(newSession.user);
+                
+                // Só recarrega perfil se for login ou mudança de token
+                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                    log("📥 Carregando perfil após login/refresh...");
+                    setLoading(true); // Mostra a tela preta de carregamento rapidinho
+                    await fetchProfileFromBackend(newSession.access_token);
+                    setLoading(false);
+                }
+            } else if (event === 'SIGNED_OUT') {
+                 log("👋 Usuário deslogou.");
+                 setSession(null); 
+                 setUser(null);
+                 setEmployeeProfile(null);
+                 setWholesaleProfile(null);
             }
         });
 
@@ -134,14 +162,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, []);
 
     const value = useMemo(() => ({
-        session, user, employeeProfile, wholesaleProfile, isWholesale: !!wholesaleProfile, loading, signIn: async () => {}, logout
-    }), [session, user, employeeProfile, wholesaleProfile, loading, logout]);
+        session, 
+        user, 
+        employeeProfile, 
+        wholesaleProfile, 
+        isWholesale: !!wholesaleProfile, 
+        loading, 
+        signIn, // <--- AGORA ESTÁ PASSANDO A FUNÇÃO CORRETA
+        logout
+    }), [session, user, employeeProfile, wholesaleProfile, loading, signIn, logout]);
 
-    // Renderização Condicional do Debug
+    // Renderização Condicional do Debug (Tela Preta)
     if (loading) {
-        return <div style={{padding: 50, background: 'black', color: 'white'}}>
-            <h1>CARREGANDO AUTH...</h1>
-            <p>Abra o console (F12)</p>
+        return <div style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
+            background: 'black', color: '#0f0', zIndex: 9999, padding: '2rem', fontFamily: 'monospace'
+        }}>
+            <h1 className="text-2xl font-bold mb-4">DEBUG AUTH LOADING...</h1>
+            <p>Verifique o Console (F12) para os logs [AUTH DEBUG]</p>
         </div>;
     }
 
