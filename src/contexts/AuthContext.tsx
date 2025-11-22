@@ -23,164 +23,162 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadingMessage, setLoadingMessage] = useState("Iniciando...");
 
-    const [employeeProfile, setEmployeeProfile] = useState<Employee | null>(null);
-    const [wholesaleProfile, setWholesaleProfile] = useState<WholesaleClient | null>(null);
+    const [employeeProfile, setEmployeeProfile] = useState<Employee | null>(() => {
+        try { return JSON.parse(localStorage.getItem(ADMIN_PROFILE_KEY) || "null"); } catch { return null; }
+    });
+    const [wholesaleProfile, setWholesaleProfile] = useState<WholesaleClient | null>(() => {
+        try { return JSON.parse(localStorage.getItem(WHOLESALE_PROFILE_KEY) || "null"); } catch { return null; }
+    });
 
-    // --- LOGGER AUXILIAR ---
-    const log = (step: string, data?: any) => {
-        console.log(`%c[AUTH DEBUG] ${step}`, 'background: #222; color: #bada55; font-size: 12px;', data || '');
-    };
+    const log = (msg: string, data?: any) => console.log(`%c[AUTH] ${msg}`, 'color: #00ffff', data || '');
 
     const logout = useCallback(async () => {
-        log("Logout iniciado");
         setLoading(true);
+        setLoadingMessage("Saindo...");
         await supabase.auth.signOut();
+        localStorage.clear(); // Limpa tudo para garantir
         window.location.href = "/"; 
     }, []);
 
-    // --- FUNÇÃO DE LOGIN (AGORA IMPLEMENTADA CORRETAMENTE) ---
-    const signIn = useCallback(async (email: string, pass: string) => {
-        log(`🔐 Tentando login para: ${email}`);
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-        
-        if (error) {
-            log("🔥 Erro no login (Supabase):", error);
-            throw error;
-        }
-        
-        log("✅ Login Supabase bem sucedido!", data);
-        // O onAuthStateChange vai capturar a mudança de sessão e carregar o perfil
-    }, []);
-
+    // FETCH COM TIMEOUT E ABORT CONTROLLER
     const fetchProfileFromBackend = async (token: string) => {
-        log("📡 Iniciando fetch no backend...");
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos max
+
         try {
-            // ADMIN
-            log("📡 Tentando /api/get-admin-profile");
+            log("📡 Buscando perfil (max 5s)...");
+            
+            // Tenta Admin
             const adminRes = await fetch("/api/get-admin-profile", {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${token}` },
+                signal: controller.signal
             });
-            log(`📡 Status Admin: ${adminRes.status}`);
-            
+
             if (adminRes.ok) {
                 const data = await adminRes.json();
-                log("✅ Admin encontrado:", data);
+                log("✅ Perfil Admin carregado");
                 setEmployeeProfile(data);
+                setWholesaleProfile(null);
                 localStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(data));
+                localStorage.removeItem(WHOLESALE_PROFILE_KEY);
                 return;
-            } else {
-                try {
-                    const text = await adminRes.text();
-                    log("❌ Erro Admin Body:", text);
-                } catch (e) { log("❌ Erro ao ler body do erro admin"); }
             }
 
-            // ATACADO
-            log("📡 Tentando /api/get-wholesale-profile");
+            // Tenta Atacado
             const wholesaleRes = await fetch("/api/get-wholesale-profile", {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${token}` },
+                signal: controller.signal
             });
-            
+
             if (wholesaleRes.ok) {
                 const data = await wholesaleRes.json();
-                log("✅ Atacado encontrado:", data);
+                log("✅ Perfil Atacado carregado");
                 setWholesaleProfile(data);
+                setEmployeeProfile(null);
                 localStorage.setItem(WHOLESALE_PROFILE_KEY, JSON.stringify(data));
+                localStorage.removeItem(ADMIN_PROFILE_KEY);
                 return;
             }
 
-            log("⚠️ Nenhum perfil especial encontrado. Usuário é Cliente Comum.");
+            log("⚠️ Nenhum perfil especial. Cliente comum.");
             setEmployeeProfile(null);
             setWholesaleProfile(null);
 
-        } catch (error) {
-            log("🔥 ERRO CRÍTICO NO FETCH:", error);
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                log("⏳ Timeout na busca de perfil. Liberando tela.");
+            } else {
+                log("🔥 Erro no fetch de perfil:", error);
+            }
+            // Mantém o que tiver no cache ou assume cliente comum
+        } finally {
+            clearTimeout(timeoutId);
         }
     };
 
+    // Inicialização
     useEffect(() => {
         let mounted = true;
-        log("🚀 AuthProvider Montado. Loading: true");
-
-        const initAuth = async () => {
+        
+        const init = async () => {
+            setLoadingMessage("Verificando sessão...");
             try {
-                log("🔍 Buscando sessão inicial...");
-                const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+                const { data: { session: initSession } } = await supabase.auth.getSession();
                 
-                if (error) log("❌ Erro getSession:", error);
-
-                if (initialSession?.user) {
-                    log("👤 Sessão restaurada para:", initialSession.user.email);
-                    if (mounted) {
-                        setSession(initialSession);
-                        setUser(initialSession.user);
-                        await fetchProfileFromBackend(initialSession.access_token);
-                    }
+                if (initSession?.user) {
+                    log("👤 Sessão encontrada");
+                    setSession(initSession);
+                    setUser(initSession.user);
+                    await fetchProfileFromBackend(initSession.access_token);
                 } else {
-                    log("💨 Nenhuma sessão inicial (Deslogado)");
+                    log("👤 Sem sessão (Visitante)");
                 }
             } catch (err) {
-                log("🔥 Erro Geral Init:", err);
+                console.error(err);
             } finally {
-                log("🏁 Loading definido para FALSE");
                 if (mounted) setLoading(false);
             }
         };
 
-        initAuth();
+        init();
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-            log(`🔄 Evento Auth Detectado: ${event}`);
+            log(`🔄 Evento: ${event}`);
             
             if (newSession?.user) {
                 setSession(newSession);
                 setUser(newSession.user);
                 
-                // Só recarrega perfil se for login ou mudança de token
-                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                    log("📥 Carregando perfil após login/refresh...");
-                    setLoading(true); // Mostra a tela preta de carregamento rapidinho
+                // Só bloqueia a tela no LOGIN EXPLICITO. No refresh de token, faz em background.
+                if (event === 'SIGNED_IN') {
+                    setLoading(true);
+                    setLoadingMessage("Carregando perfil...");
                     await fetchProfileFromBackend(newSession.access_token);
                     setLoading(false);
+                } else if (event === 'TOKEN_REFRESHED') {
+                    // Background update
+                    fetchProfileFromBackend(newSession.access_token);
                 }
             } else if (event === 'SIGNED_OUT') {
-                 log("👋 Usuário deslogou.");
-                 setSession(null); 
-                 setUser(null);
-                 setEmployeeProfile(null);
-                 setWholesaleProfile(null);
+                setSession(null);
+                setUser(null);
+                setEmployeeProfile(null);
+                setWholesaleProfile(null);
+                setLoading(false);
             }
         });
 
-        return () => {
-            mounted = false;
-            subscription.unsubscribe();
-        };
+        return () => { mounted = false; subscription.unsubscribe(); };
+    }, []);
+
+    const signIn = useCallback(async (email: string, pass: string) => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+        if (error) throw error;
     }, []);
 
     const value = useMemo(() => ({
-        session, 
-        user, 
-        employeeProfile, 
-        wholesaleProfile, 
-        isWholesale: !!wholesaleProfile, 
-        loading, 
-        signIn, // <--- AGORA ESTÁ PASSANDO A FUNÇÃO CORRETA
-        logout
+        session, user, employeeProfile, wholesaleProfile, isWholesale: !!wholesaleProfile, loading, signIn, logout
     }), [session, user, employeeProfile, wholesaleProfile, loading, signIn, logout]);
 
-    // Renderização Condicional do Debug (Tela Preta)
+    // TELA DE LOADING COM BOTÃO DE EMERGÊNCIA
     if (loading) {
-        return <div style={{
-            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
-            background: 'black', color: '#0f0', zIndex: 9999, padding: '2rem', fontFamily: 'monospace'
-        }}>
-            <h1 className="text-2xl font-bold mb-4">DEBUG AUTH LOADING...</h1>
-            <p>Verifique o Console (F12) para os logs [AUTH DEBUG]</p>
-        </div>;
+        return (
+            <div className="fixed inset-0 bg-black text-green-400 z-[9999] flex flex-col items-center justify-center p-4 font-mono">
+                <div className="animate-pulse mb-4 text-xl">🔐 {loadingMessage}</div>
+                <div className="text-xs text-gray-500 mb-8">Aguardando resposta do servidor...</div>
+                
+                <button 
+                    onClick={() => setLoading(false)}
+                    className="px-4 py-2 border border-red-500 text-red-500 hover:bg-red-900 rounded text-sm transition-colors"
+                >
+                    ⚠️ DEMORANDO MUITO? CLIQUE AQUI PARA ENTRAR
+                </button>
+            </div>
+        );
     }
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
