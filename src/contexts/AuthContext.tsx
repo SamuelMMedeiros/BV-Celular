@@ -3,7 +3,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Employee, WholesaleClient } from "@/types";
 
-// Mantendo a interface EXATA que seu projeto já usa
+// --- INTERFACE (Mantida igual para não quebrar o resto do projeto) ---
 interface AuthContextType {
     session: Session | null;
     user: User | null;
@@ -21,10 +21,12 @@ const ADMIN_PROFILE_KEY = "bv_admin_profile";
 const WHOLESALE_PROFILE_KEY = "bv_wholesale_profile";
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+    // Estados principais
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
-    
-    // Estados compatíveis com o código antigo
+    const [loading, setLoading] = useState(true);
+
+    // Estados de perfil (Inicializa do cache para performance)
     const [employeeProfile, setEmployeeProfile] = useState<Employee | null>(() => {
         try { return JSON.parse(localStorage.getItem(ADMIN_PROFILE_KEY) || "null"); } catch { return null; }
     });
@@ -33,26 +35,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         try { return JSON.parse(localStorage.getItem(WHOLESALE_PROFILE_KEY) || "null"); } catch { return null; }
     });
 
-    const [loading, setLoading] = useState(true);
-
-    // Função de Logout compatível
+    // --- FUNÇÃO 1: Logout Seguro ---
     const logout = useCallback(async () => {
-        setLoading(true);
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-        setEmployeeProfile(null);
-        setWholesaleProfile(null);
-        localStorage.removeItem(ADMIN_PROFILE_KEY);
-        localStorage.removeItem(WHOLESALE_PROFILE_KEY);
-        setLoading(false);
-        window.location.href = "/"; 
+        try {
+            setLoading(true);
+            await supabase.auth.signOut();
+        } catch (error) {
+            console.error("Erro no logout:", error);
+        } finally {
+            // Limpa tudo localmente independente de erro na API
+            setSession(null);
+            setUser(null);
+            setEmployeeProfile(null);
+            setWholesaleProfile(null);
+            localStorage.removeItem(ADMIN_PROFILE_KEY);
+            localStorage.removeItem(WHOLESALE_PROFILE_KEY);
+            setLoading(false);
+            window.location.href = "/"; // Refresh forçado para limpar memória
+        }
     }, []);
 
-    // Nova lógica segura (Netlify Functions) mas populando as variáveis antigas
+    // --- FUNÇÃO 2: Busca Perfil no Backend (Netlify Functions) ---
     const fetchProfileFromBackend = async (token: string) => {
         try {
-            // 1. Tenta buscar perfil de ADMIN
+            // Tenta Admin
             const adminRes = await fetch("/api/get-admin-profile", {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${token}` },
@@ -60,14 +66,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             if (adminRes.ok) {
                 const adminData = await adminRes.json();
-                setEmployeeProfile(adminData); // Salva onde o ProtectedRoute procura
+                setEmployeeProfile(adminData);
                 setWholesaleProfile(null);
                 localStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(adminData));
                 localStorage.removeItem(WHOLESALE_PROFILE_KEY);
                 return;
             }
 
-            // 2. Tenta perfil de ATACADO
+            // Tenta Atacado
             const wholesaleRes = await fetch("/api/get-wholesale-profile", {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${token}` },
@@ -82,7 +88,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 return;
             }
 
-            // 3. Cliente comum
+            // Se falhou ambos, limpa perfis (é cliente comum)
             setEmployeeProfile(null);
             setWholesaleProfile(null);
             localStorage.removeItem(ADMIN_PROFILE_KEY);
@@ -90,64 +96,82 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         } catch (error) {
             console.error("Erro ao buscar perfil:", error);
-            // Em caso de erro, não quebra a aplicação, apenas assume sem permissão
-            setEmployeeProfile(null);
+            // Em caso de erro de rede, não fazemos nada drástico, 
+            // apenas deixamos o usuário navegar como visitante/cliente.
         }
     };
 
+    // --- EFEITO: Inicialização e Monitoramento ---
     useEffect(() => {
         let mounted = true;
 
-        const initSession = async () => {
+        // 1. Função de inicialização
+        const initAuth = async () => {
             try {
+                // Pega sessão do Supabase (que já recupera do LocalStorage)
                 const { data: { session: initialSession } } = await supabase.auth.getSession();
                 
-                if (mounted) {
-                    setSession(initialSession);
-                    setUser(initialSession?.user ?? null);
+                if (!mounted) return;
 
-                    if (initialSession?.access_token && initialSession?.user) {
-                        await fetchProfileFromBackend(initialSession.access_token);
-                    } else {
-                        setEmployeeProfile(null);
-                        setWholesaleProfile(null);
-                    }
+                if (initialSession?.user) {
+                    setSession(initialSession);
+                    setUser(initialSession.user);
+                    // Busca perfil atualizado no backend
+                    await fetchProfileFromBackend(initialSession.access_token);
+                } else {
+                    // Sem usuário logado
+                    setSession(null);
+                    setUser(null);
+                    setEmployeeProfile(null);
+                    setWholesaleProfile(null);
                 }
             } catch (err) {
-                console.error("Auth init error:", err);
+                console.error("Erro na inicialização do Auth:", err);
             } finally {
                 if (mounted) setLoading(false);
             }
         };
 
-        initSession();
+        initAuth();
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+        // 2. Escuta mudanças de evento (Login, Logout, Token Refresh)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
             if (!mounted) return;
             
             setSession(newSession);
             setUser(newSession?.user ?? null);
 
-            if (newSession?.access_token && newSession?.user) {
-                await fetchProfileFromBackend(newSession.access_token);
-            } else {
+            if (event === 'SIGNED_IN' || (event === 'TOKEN_REFRESHED' && newSession)) {
+                await fetchProfileFromBackend(newSession!.access_token);
+            } else if (event === 'SIGNED_OUT') {
                 setEmployeeProfile(null);
                 setWholesaleProfile(null);
+                localStorage.removeItem(ADMIN_PROFILE_KEY);
+                localStorage.removeItem(WHOLESALE_PROFILE_KEY);
             }
+            
             setLoading(false);
         });
 
-        // Timeout de segurança para destravar a tela se a API demorar
-        const safetyTimeout = setTimeout(() => {
-            if (loading && mounted) {
-                setLoading(false);
+        // 3. TRAVA DE SEGURANÇA (TIMEOUT)
+        // Se por qualquer motivo o loading ficar true por 3 segundos, destrava a tela.
+        // Isso impede a "Tela Branca da Morte".
+        const safetyTimer = setTimeout(() => {
+            if (mounted) {
+                setLoading((currentLoading) => {
+                    if (currentLoading) {
+                        console.warn("⚠️ Auth Timeout: Forçando liberação da tela.");
+                        return false; 
+                    }
+                    return currentLoading;
+                });
             }
-        }, 4000);
+        }, 3000);
 
         return () => {
             mounted = false;
             subscription.unsubscribe();
-            clearTimeout(safetyTimeout);
+            clearTimeout(safetyTimer);
         };
     }, []);
 
@@ -159,9 +183,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const value = useMemo(() => ({
         session,
         user,
-        employeeProfile,    // Mantido para compatibilidade
-        wholesaleProfile,   // Mantido para compatibilidade
-        isWholesale: !!wholesaleProfile, // Mantido para compatibilidade
+        employeeProfile,
+        wholesaleProfile,
+        isWholesale: !!wholesaleProfile,
         loading,
         signIn,
         logout
@@ -170,8 +194,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// === O HOOK QUE FALTAVA ===
-// Adicionando isso, os outros arquivos voltam a funcionar
+// --- HOOK EXPORTADO (Essencial para não quebrar outros arquivos) ---
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (context === undefined) {
