@@ -1,5 +1,5 @@
-const { validateToken } = require('./utils/auth-validate');
-const { supabaseAdmin } = require('./utils/supabase-admin');
+const { validateToken } = require('./utils/auth-validate.cjs');
+const { supabaseAdmin } = require('./utils/supabase-admin.cjs');
 
 exports.handler = async (event) => {
   // Apenas aceita POST
