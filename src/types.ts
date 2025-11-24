@@ -32,7 +32,7 @@ export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'col
   installment_price?: number;
   max_installments?: number;
   
-  has_variations?: boolean;
+  has_variations: boolean; // Corrigido para ser sempre booleano
   variants?: ProductVariant[]; // Lista de variações carregadas
 
   // Campos de Especificações Técnicas
@@ -67,7 +67,6 @@ export type Driver = {
     phone: string;
     active: boolean;
     created_at?: string;
-    // NOVO: Adicionado para geolocalização em tempo real
     latitude?: number | null; 
     longitude?: number | null; 
     last_updated?: string | null;
@@ -152,8 +151,8 @@ export type Order = {
   Stores?: { name: string; city: string | null; address?: string | null; cnpj?: string | null; } | null;
   Employees?: { name: string; } | null;
   Addresses?: Address | null;
-  Drivers?: Driver | null; // NOVO: Adiciona o entregador
-  driver_id?: string | null; // NOVO: ID do entregador
+  Drivers?: Driver | null; 
+  driver_id?: string | null; 
 };
 
 export type ShippingQuote = {
@@ -225,6 +224,18 @@ export type PushCampaign = {
     created_at: string;
 };
 
+// NOVO: Tipo para Notificações do Cliente
+export type ClientNotification = {
+    id: string;
+    client_id: string;
+    order_id?: string | null;
+    message: string;
+    status_key?: string | null;
+    is_read: boolean;
+    created_at: string;
+};
+
+
 // --- PAYLOADS (Tipos para Inserção/Atualização na API) ---
 
 export type ProductVariantPayload = {
@@ -251,7 +262,7 @@ export type ProductInsertPayload = Database['public']['Tables']['Products']['Ins
   max_installments?: number;
   subcategory?: string;
   
-  has_variations?: boolean;
+  has_variations: boolean;
   variants?: ProductVariantPayload[]; 
 
   // Campos de Especificações Técnicas
@@ -333,7 +344,7 @@ export type OrderInsertPayload = {
   payment_method?: string;
   change_for?: number;
   stripe_payment_id?: string | null;
-  driver_id?: string | null; // NOVO: ID do entregador para criação de pedido
+  driver_id?: string | null; 
 };
 
 export type AddressInsertPayload = Omit<Address, 'id' | 'created_at'>;

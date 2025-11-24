@@ -1,274 +1,1069 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-//
-// === CÓDIGO COMPLETO PARA: src/pages/MinhaConta.tsx ===
-//
-import { useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
-import { fetchClientOrders, fetchClientFavorites, fetchClientAddresses, deleteAddress, fetchClientWarranties } from "@/lib/api";
-import { Order, Product, Address, Warranty } from "@/types";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+    fetchClientOrders,
+    updateCustomerProfile,
+    fetchClientAddresses,
+    createAddress,
+    deleteAddress,
+    fetchClientWarranties,
+    fetchClientNotifications,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+    fetchAddressByCEP,
+} from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import { Loader2, Package, MapPin, Heart, LogOut, Trash2, Plus, ShieldCheck, Clock, CheckCircle, Truck, XCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
+// CORRIGIDO: Payload types e ClientNotification importados de types.ts
+import {
+    Address,
+    Order,
+    ClientNotification,
+    Warranty,
+    CustomerUpdatePayload,
+    AddressInsertPayload,
+} from "@/types";
+import { Button } from "@/components/ui/button";
+import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    CardDescription,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    MapPin,
+    Package,
+    ShieldCheck,
+    Bell,
+    Loader2,
+    Check,
+    Edit,
+    Trash2,
+    Plus,
+    X,
+    LogOut,
+    CheckCircle,
+    Truck,
+    Clock,
+    XCircle,
+    Home,
+    Store as StoreIcon, // Aliasing Store para StoreIcon
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { format, formatDistanceToNow, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ProductCard } from "@/components/ProductCard";
-import { generateWarrantyPDF } from "@/lib/pdfGenerator";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+    Form,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormControl,
+    FormMessage,
+} from "@/components/ui/form";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SEO } from "@/components/SEO";
+import { EmptyState } from "@/components/EmptyState"; // Importado EmptyState
 
-const MinhaConta = () => {
-    const { user, profile, logout, isLoadingSession } = useCustomerAuth();
-    const navigate = useNavigate();
+// ==================================================================
+// 1. SCHEMAS
+// ==================================================================
+
+const profileSchema = z.object({
+    name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres."),
+    phone: z.string().min(10, "Telefone inválido."),
+});
+
+const addressSchema = z.object({
+    name: z.string().min(3, "Nome do endereço é obrigatório."),
+    cep: z.string().min(8, "CEP inválido."),
+    street: z.string().min(3, "Rua é obrigatória."),
+    number: z.string().min(1, "Número é obrigatório."),
+    complement: z.string().optional().nullable(),
+    neighborhood: z.string().min(3, "Bairro é obrigatório."),
+    city: z.string().min(3, "Cidade é obrigatória."),
+    state: z.string().length(2, "Estado inválido."),
+});
+
+// ==================================================================
+// 2. TABS E TELAS
+// ==================================================================
+
+// Componente para a aba de Notificações
+const NotificationsTab = ({ clientId }: { clientId: string }) => {
     const queryClient = useQueryClient();
 
-    useEffect(() => {
-        if (!isLoadingSession && !user) {
-            navigate("/login");
+    // Busca notificações
+    const { data: notifications, isLoading } = useQuery<ClientNotification[]>({
+        queryKey: ["clientNotifications", clientId],
+        queryFn: () => fetchClientNotifications(clientId),
+        enabled: !!clientId,
+    });
+
+    // Mutação para marcar como lido
+    const markReadMutation = useMutation({
+        mutationFn: (id: string) => markNotificationAsRead(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({
+                queryKey: ["clientNotifications", clientId],
+            });
+        },
+    });
+
+    // Mutação para marcar todos como lidos
+    const markAllReadMutation = useMutation({
+        mutationFn: () => markAllNotificationsAsRead(clientId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({
+                queryKey: ["clientNotifications", clientId],
+            });
+        },
+    });
+
+    const unreadCount = notifications?.filter((n) => !n.is_read).length || 0;
+
+    const getIconAndColor = (statusKey: string) => {
+        switch (statusKey) {
+            case "on_the_way":
+                return {
+                    Icon: Truck,
+                    color: "text-blue-500",
+                    bg: "bg-blue-50",
+                };
+            case "ready":
+                return {
+                    Icon: StoreIcon,
+                    color: "text-amber-500",
+                    bg: "bg-amber-50",
+                };
+            case "completed":
+                return {
+                    Icon: Check,
+                    color: "text-green-500",
+                    bg: "bg-green-50",
+                };
+            case "cancelled":
+                return {
+                    Icon: XCircle,
+                    color: "text-red-500",
+                    bg: "bg-red-50",
+                };
+            default:
+                return {
+                    Icon: Clock,
+                    color: "text-gray-500",
+                    bg: "bg-gray-50",
+                };
         }
-    }, [user, isLoadingSession, navigate]);
+    };
 
-    const { data: orders, isLoading: loadingOrders } = useQuery<Order[]>({
-        queryKey: ["clientOrders", user?.id],
-        queryFn: () => fetchClientOrders(user!.id),
-        enabled: !!user,
-    });
-
-    const { data: favorites, isLoading: loadingFavs } = useQuery<Product[]>({
-        queryKey: ["clientFavorites", user?.id],
-        queryFn: () => fetchClientFavorites(user!.id),
-        enabled: !!user,
-    });
-
-    const { data: addresses, isLoading: loadingAddr } = useQuery<Address[]>({
-        queryKey: ["clientAddresses", user?.id],
-        queryFn: () => fetchClientAddresses(user!.id),
-        enabled: !!user,
-    });
-    
-    const { data: warranties } = useQuery<Warranty[]>({
-        queryKey: ["clientWarranties", user?.id],
-        queryFn: () => fetchClientWarranties(user!.id),
-        enabled: !!user,
-    });
-
-    const deleteAddrMutation = useMutation({
-        mutationFn: deleteAddress,
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clientAddresses"] }),
-    });
-
-    if (isLoadingSession) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-
-    // --- COMPONENTE DE RASTREAMENTO VISUAL ---
-    const OrderTracker = ({ status }: { status: string }) => {
-        if (status === 'cancelled') {
-            return (
-                <div className="flex items-center gap-2 text-destructive font-bold mt-4 bg-destructive/10 p-3 rounded-lg">
-                    <XCircle className="h-5 w-5" /> Pedido Cancelado
-                </div>
-            );
-        }
-
-        // Mapeia status para passos (0 a 3)
-        const getStep = (s: string) => {
-            switch(s) {
-                case 'pending': return 0; // Recebido
-                case 'processing': return 1; // Preparando/Separado
-                case 'ready': return 1; // Pronto pra retirada
-                case 'delivering': return 2; // Enviado/Em Rota
-                case 'completed': return 3; // Entregue
-                default: return 0;
-            }
-        };
-        
-        const currentStep = getStep(status);
-        const steps = [
-            { label: "Recebido", icon: Clock },
-            { label: "Separado", icon: Package },
-            { label: "Enviado", icon: Truck },
-            { label: "Entregue", icon: CheckCircle },
-        ];
-
+    if (isLoading) {
         return (
-            <div className="w-full mt-6 mb-2">
-                <div className="relative flex justify-between items-center">
-                    {/* Linha de Fundo */}
-                    <div className="absolute top-1/2 left-0 w-full h-1 bg-muted -z-10" />
-                    {/* Linha de Progresso (Colorida) */}
-                    <div 
-                        className="absolute top-1/2 left-0 h-1 bg-green-500 -z-10 transition-all duration-500" 
-                        style={{ width: `${(currentStep / (steps.length - 1)) * 100}%` }} 
-                    />
-
-                    {steps.map((step, idx) => {
-                        const Icon = step.icon;
-                        const isActive = idx <= currentStep;
-                        const isCurrent = idx === currentStep;
-                        
-                        return (
-                            <div key={idx} className="flex flex-col items-center gap-2 bg-background px-2">
-                                <div className={`
-                                    w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all
-                                    ${isActive ? 'bg-green-500 border-green-500 text-white' : 'bg-background border-muted text-muted-foreground'}
-                                    ${isCurrent ? 'ring-4 ring-green-100 scale-110' : ''}
-                                `}>
-                                    <Icon className="h-4 w-4" />
-                                </div>
-                                <span className={`text-[10px] md:text-xs font-medium ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                    {step.label}
-                                </span>
-                            </div>
-                        );
-                    })}
-                </div>
+            <div className="space-y-4 pt-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                ))}
             </div>
         );
+    }
+
+    return (
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle className="flex items-center gap-2">
+                        <Bell className="h-5 w-5" /> Seus Alertas
+                    </CardTitle>
+                    <CardDescription>
+                        {unreadCount > 0 ? (
+                            <span className="text-primary font-medium">
+                                {unreadCount} notificação(es) não lida(s).
+                            </span>
+                        ) : (
+                            "Nenhuma notificação não lida."
+                        )}
+                    </CardDescription>
+                </div>
+                {unreadCount > 0 && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => markAllReadMutation.mutate()}
+                        disabled={markAllReadMutation.isPending}
+                    >
+                        {markAllReadMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                            <Check className="h-4 w-4 mr-2" />
+                        )}
+                        Marcar todas como lidas
+                    </Button>
+                )}
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-3">
+                    {notifications && notifications.length > 0 ? (
+                        notifications.map((n) => {
+                            const { Icon, color, bg } = getIconAndColor(
+                                n.status_key || "pending"
+                            );
+                            return (
+                                <div
+                                    key={n.id}
+                                    className={`flex gap-4 p-4 rounded-lg border shadow-sm transition-all ${
+                                        n.is_read
+                                            ? "opacity-70 bg-muted/50"
+                                            : `${bg} border-l-4 border-l-primary/80`
+                                    }`}
+                                >
+                                    <div
+                                        className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${color} ${bg}`}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex justify-between items-start">
+                                            <p
+                                                className={`text-sm ${
+                                                    n.is_read
+                                                        ? "text-foreground/80"
+                                                        : "font-semibold text-foreground"
+                                                }`}
+                                            >
+                                                {n.message}
+                                            </p>
+                                            <Badge
+                                                variant="secondary"
+                                                className="text-xs shrink-0"
+                                            >
+                                                {formatDistanceToNow(
+                                                    parseISO(n.created_at),
+                                                    {
+                                                        addSuffix: true,
+                                                        locale: ptBR,
+                                                    }
+                                                )}
+                                            </Badge>
+                                        </div>
+                                        <div className="mt-1 flex items-center gap-2">
+                                            {n.order_id && (
+                                                <Badge
+                                                    variant="outline"
+                                                    className="text-xs font-mono"
+                                                >
+                                                    Pedido #
+                                                    {n.order_id.substring(0, 8)}
+                                                </Badge>
+                                            )}
+                                            {!n.is_read && (
+                                                <Button
+                                                    variant="link"
+                                                    size="sm"
+                                                    className="h-6 p-0 text-xs"
+                                                    onClick={() =>
+                                                        markReadMutation.mutate(
+                                                            n.id
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        markReadMutation.isPending
+                                                    }
+                                                >
+                                                    Marcar como lido
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <p className="text-center text-muted-foreground py-8 text-sm">
+                            Nenhum alerta recente.
+                        </p>
+                    )}
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
+
+// Componente para a aba de Pedidos
+const OrdersTab = ({ clientId }: { clientId: string }) => {
+    const { data: orders, isLoading } = useQuery<Order[]>({
+        queryKey: ["clientOrders", clientId],
+        queryFn: () => fetchClientOrders(clientId),
+        enabled: !!clientId,
+    });
+
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case "pending":
+                return (
+                    <Badge
+                        variant="secondary"
+                        className="bg-gray-200 text-gray-700"
+                    >
+                        <Clock className="h-3 w-3 mr-1" /> Pendente
+                    </Badge>
+                );
+            case "processing":
+                return (
+                    <Badge
+                        variant="secondary"
+                        className="bg-blue-100 text-blue-700"
+                    >
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />{" "}
+                        Processando
+                    </Badge>
+                );
+            case "ready":
+                return (
+                    <Badge
+                        variant="secondary"
+                        className="bg-amber-100 text-amber-700"
+                    >
+                        <StoreIcon className="h-3 w-3 mr-1" /> Pronto para
+                        Retirada
+                    </Badge>
+                ); // Usa StoreIcon
+            case "on_the_way":
+                return (
+                    <Badge className="bg-blue-600 text-white">
+                        <Truck className="h-3 w-3 mr-1" /> A Caminho
+                    </Badge>
+                );
+            case "completed":
+                return (
+                    <Badge
+                        variant="secondary"
+                        className="bg-green-100 text-green-700"
+                    >
+                        <CheckCircle className="h-3 w-3 mr-1" /> Concluído
+                    </Badge>
+                ); // Removido variant="success"
+            case "cancelled":
+                return (
+                    <Badge variant="destructive">
+                        <XCircle className="h-3 w-3 mr-1" /> Cancelado
+                    </Badge>
+                );
+            default:
+                return <Badge variant="outline">{status}</Badge>;
+        }
+    };
+
+    if (isLoading)
+        return (
+            <div className="space-y-4 pt-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-40 w-full" />
+                ))}
+            </div>
+        );
+
+    return (
+        <div className="space-y-6 pt-4">
+            {orders?.length === 0 ? (
+                <EmptyState
+                    icon={Package}
+                    title="Nenhum Pedido Encontrado"
+                    description="Você ainda não fez nenhum pedido em nossa loja."
+                />
+            ) : (
+                orders?.map((order) => (
+                    <Card key={order.id} className="shadow-sm">
+                        <CardHeader className="flex flex-row justify-between items-center">
+                            <div>
+                                <CardTitle className="text-xl">
+                                    Pedido #{order.id.substring(0, 8)}
+                                </CardTitle>
+                                <CardDescription>
+                                    {format(
+                                        new Date(order.created_at),
+                                        "dd 'de' MMMM, yyyy",
+                                        { locale: ptBR }
+                                    )}
+                                </CardDescription>
+                            </div>
+                            {getStatusBadge(order.status)}
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-lg font-bold mb-2">
+                                Total: {formatCurrency(order.total_price)}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                                {order.delivery_type === "delivery"
+                                    ? "Entrega"
+                                    : "Retirada"}{" "}
+                                em {order.Stores?.name || "Loja Desconhecida"}
+                            </p>
+                            <Separator className="my-3" />
+                            <h4 className="text-sm font-semibold mb-2">
+                                Itens:
+                            </h4>
+                            <ScrollArea className="h-20 border p-2 rounded-md">
+                                <ul className="text-sm space-y-0.5">
+                                    {order.items.map((item, idx) => (
+                                        <li key={idx}>
+                                            {item.quantity}x {item.name}{" "}
+                                            {item.variantName &&
+                                                `(${item.variantName})`}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </ScrollArea>
+                        </CardContent>
+                    </Card>
+                ))
+            )}
+        </div>
+    );
+};
+
+// Componente da aba Perfil e Endereços
+const ProfileAndAddressTab = () => {
+    const { customerProfile, refetchProfile } = useCustomerAuth();
+    const { toast } = useToast();
+    const queryClient = useQueryClient();
+    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [isAddingAddress, setIsAddingAddress] = useState(false);
+    const [isFetchingCep, setIsFetchingCep] = useState(false);
+
+    const profileForm = useForm<z.infer<typeof profileSchema>>({
+        resolver: zodResolver(profileSchema),
+        defaultValues: {
+            name: customerProfile?.name || "",
+            phone: customerProfile?.phone || "",
+        },
+        values: {
+            name: customerProfile?.name || "",
+            phone: customerProfile?.phone || "",
+        },
+    });
+
+    const addressForm = useForm<z.infer<typeof addressSchema>>({
+        resolver: zodResolver(addressSchema),
+        defaultValues: {
+            name: "",
+            cep: "",
+            street: "",
+            number: "",
+            complement: "",
+            neighborhood: "",
+            city: "",
+            state: "",
+        },
+    });
+
+    const updateProfileMutation = useMutation({
+        mutationFn: (data: CustomerUpdatePayload) =>
+            updateCustomerProfile(data), // Typagem explícita
+        onSuccess: () => {
+            toast({ title: "Sucesso!", description: "Perfil atualizado." });
+            refetchProfile();
+            setIsEditingProfile(false);
+        },
+        onError: (error) =>
+            toast({
+                variant: "destructive",
+                title: "Erro",
+                description: error.message,
+            }),
+    });
+
+    const createAddressMutation = useMutation({
+        mutationFn: (data: AddressInsertPayload) => createAddress(data), // Typagem explícita
+        onSuccess: () => {
+            toast({ title: "Sucesso!", description: "Endereço adicionado." });
+            queryClient.invalidateQueries({ queryKey: ["clientAddresses"] });
+            setIsAddingAddress(false);
+            addressForm.reset();
+        },
+        onError: (error) =>
+            toast({
+                variant: "destructive",
+                title: "Erro",
+                description: error.message,
+            }),
+    });
+
+    const deleteAddressMutation = useMutation({
+        mutationFn: deleteAddress,
+        onSuccess: () => {
+            toast({ title: "Sucesso!", description: "Endereço removido." });
+            queryClient.invalidateQueries({ queryKey: ["clientAddresses"] });
+        },
+        onError: (error) =>
+            toast({
+                variant: "destructive",
+                title: "Erro",
+                description: error.message,
+            }),
+    });
+
+    const { data: addresses, isLoading: isLoadingAddresses } = useQuery<
+        Address[]
+    >({
+        queryKey: ["clientAddresses", customerProfile?.id],
+        queryFn: () => fetchClientAddresses(customerProfile!.id),
+        enabled: !!customerProfile?.id,
+    });
+
+    const handleCEPBlur = async () => {
+        const cep = addressForm.getValues("cep").replace(/\D/g, "");
+        if (cep.length !== 8) return;
+
+        setIsFetchingCep(true);
+        try {
+            const data = await fetchAddressByCEP(cep);
+            if (data) {
+                addressForm.setValue("street", data.street || "");
+                addressForm.setValue("neighborhood", data.neighborhood || "");
+                addressForm.setValue("city", data.city || "");
+                addressForm.setValue("state", data.state || "");
+                addressForm.setFocus("number");
+            }
+        } catch (error) {
+            toast({ title: "Erro", description: "Falha ao buscar CEP." });
+        } finally {
+            setIsFetchingCep(false);
+        }
+    };
+
+    const handleProfileSubmit = (data: z.infer<typeof profileSchema>) => {
+        if (customerProfile) {
+            // CORRIGIDO: Passando name e phone garantidos pelo Zod, e o ID do cliente
+            updateProfileMutation.mutate({
+                id: customerProfile.id,
+                name: data.name,
+                phone: data.phone,
+            });
+        }
+    };
+
+    const handleAddressSubmit = (data: z.infer<typeof addressSchema>) => {
+        if (customerProfile) {
+            // CORRIGIDO: Os campos obrigatórios (garantidos pelo Zod) são passados explicitamente
+            createAddressMutation.mutate({
+                client_id: customerProfile.id,
+                name: data.name,
+                cep: data.cep,
+                street: data.street,
+                number: data.number, // Garantido pelo Zod
+                complement: data.complement || null,
+                neighborhood: data.neighborhood,
+                city: data.city,
+                state: data.state,
+            } as AddressInsertPayload);
+        }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
+        <div className="space-y-6 pt-4">
+            {/* CARD PERFIL */}
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>Dados Pessoais</CardTitle>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsEditingProfile(!isEditingProfile)}
+                    >
+                        {isEditingProfile ? (
+                            <X className="h-4 w-4 mr-2" />
+                        ) : (
+                            <Edit className="h-4 w-4 mr-2" />
+                        )}
+                        {isEditingProfile ? "Cancelar" : "Editar"}
+                    </Button>
+                </CardHeader>
+                <CardContent>
+                    <Form {...profileForm}>
+                        <form
+                            onSubmit={profileForm.handleSubmit(
+                                handleProfileSubmit
+                            )}
+                            className="space-y-4"
+                        >
+                            <FormField
+                                control={profileForm.control}
+                                name="name"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Nome</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                {...field}
+                                                disabled={!isEditingProfile}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={profileForm.control}
+                                name="phone"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Telefone</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                {...field}
+                                                disabled={!isEditingProfile}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            {!isEditingProfile && (
+                                <p className="text-sm text-muted-foreground">
+                                    Email: {customerProfile?.email}
+                                </p>
+                            )}
+                            {isEditingProfile && (
+                                <Button
+                                    type="submit"
+                                    disabled={updateProfileMutation.isPending}
+                                >
+                                    {updateProfileMutation.isPending
+                                        ? "Salvando..."
+                                        : "Salvar Perfil"}
+                                </Button>
+                            )}
+                        </form>
+                    </Form>
+                </CardContent>
+            </Card>
+
+            {/* CARD ENDEREÇOS */}
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>Meus Endereços</CardTitle>
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setIsAddingAddress(!isAddingAddress)}
+                    >
+                        {isAddingAddress ? (
+                            <X className="h-4 w-4 mr-2" />
+                        ) : (
+                            <Plus className="h-4 w-4 mr-2" />
+                        )}
+                        {isAddingAddress ? "Cancelar" : "Novo Endereço"}
+                    </Button>
+                </CardHeader>
+
+                {isAddingAddress && (
+                    <CardContent className="border-t pt-6">
+                        <Form {...addressForm}>
+                            <form
+                                onSubmit={addressForm.handleSubmit(
+                                    handleAddressSubmit
+                                )}
+                                className="space-y-4"
+                            >
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <FormField
+                                        control={addressForm.control}
+                                        name="name"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Apelido *</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        placeholder="Ex: Casa"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={addressForm.control}
+                                        name="cep"
+                                        render={({ field }) => (
+                                            <FormItem className="md:col-span-2">
+                                                <FormLabel>CEP *</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        onBlur={handleCEPBlur}
+                                                        disabled={isFetchingCep}
+                                                        placeholder="Apenas números"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-4 gap-4">
+                                    <FormField
+                                        control={addressForm.control}
+                                        name="street"
+                                        render={({ field }) => (
+                                            <FormItem className="col-span-3">
+                                                <FormLabel>Rua *</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        disabled={isFetchingCep}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={addressForm.control}
+                                        name="number"
+                                        render={({ field }) => (
+                                            <FormItem className="col-span-1">
+                                                <FormLabel>Número *</FormLabel>
+                                                <FormControl>
+                                                    <Input {...field} />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <FormField
+                                        control={addressForm.control}
+                                        name="neighborhood"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Bairro *</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        disabled={isFetchingCep}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={addressForm.control}
+                                        name="complement"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>
+                                                    Complemento
+                                                </FormLabel>
+                                                <FormControl>
+                                                    <Input {...field} />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <FormField
+                                        control={addressForm.control}
+                                        name="city"
+                                        render={({ field }) => (
+                                            <FormItem className="col-span-2">
+                                                <FormLabel>Cidade *</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        disabled={isFetchingCep}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={addressForm.control}
+                                        name="state"
+                                        render={({ field }) => (
+                                            <FormItem className="col-span-1">
+                                                <FormLabel>UF *</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        {...field}
+                                                        maxLength={2}
+                                                        disabled={isFetchingCep}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                                <Button
+                                    type="submit"
+                                    disabled={
+                                        createAddressMutation.isPending ||
+                                        isFetchingCep
+                                    }
+                                >
+                                    {createAddressMutation.isPending
+                                        ? "Adicionando..."
+                                        : "Salvar Endereço"}
+                                </Button>
+                            </form>
+                        </Form>
+                        <Separator className="my-6" />
+                    </CardContent>
+                )}
+
+                <CardContent className="space-y-4">
+                    {isLoadingAddresses ? (
+                        <div className="space-y-4">
+                            {Array.from({ length: 2 }).map((_, i) => (
+                                <Skeleton key={i} className="h-24 w-full" />
+                            ))}
+                        </div>
+                    ) : addresses && addresses.length > 0 ? (
+                        addresses.map((address) => (
+                            <div
+                                key={address.id}
+                                className="border p-4 rounded-lg flex justify-between items-start hover:bg-muted/50 transition-colors"
+                            >
+                                <div className="flex items-start gap-3">
+                                    <MapPin className="h-5 w-5 text-primary shrink-0 mt-1" />
+                                    <div>
+                                        <p className="font-semibold text-lg">
+                                            {address.name}
+                                        </p>
+                                        <p className="text-sm">
+                                            {address.street}, {address.number}
+                                            {address.complement &&
+                                                ` - ${address.complement}`}
+                                            <br />
+                                            {address.neighborhood},{" "}
+                                            {address.city} - {address.state},{" "}
+                                            {address.cep}
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() =>
+                                        deleteAddressMutation.mutate(address.id)
+                                    }
+                                    disabled={deleteAddressMutation.isPending}
+                                    className="text-destructive shrink-0"
+                                >
+                                    <Trash2 className="h-5 w-5" />
+                                </Button>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-center text-muted-foreground py-8">
+                            Nenhum endereço cadastrado.
+                        </p>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    );
+};
+
+// Componente da aba Garantias
+const WarrantiesTab = ({ clientId }: { clientId: string }) => {
+    const { data: warranties, isLoading } = useQuery<Warranty[]>({
+        queryKey: ["clientWarranties", clientId],
+        queryFn: () => fetchClientWarranties(clientId),
+        enabled: !!clientId,
+    });
+
+    if (isLoading)
+        return (
+            <div className="space-y-4 pt-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-32 w-full" />
+                ))}
+            </div>
+        );
+
+    return (
+        <div className="space-y-6 pt-4">
+            {warranties?.length === 0 ? (
+                <EmptyState
+                    icon={ShieldCheck}
+                    title="Nenhuma Garantia Encontrada"
+                    description="As garantias dos seus produtos aparecerão aqui."
+                />
+            ) : (
+                warranties?.map((warranty) => (
+                    <Card
+                        key={warranty.id}
+                        className="shadow-sm border-l-4 border-l-primary"
+                    >
+                        <CardHeader className="flex flex-row justify-between items-center pb-2">
+                            <CardTitle className="text-xl">
+                                {warranty.product_model}
+                            </CardTitle>
+                            <Badge
+                                variant="secondary"
+                                className="bg-green-100 text-green-700"
+                            >
+                                Ativa
+                            </Badge>
+                        </CardHeader>
+                        <CardContent className="text-sm">
+                            <p className="font-medium">
+                                Número de Série:{" "}
+                                <span className="font-mono">
+                                    {warranty.serial_number}
+                                </span>
+                            </p>
+                            <p className="text-muted-foreground mt-2">
+                                Data de Compra:{" "}
+                                {format(
+                                    parseISO(warranty.purchase_date),
+                                    "dd/MM/yyyy",
+                                    { locale: ptBR }
+                                )}
+                            </p>
+                            <p className="font-semibold text-primary mt-1">
+                                Expira em:{" "}
+                                {format(
+                                    parseISO(warranty.warranty_end_date),
+                                    "dd/MM/yyyy",
+                                    { locale: ptBR }
+                                )}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-2">
+                                Loja: {warranty.Stores?.name}
+                            </p>
+                        </CardContent>
+                    </Card>
+                ))
+            )}
+        </div>
+    );
+};
+
+// ==================================================================
+// 3. TELA PRINCIPAL
+// ==================================================================
+
+const MinhaConta = () => {
+    const { isLoggedIn, isLoadingSession, logout, customerProfile } =
+        useCustomerAuth();
+    const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const activeTab = searchParams.get("tab") || "pedidos";
+
+    // Redireciona se não estiver logado e a sessão carregou
+    useEffect(() => {
+        if (!isLoadingSession && !isLoggedIn) {
+            navigate("/login");
+        }
+    }, [isLoadingSession, isLoggedIn, navigate]);
+
+    // Função para alterar a aba via URL
+    const setActiveTab = (tab: string) => {
+        setSearchParams({ tab });
+    };
+
+    if (isLoadingSession || !isLoggedIn || !customerProfile) {
+        return (
+            <div className="min-h-screen bg-background flex flex-col">
+                <Navbar />
+                <div className="flex-1 flex items-center justify-center">
+                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                </div>
+                <Footer />
+            </div>
+        );
+    }
+
+    // Calcula o ID do cliente logado
+    const clientId = customerProfile.id;
+
+    return (
+        <div className="min-h-screen bg-background flex flex-col">
+            <SEO
+                title="Minha Conta"
+                description={`Gerencie seus pedidos, perfil e alertas, ${customerProfile.name}.`}
+            />
             <Navbar />
-            <main className="flex-1 container py-8">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <main className="container py-8 flex-1 max-w-4xl">
+                <div className="flex justify-between items-center mb-6 border-b pb-4">
                     <div>
-                        <h1 className="text-3xl font-bold">Minha Conta</h1>
-                        <p className="text-muted-foreground">Bem-vindo de volta, {profile?.name}</p>
+                        <h1 className="text-3xl font-bold tracking-tight">
+                            {customerProfile.name}
+                        </h1>
+                        <p className="text-muted-foreground">
+                            {customerProfile.email}
+                        </p>
                     </div>
-                    <Button variant="outline" onClick={logout} className="text-destructive border-destructive/20 hover:bg-destructive/10">
-                        <LogOut className="mr-2 h-4 w-4" /> Sair
+                    <Button
+                        variant="outline"
+                        onClick={logout}
+                        className="text-destructive"
+                    >
+                        <LogOut className="h-4 w-4 mr-2" /> Sair
                     </Button>
                 </div>
 
-                <Tabs defaultValue="orders" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 mb-8">
-                        <TabsTrigger value="orders">Meus Pedidos</TabsTrigger>
-                        <TabsTrigger value="favorites">Favoritos</TabsTrigger>
-                        <TabsTrigger value="account">Endereços & Dados</TabsTrigger>
+                <Tabs
+                    value={activeTab}
+                    onValueChange={setActiveTab}
+                    className="w-full"
+                >
+                    <TabsList className="grid w-full grid-cols-4 h-12">
+                        <TabsTrigger value="pedidos">
+                            <Package className="h-4 w-4 mr-2 hidden sm:inline" />{" "}
+                            Pedidos
+                        </TabsTrigger>
+                        <TabsTrigger value="alertas">
+                            <Bell className="h-4 w-4 mr-2 hidden sm:inline" />{" "}
+                            Alertas
+                        </TabsTrigger>
+                        <TabsTrigger value="perfil">
+                            <MapPin className="h-4 w-4 mr-2 hidden sm:inline" />{" "}
+                            Perfil/Endereços
+                        </TabsTrigger>
+                        <TabsTrigger value="garantias">
+                            <ShieldCheck className="h-4 w-4 mr-2 hidden sm:inline" />{" "}
+                            Garantias
+                        </TabsTrigger>
                     </TabsList>
 
-                    {/* ABA PEDIDOS */}
-                    <TabsContent value="orders" className="space-y-6">
-                        {loadingOrders ? <Loader2 className="mx-auto animate-spin" /> : 
-                        !orders || orders.length === 0 ? (
-                            <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-lg border border-dashed">
-                                <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-50" />
-                                <h3 className="text-lg font-semibold">Nenhum pedido ainda</h3>
-                                <Button asChild variant="link" className="mt-2"><Link to="/">Começar a comprar</Link></Button>
-                            </div>
-                        ) : (
-                            <div className="grid gap-6">
-                                {orders.map(order => (
-                                    <Card key={order.id} className="overflow-hidden border-l-4 border-l-primary">
-                                        <CardHeader className="bg-muted/30 pb-4">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <CardTitle className="text-lg">Pedido #{order.id.substring(0, 8).toUpperCase()}</CardTitle>
-                                                    <CardDescription>{format(new Date(order.created_at), "PPP 'às' HH:mm", { locale: ptBR })}</CardDescription>
-                                                </div>
-                                                <Badge variant="outline" className="capitalize">{order.status === 'completed' ? 'Concluído' : order.status === 'cancelled' ? 'Cancelado' : 'Em Andamento'}</Badge>
-                                            </div>
-                                            
-                                            {/* RASTREADOR VISUAL */}
-                                            <OrderTracker status={order.status} />
-                                            
-                                        </CardHeader>
-                                        <CardContent className="pt-6">
-                                            <div className="space-y-4">
-                                                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                                                {(order.items as any[]).map((item, idx) => (
-                                                    <div key={idx} className="flex justify-between items-center text-sm">
-                                                        <span className="font-medium">{item.quantity}x {item.name}</span>
-                                                        <span>{formatCurrency(item.price * item.quantity)}</span>
-                                                    </div>
-                                                ))}
-                                                <div className="flex justify-between items-center border-t pt-4 font-bold text-lg">
-                                                    <span>Total</span>
-                                                    <span className="text-primary">{formatCurrency(order.total_price)}</span>
-                                                </div>
-                                                
-                                                {/* Se tiver delivery */}
-                                                {order.delivery_type === 'delivery' && (
-                                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded text-sm text-blue-700 dark:text-blue-300 flex gap-2 items-start">
-                                                        <Truck className="h-4 w-4 mt-0.5" />
-                                                        <div>
-                                                            <strong>Entrega em:</strong><br/>
-                                                            {order.Stores?.name ? `Saindo de: ${order.Stores.name}` : "Centro de Distribuição"}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                            </div>
-                        )}
-                        
-                        {/* ÁREA DE GARANTIAS */}
-                        {warranties && warranties.length > 0 && (
-                            <div className="mt-12">
-                                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><ShieldCheck className="h-6 w-6 text-green-600" /> Minhas Garantias</h2>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    {warranties.map(warranty => (
-                                        <Card key={warranty.id}>
-                                            <CardHeader>
-                                                <CardTitle className="text-base">{warranty.product_model}</CardTitle>
-                                                <CardDescription>S/N: {warranty.serial_number}</CardDescription>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <p className="text-sm text-muted-foreground mb-4">
-                                                    Válido até: {format(new Date(warranty.warranty_end_date), "dd/MM/yyyy")}
-                                                </p>
-                                                <Button variant="outline" size="sm" onClick={() => generateWarrantyPDF(warranty, warranty.Stores || { name: "BV Celular" } as any, profile!)}>
-                                                    Baixar Certificado PDF
-                                                </Button>
-                                            </CardContent>
-                                        </Card>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                    {/* Conteúdo da aba Pedidos */}
+                    <TabsContent value="pedidos">
+                        <OrdersTab clientId={clientId} />
                     </TabsContent>
 
-                    {/* ABA FAVORITOS */}
-                    <TabsContent value="favorites">
-                         {loadingFavs ? <Loader2 className="mx-auto animate-spin" /> : 
-                            !favorites || favorites.length === 0 ? <p className="text-center text-muted-foreground py-8">Sua lista de desejos está vazia.</p> :
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {favorites.map(product => <ProductCard key={product.id} product={product} />)}
-                            </div>
-                         }
+                    {/* NOVO: Conteúdo da aba Alertas/Notificações */}
+                    <TabsContent value="alertas">
+                        <NotificationsTab clientId={clientId} />
                     </TabsContent>
 
-                    {/* ABA DADOS */}
-                    <TabsContent value="account" className="space-y-8">
-                        <Card>
-                            <CardHeader><CardTitle>Meus Endereços</CardTitle></CardHeader>
-                            <CardContent className="space-y-4">
-                                {loadingAddr ? <Loader2 className="animate-spin" /> : 
-                                    !addresses || addresses.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum endereço salvo.</p> :
-                                    addresses.map(addr => (
-                                        <div key={addr.id} className="flex justify-between items-center border p-3 rounded-lg">
-                                            <div className="flex items-start gap-3">
-                                                <MapPin className="h-5 w-5 text-primary mt-0.5" />
-                                                <div>
-                                                    <p className="font-medium">{addr.name}</p>
-                                                    <p className="text-sm text-muted-foreground">{addr.street}, {addr.number} - {addr.neighborhood}</p>
-                                                    <p className="text-xs text-muted-foreground">{addr.city} - {addr.state}</p>
-                                                </div>
-                                            </div>
-                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteAddrMutation.mutate(addr.id)}><Trash2 className="h-4 w-4" /></Button>
-                                        </div>
-                                    ))
-                                }
-                                {/* O cliente pode adicionar endereço direto no carrinho, então aqui é só visualização/delete */}
-                                <p className="text-xs text-muted-foreground pt-2">Para adicionar novos endereços, simule uma compra.</p>
-                            </CardContent>
-                        </Card>
+                    {/* Conteúdo da aba Perfil e Endereços */}
+                    <TabsContent value="perfil">
+                        <ProfileAndAddressTab />
+                    </TabsContent>
+
+                    {/* Conteúdo da aba Garantias */}
+                    <TabsContent value="garantias">
+                        <WarrantiesTab clientId={clientId} />
                     </TabsContent>
                 </Tabs>
             </main>

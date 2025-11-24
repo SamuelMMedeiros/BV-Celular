@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /**
  * @title src/components/LogisticsMap.tsx
  * @collapsible
@@ -73,8 +74,7 @@ const LogisticsMap: React.FC<LogisticsMapProps> = ({
             activeDrivers.length;
 
         return [avgLat, avgLng];
-    }, [drivers, DEFAULT_CENTER]); // CORRIGIDO: Adicionado DEFAULT_CENTER
-
+    }, [drivers, DEFAULT_CENTER]);
     if (isLoading) {
         return (
             <CardContent className="h-[600px] flex items-center justify-center bg-gray-100 dark:bg-gray-800">

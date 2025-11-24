@@ -1,3 +1,7 @@
+/**
+ * @title src/components/Navbar.tsx
+ * @collapsible
+ */
 import { useState, useContext, FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -8,6 +12,7 @@ import {
     MessageCircle,
     Menu,
     Search,
+    MailOpen, // Adicionando MailOpen (ícone do novo botão)
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +21,10 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthPopover } from "@/components/CustomerAuthPopover";
 import { CartDrawer } from "@/components/CartDrawer";
 import { ModeToggle } from "@/components/Mode-Toggle";
+// MANTIDO: O componente original que Samuel disse que já existe para Push
 import { NotificationButton } from "@/components/NotificationButton";
+// NOVO: Importa o componente da Central de Notificações
+import { ClientAlertsButton } from "@/components/ClientAlertsButton";
 import {
     Sheet,
     SheetContent,
@@ -194,8 +202,11 @@ export const Navbar = () => {
 
                 {/* DIREITA: Links Desktop + Ações */}
                 <div className="flex items-center gap-1 md:gap-2">
-                    {/* Botão de Notificação */}
-                    <NotificationButton />
+                    {/* Botão de Notificação Push (EXISTENTE) */}
+                    {!employeeProfile && <NotificationButton />}
+
+                    {/* NOVO: Central de Alertas do Cliente (POPUP) */}
+                    {!employeeProfile && <ClientAlertsButton />}
 
                     {/* Botão de Tema */}
                     <ModeToggle />
@@ -269,4 +280,4 @@ export const Navbar = () => {
     );
 };
 
-export default Navbar; // <-- IMPORTANTE: ISSO CORRIGE O ERRO
+export default Navbar;

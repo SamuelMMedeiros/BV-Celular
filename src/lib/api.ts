@@ -7,7 +7,7 @@ import {
     EmployeeInsertPayload, EmployeeUpdatePayload, CustomerUpdatePayload, OrderInsertPayload,
     BannerInsertPayload, BannerUpdatePayload, CouponInsertPayload, CouponUpdatePayload, WarrantyInsertPayload, AddressInsertPayload, DriverInsertPayload,
     WholesaleClientInsertPayload, WholesaleClientUpdatePayload, BulkClientInsertPayload,
-    PublicLinkInsertPayload, PublicLinkUpdatePayload
+    PublicLinkInsertPayload, PublicLinkUpdatePayload, ClientNotification
 } from "@/types";
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid'; 
@@ -287,7 +287,7 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
     sku: payload.sku,
     cost_price: payload.cost_price,
     images: imageUrls,
-    // NOVO: Incluir campos de especificações técnicas
+    // Incluir campos de especificações técnicas
     battery_capacity: payload.battery_capacity,
     camera_specs: payload.camera_specs,
     processor_model: payload.processor_model,
@@ -380,7 +380,7 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     sku: payload.sku,
     cost_price: payload.cost_price,
     images: finalImageUrls,
-    // NOVO: Incluir campos de especificações técnicas
+    // Incluir campos de especificações técnicas
     battery_capacity: payload.battery_capacity,
     camera_specs: payload.camera_specs,
     processor_model: payload.processor_model,
@@ -481,10 +481,10 @@ export const deleteEmployee = async (id: string) => {
 };
 
 // ==================================================================
-// DRIVERS (ENTREGADORES) - ATUALIZADO COM LOCALIZAÇÃO
+// DRIVERS (ENTREGADORES)
 // ==================================================================
 export const fetchDrivers = async (): Promise<Driver[]> => {
-    // SELECIONA os novos campos de localização
+    // Seleciona os novos campos de localização
     const { data, error } = await supabase.from('Drivers').select(`*, latitude, longitude, last_updated`).order('name');
     if (error) throw new Error(error.message);
     return data as Driver[];
@@ -598,8 +598,37 @@ export const deleteAddress = async (id: string) => {
 };
 
 // ==================================================================
-// PEDIDOS - ATUALIZADO COM DRIVER
+// PEDIDOS - ATUALIZADO COM DRIVER E NOTIFICAÇÕES
 // ==================================================================
+
+// Helper para definir a mensagem de notificação com base no status
+const getNotificationDetails = (status: string, orderId: string): { message: string, status_key: string } | null => {
+    const shortId = orderId.substring(0, 6).toUpperCase();
+    switch (status) {
+        case 'pending': return { message: `Pedido #${shortId} foi recebido e está sendo processado.`, status_key: status };
+        case 'processing': return { message: `A separação do pedido #${shortId} foi iniciada.`, status_key: status };
+        case 'ready': return { message: `Pedido #${shortId} está pronto para retirada.`, status_key: status };
+        case 'on_the_way': return { message: `Seu pedido #${shortId} saiu para entrega e está a caminho!`, status_key: status };
+        case 'completed': return { message: `Pedido #${shortId} entregue com sucesso!`, status_key: status };
+        case 'cancelled': return { message: `Seu pedido #${shortId} foi cancelado.`, status_key: status };
+        default: return null;
+    }
+}
+
+// Helper para criar notificação
+const createClientNotification = async (clientId: string, orderId: string, status: string) => {
+    const notificationData = getNotificationDetails(status, orderId);
+    if (notificationData) {
+        const { error: notifError } = await supabase.from('ClientNotifications').insert({
+            client_id: clientId,
+            order_id: orderId,
+            message: notificationData.message,
+            status_key: notificationData.status_key,
+        });
+        if (notifError) console.error("Erro ao criar notificação:", notifError.message);
+    }
+}
+
 export const createOrder = async (payload: OrderInsertPayload): Promise<Database['public']['Tables']['Orders']['Row']> => {
     const orderData = {
         client_id: payload.client_id,
@@ -614,12 +643,17 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
         payment_method: payload.payment_method,
         change_for: payload.change_for,
         stripe_payment_id: payload.stripe_payment_id,
-        driver_id: payload.driver_id, // NOVO
+        driver_id: payload.driver_id,
     };
     // @ts-ignore
     const { data, error } = await supabase.from('Orders').insert(orderData as any).select().single();
     if (error) throw new Error(error.message);
     
+    // CRIA NOTIFICAÇÃO INICIAL (Pending/Processing)
+    if (data) {
+        await createClientNotification(data.client_id, data.id, data.status);
+    }
+
     for (const item of payload.items) {
         try { await supabase.rpc('decrement_stock', { product_id: item.id, amount: item.quantity }); } 
         catch (e) { console.error("Erro estoque", e); }
@@ -630,7 +664,6 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
 export const fetchAllOrders = async (): Promise<Order[]> => {
     const { data, error } = await supabase
         .from('Orders')
-        // Seleciona a nova relação com Drivers
         .select(`*, Clients(name,phone,email), Stores(name,city,address,cnpj), Employees(name), Addresses(*), Drivers(*)`)
         .order('created_at', { ascending: false });
 
@@ -646,7 +679,7 @@ export const fetchAllOrders = async (): Promise<Order[]> => {
     })) as unknown as Order[];
 };
 
-// NOVO: Função para buscar dados de logística (Pedidos em Rota)
+// Função de logística para o LogisticsMap
 export const fetchLogisticsData = async (): Promise<{ orders: Order[], drivers: Driver[] }> => {
     // Filtra pedidos em status de entrega/rota e com entregador atribuído
     const { data: rawOrders, error: orderError } = await supabase
@@ -688,18 +721,40 @@ export const fetchClientOrders = async (clientId: string): Promise<Order[]> => {
     if (error) throw new Error(error.message);
     return data as unknown as Order[];
 };
+
+// ATUALIZADO: Cria notificação após mudança de status
 export const updateOrderStatus = async (orderId: string, status: string) => {
+    // 1. Obtém client_id antes de atualizar o status
+    const { data: orderData, error: fetchError } = await supabase.from('Orders').select('client_id').eq('id', orderId).single();
+    
+    if (fetchError || !orderData) {
+        throw new Error(`Pedido não encontrado: ${fetchError?.message}`);
+    }
+
+    // 2. Atualiza o status do pedido
     const { error } = await supabase.from('Orders').update({ status }).eq('id', orderId);
     if (error) throw new Error(error.message);
+
+    // 3. Cria a notificação para o cliente
+    await createClientNotification(orderData.client_id, orderId, status);
 };
+
 export const assignDriverToOrder = async (orderId: string, driverId: string) => {
+    // 1. Atualiza o pedido com driver_id e status para 'on_the_way'
     const { error } = await supabase.from('Orders').update({ driver_id: driverId, status: 'on_the_way' }).eq('id', orderId);
     if (error) throw new Error(error.message);
+    
+    // 2. Cria notificação 'on_the_way'
+    const { data: orderData } = await supabase.from('Orders').select('client_id').eq('id', orderId).single();
+    if (orderData) {
+        await createClientNotification(orderData.client_id, orderId, 'on_the_way');
+    }
 };
 
 // ==================================================================
-// OUTROS (OMITIDO POR LIMITE)
+// OUTROS (NOTIFICAÇÕES DO CLIENTE E GARANTIAS)
 // ==================================================================
+
 export const checkIsFavorite = async (clientId: string, productId: string) => {
     const { data, error } = await supabase.from('Favorites').select('id').eq('client_id', clientId).eq('product_id', productId).maybeSingle();
     if (error) return false;
@@ -790,7 +845,36 @@ export const fetchAllWarranties = async () => {
     const { data } = await supabase.from('Warranties').select(`*, Clients(id, name, phone, email), Stores(*)`);
     return data as any as Warranty[];
 };
+// CORRIGIDO: Função fetchClientWarranties exportada
 export const fetchClientWarranties = async (cid: string) => { 
     // @ts-ignore
     const { data } = await supabase.from('Warranties').select(`*, Stores(name, address, city)`).eq('client_id', cid); return data as any as Warranty[]; 
+};
+
+export const fetchClientNotifications = async (clientId: string): Promise<ClientNotification[]> => {
+    const { data, error } = await supabase
+        .from('ClientNotifications')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
+    
+    if (error) throw new Error(error.message);
+    return data as ClientNotification[];
+};
+
+export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
+    // A política RLS garante que apenas o dono da notificação pode atualizar
+    const { error } = await supabase.from('ClientNotifications').update({ is_read: true }).eq('id', notificationId);
+    if (error) throw new Error(error.message);
+};
+
+export const markAllNotificationsAsRead = async (clientId: string): Promise<void> => {
+    // A política RLS deve ser configurada para permitir que o usuário atualize várias de uma vez
+    const { error } = await supabase
+        .from('ClientNotifications')
+        .update({ is_read: true })
+        .eq('client_id', clientId) 
+        .eq('is_read', false);
+    
+    if (error) throw new Error(error.message);
 };

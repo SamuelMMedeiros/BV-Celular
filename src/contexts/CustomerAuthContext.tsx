@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,7 +9,7 @@ import { fetchCustomerProfile, fetchWholesaleProfile } from "@/lib/api"; // Impo
 interface CustomerAuthContextType {
     session: Session | null;
     user: User | null;
-    profile: CustomerProfile | null;
+    customerProfile: CustomerProfile | null; // CORRIGIDO: Renomeado de 'profile' para 'customerProfile'
     wholesaleProfile: WholesaleClient | null;
     isWholesale: boolean;
     isLoggedIn: boolean;
@@ -26,7 +26,7 @@ const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(u
 export const CustomerAuthProvider = ({ children }: { children: ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
-    const [profile, setProfile] = useState<CustomerProfile | null>(null);
+    const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null); // CORRIGIDO: Renomeado o state
     const [wholesaleProfile, setWholesaleProfile] = useState<WholesaleClient | null>(null);
     const [isLoadingSession, setIsLoadingSession] = useState(true);
 
@@ -35,7 +35,7 @@ export const CustomerAuthProvider = ({ children }: { children: ReactNode }) => {
             // Tenta buscar perfil de cliente normal
             const customerData = await fetchCustomerProfile(userId);
             if (customerData) {
-                setProfile(customerData);
+                setCustomerProfile(customerData); // Usa novo nome
             }
 
             // Tenta buscar perfil de atacado (se houver)
@@ -75,7 +75,7 @@ export const CustomerAuthProvider = ({ children }: { children: ReactNode }) => {
                 if (session?.user) {
                     await fetchProfiles(session.user.id);
                 } else {
-                    setProfile(null);
+                    setCustomerProfile(null); // Usa novo nome
                     setWholesaleProfile(null);
                 }
                 setIsLoadingSession(false);
@@ -112,7 +112,7 @@ export const CustomerAuthProvider = ({ children }: { children: ReactNode }) => {
 
     const logout = async () => {
         await supabase.auth.signOut();
-        setProfile(null);
+        setCustomerProfile(null); // Usa novo nome
         setWholesaleProfile(null);
         setUser(null);
         setSession(null);
@@ -124,14 +124,14 @@ export const CustomerAuthProvider = ({ children }: { children: ReactNode }) => {
 
     const getGreeting = () => {
         if (wholesaleProfile) return `Olá, ${wholesaleProfile.name} (Atacado)`;
-        if (profile) return `Olá, ${profile.name}`;
+        if (customerProfile) return `Olá, ${customerProfile.name}`; // Usa novo nome
         return "Minha Conta";
     };
 
     const value = {
         session,
         user,
-        profile,
+        customerProfile, // Expõe como 'customerProfile'
         wholesaleProfile,
         isWholesale: !!wholesaleProfile,
         isLoggedIn: !!user,
