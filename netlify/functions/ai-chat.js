@@ -67,13 +67,13 @@ exports.handler = async (event) => {
             };
         }
 
-        // 4. Mapear o histórico e gerar a resposta
+        // 4. Mapear o histórico e corrigir o erro: usar msg.text
         const contents = history.map((msg) => ({
             role: msg.sender === "user" ? "user" : "model",
-            parts: [{ text: prompt }], // Adiciona o catálogo ao primeiro prompt do histórico para dar contexto
+            parts: [{ text: msg.text }], // CORRIGIDO: Usa msg.text
         }));
 
-        // Mapear o histórico e gerar a resposta
+        // 5. Gerar a resposta
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: contents,
@@ -83,7 +83,7 @@ exports.handler = async (event) => {
             },
         });
 
-        // 5. Retorna a resposta (texto puro)
+        // 6. Retorna a resposta (texto puro)
         return {
             statusCode: 200,
             body: JSON.stringify({ response: response.text }),
