@@ -1,7 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-//
-// === CÓDIGO COMPLETO PARA: src/pages/ProductDetails.tsx ===
-//
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -45,10 +42,17 @@ import {
     Timer,
     AlertTriangle,
     Check,
+    // NOVO: Importar ícones para as novas specs
+    BatteryCharging,
+    Camera,
+    Settings,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { format, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+// Importar o Renderizador de Markdown
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 
 const ProductDetails = () => {
     const { productId } = useParams<{ productId: string }>();
@@ -134,10 +138,16 @@ const ProductDetails = () => {
               )
             : 0;
 
+    // LÓGICA ATUALIZADA: Considera os novos campos
     const hasSpecs =
         product.storage ||
         product.ram ||
-        (product.colors && product.colors.length > 0);
+        (product.colors && product.colors.length > 0) ||
+        product.battery_capacity ||
+        product.camera_specs ||
+        product.processor_model ||
+        product.technical_specs;
+
     const images =
         product.images && product.images.length > 0
             ? product.images
@@ -539,6 +549,49 @@ const ProductDetails = () => {
                                     Detalhes Técnicos
                                 </h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                    {/* Processador */}
+                                    {product.processor_model && (
+                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border">
+                                            <Cpu className="h-5 w-5 text-primary" />
+                                            <div>
+                                                <p className="font-medium">
+                                                    Processador
+                                                </p>
+                                                <p className="text-muted-foreground">
+                                                    {product.processor_model}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Bateria */}
+                                    {product.battery_capacity && (
+                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border">
+                                            <BatteryCharging className="h-5 w-5 text-primary" />
+                                            <div>
+                                                <p className="font-medium">
+                                                    Bateria
+                                                </p>
+                                                <p className="text-muted-foreground">
+                                                    {product.battery_capacity}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Câmera */}
+                                    {product.camera_specs && (
+                                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border">
+                                            <Camera className="h-5 w-5 text-primary" />
+                                            <div>
+                                                <p className="font-medium">
+                                                    Câmera
+                                                </p>
+                                                <p className="text-muted-foreground">
+                                                    {product.camera_specs}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Existente: Armazenamento */}
                                     {product.storage && (
                                         <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border">
                                             <HardDrive className="h-5 w-5 text-primary" />
@@ -552,6 +605,7 @@ const ProductDetails = () => {
                                             </div>
                                         </div>
                                     )}
+                                    {/* Existente: RAM */}
                                     {product.ram && (
                                         <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border">
                                             <Cpu className="h-5 w-5 text-primary" />
@@ -565,6 +619,7 @@ const ProductDetails = () => {
                                             </div>
                                         </div>
                                     )}
+                                    {/* Existente: Cores */}
                                     {product.colors &&
                                         product.colors.length > 0 && (
                                             <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border sm:col-span-2">
@@ -582,6 +637,16 @@ const ProductDetails = () => {
                                             </div>
                                         )}
                                 </div>
+                                {/* NOVO: Campo de texto livre adicional para outras specs (agora renderiza Markdown) */}
+                                {product.technical_specs && ( 
+                                     <div className="p-4 rounded-lg bg-muted/30 border space-y-2">
+                                        <h4 className="font-semibold flex items-center gap-2 text-sm text-foreground/80">
+                                            <Settings className="h-4 w-4 text-primary" />
+                                            Mais Detalhes
+                                        </h4>
+                                        <MarkdownRenderer content={product.technical_specs} />
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -590,9 +655,8 @@ const ProductDetails = () => {
                                 <h3 className="font-semibold text-lg">
                                     Sobre o Produto
                                 </h3>
-                                <p className="text-muted-foreground leading-relaxed whitespace-pre-line">
-                                    {product.description}
-                                </p>
+                                {/* Usar MarkdownRenderer */}
+                                <MarkdownRenderer content={product.description} />
                             </div>
                         )}
                     </div>

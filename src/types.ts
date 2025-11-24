@@ -1,6 +1,3 @@
-//
-// === CÓDIGO COMPLETO PARA: src/types.ts ===
-//
 import { Database } from "@/integrations/supabase/types";
 
 // --- ENTIDADES PRINCIPAIS ---
@@ -37,6 +34,12 @@ export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'col
   
   has_variations?: boolean;
   variants?: ProductVariant[]; // Lista de variações carregadas
+
+  // NOVO: Campos de Especificações Técnicas
+  battery_capacity?: string | null;
+  camera_specs?: string | null;
+  processor_model?: string | null;
+  technical_specs?: string | null; // Para informações mais longas em formato de texto.
 };
 
 export type Store = Database['public']['Tables']['Stores']['Row'] & {
@@ -244,6 +247,12 @@ export type ProductInsertPayload = Database['public']['Tables']['Products']['Ins
   
   has_variations?: boolean;
   variants?: ProductVariantPayload[]; 
+
+  // NOVO: Campos de Especificações Técnicas
+  battery_capacity?: string;
+  camera_specs?: string;
+  processor_model?: string;
+  technical_specs?: string;
 };
 
 export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {

@@ -47,6 +47,10 @@ import {
     Box,
     Package,
     Calendar as CalendarIcon,
+    // Icones para novas specs
+    BatteryCharging,
+    Camera,
+    Settings,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -54,6 +58,7 @@ import {
     fetchStores,
     fetchProductById,
     updateProduct,
+    generateProductData, // NOVO: Importar a função de API de IA
 } from "@/lib/api";
 import {
     ProductInsertPayload,
@@ -72,6 +77,10 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Label } from "@radix-ui/react-label";
+
+// NOVO: Importar os componentes de Markdown
+import { MarkdownEditor } from "@/components/MarkdownEditor";
+import { AdminMarkdownPreview } from "@/components/AdminMarkdownPreview";
 
 // --- CONSTANTES ---
 const SUBCATEGORIES = {
@@ -141,6 +150,12 @@ const commonSchema = z.object({
     variants: z.array(variantSchema).optional(),
 
     image_files: z.array(z.instanceof(File)).optional(),
+
+    // Campos de Especificações Técnicas
+    battery_capacity: z.string().optional().nullable(),
+    camera_specs: z.string().optional().nullable(),
+    processor_model: z.string().optional().nullable(),
+    technical_specs: z.string().optional().nullable(),
 });
 
 const imageFileSchema = z.array(z.instanceof(File)).optional();
@@ -159,6 +174,8 @@ const AdminProductForm = () => {
     const [imagesToDelete, setImagesToDelete] = useState<string[]>([]);
     const [isSimpleVariantMode, setIsSimpleVariantMode] = useState(false);
     const [simpleVariantText, setSimpleVariantText] = useState("");
+    // Estado para o loading da IA
+    const [isGenerating, setIsGenerating] = useState(false);
 
     const { data: stores, isLoading: isLoadingStores } = useQuery<Store[]>({
         queryKey: ["stores"],
@@ -197,6 +214,11 @@ const AdminProductForm = () => {
             image_files: [],
             has_variations: false,
             variants: [],
+            // defaultValues para novas specs
+            battery_capacity: "",
+            camera_specs: "",
+            processor_model: "",
+            technical_specs: "",
         },
     });
 
@@ -214,6 +236,9 @@ const AdminProductForm = () => {
     const hasVariations = form.watch("has_variations");
     const currentPrice = form.watch("price");
     const isPromotion = form.watch("isPromotion");
+    // Assistir aos campos para o preview no admin
+    const watchedDescription = form.watch("description");
+    const watchedTechnicalSpecs = form.watch("technical_specs");
 
     useEffect(() => {
         if (productToEdit) {
@@ -248,6 +273,11 @@ const AdminProductForm = () => {
                         original_price: toMoney(v.original_price),
                         sku: v.sku || "",
                     })) || [],
+                // Mapear campos de specs
+                battery_capacity: productToEdit.battery_capacity || "",
+                camera_specs: productToEdit.camera_specs || "",
+                processor_model: productToEdit.processor_model || "",
+                technical_specs: productToEdit.technical_specs || "",
             });
 
             setExistingImages(productToEdit.images || []);
@@ -290,6 +320,66 @@ const AdminProductForm = () => {
         const newSku = `PRD-${random}`;
         form.setValue("sku", newSku);
         toast({ description: `SKU gerado: ${newSku}` });
+    };
+
+    // FUNÇÃO ATUALIZADA: Chama a API de backend real
+    const handleGenerateData = async () => {
+        const productName = form.getValues("name");
+        const productCategory = form.getValues("category");
+
+        if (!productName) {
+            toast({
+                variant: "destructive",
+                title: "Atenção",
+                description: "Por favor, preencha o Nome do Produto antes.",
+            });
+            return;
+        }
+
+        setIsGenerating(true);
+        try {
+            // --- CHAMADA DE API REAL ---
+            const aiData = await generateProductData(
+                productName,
+                productCategory
+            );
+            // --------------------------
+
+            form.setValue("description", aiData.description, {
+                shouldValidate: true,
+            });
+
+            // Preenche os campos de especificações com os dados retornados
+            form.setValue("battery_capacity", aiData.battery_capacity || "", {
+                shouldValidate: true,
+            });
+            form.setValue("camera_specs", aiData.camera_specs || "", {
+                shouldValidate: true,
+            });
+            form.setValue("processor_model", aiData.processor_model || "", {
+                shouldValidate: true,
+            });
+            form.setValue("technical_specs", aiData.technical_specs || "", {
+                shouldValidate: true,
+            });
+
+            toast({
+                title: "Sucesso!",
+                description: "Descrição e Especificações geradas pela IA.",
+            });
+        } catch (error) {
+            console.error("Erro na Geração de Dados da IA:", error);
+            toast({
+                variant: "destructive",
+                title: "Erro de IA",
+                description:
+                    error instanceof Error
+                        ? error.message
+                        : "Falha ao gerar dados. Verifique o log do seu servidor.",
+            });
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const handleGenerateVariantsFromList = () => {
@@ -361,6 +451,11 @@ const AdminProductForm = () => {
                       sku: v.sku,
                   }))
                 : [],
+            // Incluir campos de especificações técnicas no payload
+            battery_capacity: data.battery_capacity || null,
+            camera_specs: data.camera_specs || null,
+            processor_model: data.processor_model || null,
+            technical_specs: data.technical_specs || null,
         };
 
         if (isEditMode) {
@@ -411,6 +506,8 @@ const AdminProductForm = () => {
         name: file.name,
     }));
     const isLoading = createMutation.isPending || updateMutation.isPending;
+    const isAparelho = selectedCategory === "aparelho";
+    const isAcessorio = selectedCategory === "acessorio";
 
     return (
         <div className="min-h-screen bg-slate-50/50 pb-20">
@@ -442,9 +539,11 @@ const AdminProductForm = () => {
                         </Button>
                         <Button
                             onClick={form.handleSubmit(onSubmit)}
-                            disabled={isLoading}
+                            disabled={isLoading || isGenerating}
                         >
-                            {isLoading ? "Salvando..." : "Salvar Produto"}
+                            {isLoading || isGenerating
+                                ? "Salvando..."
+                                : "Salvar Produto"}
                         </Button>
                     </div>
                 </div>
@@ -607,16 +706,37 @@ const AdminProductForm = () => {
                                                 )}
                                             />
 
+                                            {/* Botão Gerar com IA integrado ao campo de descrição */}
                                             <FormField
                                                 control={form.control}
                                                 name="description"
                                                 render={({ field }) => (
                                                     <FormItem>
-                                                        <FormLabel>
-                                                            Descrição
-                                                        </FormLabel>
+                                                        <div className="flex items-center justify-between">
+                                                            <FormLabel>
+                                                                Descrição
+                                                            </FormLabel>
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={
+                                                                    handleGenerateData
+                                                                }
+                                                                disabled={
+                                                                    isGenerating ||
+                                                                    isLoading
+                                                                }
+                                                                className="h-7 text-xs"
+                                                            >
+                                                                <Wand2 className="mr-2 h-3 w-3" />
+                                                                {isGenerating
+                                                                    ? "Gerando dados..."
+                                                                    : "Gerar com IA"}
+                                                            </Button>
+                                                        </div>
                                                         <FormControl>
-                                                            <Textarea
+                                                            <MarkdownEditor
                                                                 placeholder="Detalhes..."
                                                                 {...field}
                                                                 className="h-32 resize-none"
@@ -626,6 +746,181 @@ const AdminProductForm = () => {
                                                     </FormItem>
                                                 )}
                                             />
+                                            {/* Pré-visualização do Markdown da Descrição */}
+                                            <AdminMarkdownPreview
+                                                content={
+                                                    watchedDescription || ""
+                                                }
+                                            />
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Card de Especificações Técnicas */}
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>
+                                                Especificações Técnicas
+                                            </CardTitle>
+                                            <CardDescription>
+                                                Detalhes importantes do produto
+                                                (preenchido pela IA).
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            {isAparelho && (
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <FormField
+                                                        control={form.control}
+                                                        name="processor_model"
+                                                        render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel className="flex items-center gap-1">
+                                                                    <Layers className="h-3 w-3" />{" "}
+                                                                    Processador
+                                                                </FormLabel>
+                                                                <FormControl>
+                                                                    <Input
+                                                                        placeholder="Ex: Snapdragon 8 Gen 3"
+                                                                        {...field}
+                                                                    />
+                                                                </FormControl>
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                    <FormField
+                                                        control={form.control}
+                                                        name="battery_capacity"
+                                                        render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel className="flex items-center gap-1">
+                                                                    <BatteryCharging className="h-3 w-3" />{" "}
+                                                                    Bateria
+                                                                </FormLabel>
+                                                                <FormControl>
+                                                                    <Input
+                                                                        placeholder="Ex: 5000 mAh"
+                                                                        {...field}
+                                                                    />
+                                                                </FormControl>
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                    <FormField
+                                                        control={form.control}
+                                                        name="camera_specs"
+                                                        render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel className="flex items-center gap-1">
+                                                                    <Camera className="h-3 w-3" />{" "}
+                                                                    Câmera
+                                                                </FormLabel>
+                                                                <FormControl>
+                                                                    <Input
+                                                                        placeholder="Ex: 50MP Principal"
+                                                                        {...field}
+                                                                    />
+                                                                </FormControl>
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {/* Campos genéricos de RAM/Storage (já existiam) */}
+                                            {isAparelho && (
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <FormField
+                                                        control={form.control}
+                                                        name="ram"
+                                                        render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel>
+                                                                    RAM
+                                                                </FormLabel>
+                                                                <FormControl>
+                                                                    <Input
+                                                                        placeholder="Ex: 8GB"
+                                                                        {...field}
+                                                                    />
+                                                                </FormControl>
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                    <FormField
+                                                        control={form.control}
+                                                        name="storage"
+                                                        render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel>
+                                                                    Armazenamento
+                                                                </FormLabel>
+                                                                <FormControl>
+                                                                    <Input
+                                                                        placeholder="Ex: 128GB"
+                                                                        {...field}
+                                                                    />
+                                                                </FormControl>
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {/* Cores (já existia) */}
+                                            <FormField
+                                                control={form.control}
+                                                name="colors"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>
+                                                            Cores (Separadas por
+                                                            vírgula)
+                                                        </FormLabel>
+                                                        <FormControl>
+                                                            <Input
+                                                                placeholder="Ex: Preto, Azul, Branco"
+                                                                {...field}
+                                                                value={
+                                                                    field.value ||
+                                                                    ""
+                                                                }
+                                                            />
+                                                        </FormControl>
+                                                    </FormItem>
+                                                )}
+                                            />
+
+                                            {/* Campo de texto livre para specs genéricas (para acessórios ou detalhes extras) */}
+                                            {isAcessorio && (
+                                                <FormField
+                                                    control={form.control}
+                                                    name="technical_specs"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>
+                                                                Outras
+                                                                Especificações
+                                                                (Texto
+                                                                Livre/Markdown)
+                                                            </FormLabel>
+                                                            <FormControl>
+                                                                <MarkdownEditor
+                                                                    placeholder="Ex: Material de silicone, Certificação IPX4..."
+                                                                    {...field}
+                                                                    className="h-24 resize-none"
+                                                                />
+                                                            </FormControl>
+                                                            {/* Pré-visualização do Markdown de Outras Especificações */}
+                                                            <AdminMarkdownPreview
+                                                                content={
+                                                                    watchedTechnicalSpecs ||
+                                                                    ""
+                                                                }
+                                                            />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            )}
                                         </CardContent>
                                     </Card>
 
@@ -1295,10 +1590,12 @@ const AdminProductForm = () => {
                             </div>
                             <Button
                                 type="submit"
-                                disabled={isLoading}
+                                disabled={isLoading || isGenerating}
                                 className="w-full h-12 text-lg"
                             >
-                                {isLoading ? "Salvando..." : "Salvar Produto"}
+                                {isLoading || isGenerating
+                                    ? "Salvando..."
+                                    : "Salvar Produto"}
                             </Button>
                         </form>
                     </Form>

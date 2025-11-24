@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable prefer-const */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
 import { 
     Product, Store, Employee, CustomerProfile, OrderCartItem, Order, Banner, Warranty, Coupon, Address, ShippingQuote, Driver, WholesaleClient, PublicLink,
@@ -14,6 +12,80 @@ import {
 } from "@/types";
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid'; 
+
+
+// ==================================================================
+// FUNÇÕES DE API (INTELIGÊNCIA ARTIFICIAL)
+// ==================================================================
+
+// Tipo de retorno para o preenchimento de Produto
+type AIDataResponse = {
+    description: string;
+    battery_capacity: string | null;
+    camera_specs: string | null;
+    processor_model: string | null;
+    technical_specs: string | null;
+};
+
+// Tipo de retorno para o Chatbot
+type AIChatResponse = {
+    response: string;
+};
+
+// Tipo de mensagem para o histórico do Chatbot
+type AIChatMessage = {
+    text: string;
+    sender: "user" | "ai";
+}
+
+// NOVO: Função que chama o ENDPOINT SEGURO para preenchimento de produto
+export const generateProductData = async (
+    productName: string,
+    category: 'aparelho' | 'acessorio'
+): Promise<AIDataResponse> => {
+    // Apontando para a Netlify Function
+    const endpoint = '/.netlify/functions/generate-product-data';
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ productName, category }),
+    });
+
+    if (!response.ok) {
+        const errorDetail = await response.text();
+        console.error('AI Product API Error:', errorDetail);
+        throw new Error(`Falha na API de IA. Detalhes: ${errorDetail.substring(0, 100)}...`);
+    }
+
+    return response.json() as Promise<AIDataResponse>;
+};
+
+// NOVO: Função que chama o ENDPOINT SEGURO para o chatbot
+export const generateAIChatResponse = async (
+    history: AIChatMessage[]
+): Promise<AIChatResponse> => {
+    // Apontando para a Netlify Function
+    const endpoint = '/.netlify/functions/ai-chat';
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ history }),
+    });
+
+    if (!response.ok) {
+        const errorDetail = await response.text();
+        console.error('AI Chat API Error:', errorDetail);
+        throw new Error(`Falha na API de Chat AI. Detalhes: ${errorDetail.substring(0, 100)}...`);
+    }
+
+    return response.json() as Promise<AIChatResponse>;
+};
 
 // ==================================================================
 // HELPER: PARSEAMENTO DE DADOS
@@ -635,3 +707,4 @@ export const fetchClientWarranties = async (cid: string) => {
     // @ts-ignore
     const { data } = await supabase.from('Warranties').select(`*, Stores(name, address, city)`).eq('client_id', cid); return data as any as Warranty[]; 
 };
+

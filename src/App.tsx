@@ -1,3 +1,7 @@
+/**
+ * @title src/App.tsx
+ * @collapsible
+ */
 import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -53,6 +57,9 @@ import WarrantyPage from "./pages/Warranty";
 import LinksPage from "./pages/LinksPage";
 import CheckoutSuccess from "./pages/CheckoutSuccess";
 
+// NOVO: Importar o Widget de Chat
+import AIChatWidget from "@/components/AIChatWidget";
+
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
@@ -80,6 +87,8 @@ const MainLayout = () => (
     <>
         <EmployeeTracker />
         <Outlet />
+        {/* NOVO: Adicionar o Widget de Chat */}
+        <AIChatWidget />
     </>
 );
 

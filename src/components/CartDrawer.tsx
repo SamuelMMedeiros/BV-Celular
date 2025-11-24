@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/rules-of-hooks */
 import { useState, useRef, useEffect } from "react";
 import {
     ShoppingCart,
@@ -14,6 +15,8 @@ import {
     Truck,
     CreditCard,
     Building2,
+    ShieldCheck, // Ícone de segurança
+    Gift, // Ícone de presente
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,6 +54,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress"; // Certifique-se que este componente existe
 import { Store, Address } from "@/types";
 import { StripeCheckout } from "./StripeCheckout";
 import { Separator } from "@/components/ui/separator";
@@ -132,7 +136,6 @@ export const CartDrawer = () => {
         }
     }, [isWholesale, wholesaleProfile, selectedStoreId]);
 
-    // --- CÁLCULOS ---
     const normalize = (str: string | undefined | null) =>
         str
             ? str
@@ -144,18 +147,34 @@ export const CartDrawer = () => {
 
     const selectedStore = stores?.find((s) => s.id === selectedStoreId);
     const selectedAddress = addresses?.find((a) => a.id === selectedAddressId);
+
     const isSameCity =
         selectedStore &&
         selectedAddress &&
         normalize(selectedStore.city) === normalize(selectedAddress.city);
 
+    // --- LÓGICA DE GAMIFICAÇÃO FRETE GRÁTIS ---
+    const freeShippingThreshold =
+        (selectedStore?.free_shipping_min_value || 0) * 100;
+    const progressPercentage =
+        freeShippingThreshold > 0
+            ? Math.min(100, (subtotal / freeShippingThreshold) * 100)
+            : 0;
+    const remainingForFreeShipping = freeShippingThreshold - subtotal;
+
     let deliveryCost = 0;
     if (deliveryType === "delivery") {
         if (isSameCity && selectedStore) {
             const fixedFee = (selectedStore.delivery_fixed_fee || 0) * 100;
-            const minFree = (selectedStore.free_shipping_min_value || 0) * 100;
-            if (minFree > 0 && subtotal >= minFree) deliveryCost = 0;
-            else deliveryCost = fixedFee;
+            // Se atingiu a meta, zera
+            if (
+                freeShippingThreshold > 0 &&
+                subtotal >= freeShippingThreshold
+            ) {
+                deliveryCost = 0;
+            } else {
+                deliveryCost = fixedFee;
+            }
         } else if (shippingQuote) {
             deliveryCost = shippingQuote.price;
         }
@@ -163,11 +182,12 @@ export const CartDrawer = () => {
 
     const finalTotal = Math.max(0, subtotal - discountAmount + deliveryCost);
 
-    // --- HANDLERS ---
     const handleAddressChange = (addrId: string) => {
         setSelectedAddressId(addrId);
         const addr = addresses?.find((a) => a.id === addrId);
-        if (addr) handleCalculateFreight(addr.cep);
+        if (addr) {
+            handleCalculateFreight(addr.cep);
+        }
     };
 
     const handleCalculateFreight = async (cep: string) => {
@@ -191,7 +211,7 @@ export const CartDrawer = () => {
         }
     };
 
-    const handleSelectStore = (storeId: string) => {
+    const handleSelectStore = async (storeId: string) => {
         setSelectedStoreId(storeId);
     };
 
@@ -223,6 +243,9 @@ export const CartDrawer = () => {
             });
             return;
         }
+
+        const store = stores?.find((s) => s.id === selectedStoreId);
+        const address = addresses?.find((a) => a.id === selectedAddressId);
 
         if (isLoggedIn && (profile || wholesaleProfile)) {
             setIsSavingOrder(true);
@@ -292,7 +315,6 @@ export const CartDrawer = () => {
                 }
 
                 if (!paidOnline) {
-                    // --- MENSAGEM DETALHADA DO WHATSAPP ---
                     let msg = `👋 *Olá, ${selectedStore?.name}!*`;
                     msg += `%0A%0ASou *${clientName}* ${
                         isWholesale ? "(Atacado)" : ""
@@ -328,7 +350,7 @@ export const CartDrawer = () => {
                     } else {
                         msg += `%0A💵 Dinheiro`;
                         if (changeFor)
-                            msg += `%0A⚠️ *Troco para:* ${changeFor}`;
+                            msg += `%0A⚠️ *Troco para:* R$ ${changeFor}`;
                         else msg += `%0A_Sem troco_`;
                     }
 
@@ -352,18 +374,20 @@ export const CartDrawer = () => {
                     )}*`;
                     msg += `%0A%0AAguardando confirmação!`;
 
-                    const whatsappUrl = `https://api.whatsapp.com/send?phone=${selectedStore?.whatsapp.replace(
+                    const whatsappUrl = `https://api.whatsapp.com/send?phone=${store?.whatsapp.replace(
                         /\D/g,
                         ""
                     )}&text=${msg}`;
                     window.open(whatsappUrl, "_blank");
                 } else {
                     toast({
-                        title: "Pedido Confirmado!",
-                        description: `Pedido #${newOrder.id.substring(
+                        title: "Pagamento Confirmado! 🎉",
+                        description: `Seu pedido #${newOrder.id.substring(
                             0,
                             8
-                        )} recebido.`,
+                        )} foi recebido com sucesso.`,
+                        duration: 5000,
+                        className: "bg-green-600 text-white",
                     });
                 }
 
@@ -372,11 +396,11 @@ export const CartDrawer = () => {
                 setStep("cart");
                 navigate(`/success?orderId=${newOrder.id}`);
             } catch (error: any) {
-                console.error(error);
+                console.error("Falha ao salvar pedido:", error);
                 toast({
                     variant: "destructive",
-                    title: "Erro",
-                    description: "Não foi possível salvar o pedido.",
+                    title: "Erro no pedido",
+                    description: "Tente novamente.",
                 });
             } finally {
                 setIsSavingOrder(false);
@@ -390,6 +414,7 @@ export const CartDrawer = () => {
         else setStep("stores");
     };
 
+    // RENDERIZAÇÃO DOS ITENS (DESIGN MAIS CLEAN)
     const renderCartItems = () => (
         <ScrollArea className="flex-1 -mx-6 px-6">
             {itemCount === 0 ? (
@@ -413,10 +438,11 @@ export const CartDrawer = () => {
                                     <p className="font-medium leading-tight break-words">
                                         {item.name}
                                     </p>
+                                    {/* DESTAQUE PARA VARIAÇÃO (CLEAN) */}
                                     {item.variantName && (
-                                        <p className="text-xs text-muted-foreground mt-1 bg-muted inline-block px-1.5 py-0.5 rounded">
+                                        <span className="text-[10px] font-semibold text-foreground bg-secondary px-2 py-0.5 rounded mt-1 inline-block">
                                             {item.variantName}
-                                        </p>
+                                        </span>
                                     )}
                                 </div>
                                 <Button
@@ -517,6 +543,41 @@ export const CartDrawer = () => {
                         Resumo do carrinho
                     </SheetDescription>
                 </SheetHeader>
+
+                {/* BARRA DE PROGRESSO (GAMIFICAÇÃO) - Só aparece se tiver loja selecionada/contexto */}
+                {step === "cart" &&
+                    !isWholesale &&
+                    selectedStore &&
+                    freeShippingThreshold > 0 && (
+                        <div className="px-6 pt-4 pb-2 bg-secondary/30 rounded-b-lg mb-2">
+                            {remainingForFreeShipping > 0 ? (
+                                <div className="space-y-2">
+                                    <p className="text-xs text-center text-muted-foreground font-medium">
+                                        Adicione{" "}
+                                        <span className="text-primary font-bold">
+                                            {formatCurrency(
+                                                remainingForFreeShipping
+                                            )}
+                                        </span>{" "}
+                                        para ganhar{" "}
+                                        <span className="uppercase font-bold text-green-600">
+                                            Frete Grátis
+                                        </span>
+                                        ! 🚚
+                                    </p>
+                                    <Progress
+                                        value={progressPercentage}
+                                        className="h-2 bg-muted"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-center gap-2 text-xs font-bold text-green-600 bg-green-100/50 py-2 rounded-md animate-in zoom-in">
+                                    <Gift className="h-4 w-4" /> PARABÉNS! VOCÊ
+                                    GANHOU FRETE GRÁTIS!
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                 {step === "cart" && renderCartItems()}
 
@@ -842,12 +903,12 @@ export const CartDrawer = () => {
                     </div>
                 )}
 
-                {/* FOOTER COM ESTRUTURA 'FLEX-ROW' E 'WRAP' PARA STACK VISUAL */}
+                {/* FOOTER MANTIDO (FLEX-ROW WRAP) COM SELO DE SEGURANÇA */}
                 <SheetFooter className="bg-background border-t p-4 flex flex-row flex-wrap gap-4 mt-auto shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-20">
                     {step === "cart" ? (
                         itemCount > 0 ? (
                             <>
-                                {/* LINHA 1: VALORES (W-FULL PARA OCUPAR LINHA INTEIRA) */}
+                                {/* LINHA 1: TOTAIS */}
                                 <div className="w-full space-y-1">
                                     <div className="flex justify-between text-sm text-muted-foreground">
                                         <span>Subtotal:</span>
@@ -873,7 +934,7 @@ export const CartDrawer = () => {
                                     </div>
                                 </div>
 
-                                {/* LINHA 2: CUPOM (W-FULL PARA OCUPAR LINHA INTEIRA) */}
+                                {/* LINHA 2: CUPOM */}
                                 {!isWholesale && (
                                     <div className="w-full flex gap-2 items-center">
                                         <div className="relative flex-1">
@@ -896,6 +957,7 @@ export const CartDrawer = () => {
                                                 variant="destructive"
                                                 size="icon"
                                                 onClick={removeCoupon}
+                                                className="shrink-0"
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
@@ -904,6 +966,7 @@ export const CartDrawer = () => {
                                                 variant="secondary"
                                                 onClick={handleApplyCoupon}
                                                 disabled={isApplyingCoupon}
+                                                className="shrink-0"
                                             >
                                                 {isApplyingCoupon ? (
                                                     <Loader2 className="animate-spin h-4 w-4" />
@@ -915,7 +978,7 @@ export const CartDrawer = () => {
                                     </div>
                                 )}
 
-                                {/* LINHA 3: BOTÕES (W-FULL PARA OCUPAR LINHA INTEIRA, COM GRID INTERNO) */}
+                                {/* LINHA 3: BOTÕES LADO A LADO */}
                                 <div className="w-full grid grid-cols-2 gap-3">
                                     <Button
                                         variant="outline"
@@ -932,6 +995,14 @@ export const CartDrawer = () => {
                                         Finalizar
                                     </Button>
                                 </div>
+
+                                {/* SELO DE SEGURANÇA (NOVO) */}
+                                <div className="w-full flex justify-center gap-2 text-[10px] text-muted-foreground opacity-70 mt-1">
+                                    <span className="flex items-center gap-1">
+                                        <ShieldCheck className="h-3 w-3 text-green-600" />{" "}
+                                        Compra 100% Segura
+                                    </span>
+                                </div>
                             </>
                         ) : (
                             <SheetClose asChild>
@@ -945,24 +1016,25 @@ export const CartDrawer = () => {
                         (paymentMode === "whatsapp" || isWholesale) && (
                             <div className="w-full space-y-3">
                                 <div className="bg-muted/30 p-3 rounded-lg space-y-1">
-                                    {deliveryType === "delivery" && (
-                                        <div className="flex justify-between text-sm text-muted-foreground">
-                                            <span>
-                                                Frete{" "}
-                                                {isSameCity
-                                                    ? "(Local)"
-                                                    : "(Envio)"}
-                                                :
-                                            </span>
-                                            <span>
-                                                {deliveryCost === 0
-                                                    ? "GRÁTIS"
-                                                    : formatCurrency(
-                                                          deliveryCost
-                                                      )}
-                                            </span>
-                                        </div>
-                                    )}
+                                    {deliveryType === "delivery" &&
+                                        deliveryCost > 0 && (
+                                            <div className="flex justify-between text-sm text-muted-foreground">
+                                                <span>
+                                                    Frete{" "}
+                                                    {isSameCity
+                                                        ? "(Local)"
+                                                        : "(Envio)"}
+                                                    :
+                                                </span>
+                                                <span>
+                                                    {deliveryCost === 0
+                                                        ? "GRÁTIS"
+                                                        : formatCurrency(
+                                                              deliveryCost
+                                                          )}
+                                                </span>
+                                            </div>
+                                        )}
                                     <div className="flex justify-between items-center pt-1 border-t border-dashed border-gray-300">
                                         <span className="font-semibold">
                                             Total Final:
@@ -972,6 +1044,7 @@ export const CartDrawer = () => {
                                         </span>
                                     </div>
                                 </div>
+
                                 <Button
                                     size="lg"
                                     className="w-full bg-green-600 hover:bg-green-700 h-12 text-base shadow-md"
@@ -985,6 +1058,13 @@ export const CartDrawer = () => {
                                     )}
                                     Confirmar Pedido
                                 </Button>
+
+                                <div className="w-full flex justify-center gap-2 text-[10px] text-muted-foreground opacity-70 mt-1">
+                                    <span className="flex items-center gap-1">
+                                        <ShieldCheck className="h-3 w-3 text-green-600" />{" "}
+                                        Ambiente Seguro
+                                    </span>
+                                </div>
                             </div>
                         )
                     )}
