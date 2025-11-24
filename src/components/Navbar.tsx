@@ -1,4 +1,4 @@
-import { useState, useContext } from "react";
+import { useState, useContext, FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
     Smartphone,
@@ -36,14 +36,11 @@ export const Navbar = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState("");
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-    // Contexto de Admin/Funcionário
     const adminContext = useContext(AuthContext);
     const employeeProfile = adminContext?.employeeProfile;
     const adminLogout = adminContext?.logout || (async () => {});
 
-    // Contexto de Cliente
     const {
         isLoggedIn: isCustomerLoggedIn,
         getGreeting,
@@ -51,13 +48,14 @@ export const Navbar = () => {
     } = useCustomerAuth();
 
     const isActive = (path: string) => location.pathname === path;
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const handleAdminLogout = async () => {
         await adminLogout();
         navigate("/");
     };
 
-    const handleSearch = (e: React.FormEvent) => {
+    const handleSearch = (e: FormEvent) => {
         e.preventDefault();
         if (searchQuery.trim()) {
             navigate(`/aparelhos?q=${encodeURIComponent(searchQuery)}`);
@@ -66,12 +64,11 @@ export const Navbar = () => {
 
     return (
         <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container flex h-16 items-center justify-between gap-4">
-                {/* --- BLOCO ESQUERDA: MENU MOBILE & LOGO --- */}
-                <div className="flex items-center gap-2 md:gap-6">
-                    {/* Menu Mobile (Hambúrguer) */}
+            <div className="container flex h-16 items-center justify-between gap-2 md:gap-4">
+                {/* ESQUERDA: Menu Mobile + Logo */}
+                <div className="flex items-center">
                     <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-                        <SheetTrigger asChild className="md:hidden">
+                        <SheetTrigger asChild className="md:hidden mr-2">
                             <Button variant="ghost" size="icon">
                                 <Menu className="h-5 w-5" />
                                 <span className="sr-only">Menu</span>
@@ -89,7 +86,7 @@ export const Navbar = () => {
                             </SheetHeader>
 
                             <div className="flex flex-col mt-6 space-y-2">
-                                {/* Links Mobile - Apenas para Clientes */}
+                                {/* Links Mobile - SÓ MOSTRA SE NÃO FOR ADMIN */}
                                 {!employeeProfile &&
                                     navLinks.map((link) => (
                                         <Button
@@ -116,7 +113,7 @@ export const Navbar = () => {
 
                                 <Separator className="my-4" />
 
-                                {/* Lógica de Conta no Mobile */}
+                                {/* Opções de Conta no Menu Mobile */}
                                 {employeeProfile ? (
                                     <>
                                         <div className="px-2 py-1 text-sm font-medium text-muted-foreground">
@@ -131,92 +128,81 @@ export const Navbar = () => {
                                         >
                                             <Link to="/admin">
                                                 <ShieldCheck className="h-5 w-5 mr-3" />{" "}
-                                                Painel Admin
+                                                Painel
                                             </Link>
                                         </Button>
                                         <Button
                                             variant="ghost"
                                             size="lg"
-                                            onClick={() => {
-                                                handleAdminLogout();
-                                                setIsMenuOpen(false);
-                                            }}
+                                            onClick={handleAdminLogout}
                                             className="justify-start text-destructive"
                                         >
                                             <LogOut className="h-5 w-5 mr-3" />{" "}
-                                            Sair
+                                            Sair (Admin)
+                                        </Button>
+                                    </>
+                                ) : isCustomerLoggedIn ? (
+                                    <>
+                                        <div className="px-2 py-1 text-sm font-medium text-muted-foreground">
+                                            {getGreeting()}
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="lg"
+                                            onClick={customerLogout}
+                                            className="justify-start text-destructive"
+                                        >
+                                            <LogOut className="h-5 w-5 mr-3" />{" "}
+                                            Sair da Conta
                                         </Button>
                                     </>
                                 ) : (
-                                    <>
-                                        {isCustomerLoggedIn ? (
-                                            <>
-                                                <div className="px-2 py-1 text-sm font-medium text-muted-foreground">
-                                                    {getGreeting()}
-                                                </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="lg"
-                                                    asChild
-                                                    className="justify-start"
-                                                    onClick={() =>
-                                                        setIsMenuOpen(false)
-                                                    }
-                                                >
-                                                    <Link to="/minha-conta">
-                                                        Minha Conta
-                                                    </Link>
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="lg"
-                                                    onClick={() => {
-                                                        customerLogout();
-                                                        setIsMenuOpen(false);
-                                                    }}
-                                                    className="justify-start text-destructive"
-                                                >
-                                                    <LogOut className="h-5 w-5 mr-3" />{" "}
-                                                    Sair
-                                                </Button>
-                                            </>
-                                        ) : (
-                                            <Button
-                                                variant="default"
-                                                size="lg"
-                                                asChild
-                                                className="justify-start w-full"
-                                                onClick={() =>
-                                                    setIsMenuOpen(false)
-                                                }
-                                            >
-                                                <Link to="/login">
-                                                    Fazer Login / Cadastro
-                                                </Link>
-                                            </Button>
-                                        )}
-                                    </>
+                                    <div className="px-2 text-sm text-muted-foreground">
+                                        Faça login para ver seus pedidos.
+                                    </div>
                                 )}
                             </div>
                         </SheetContent>
                     </Sheet>
 
-                    {/* Logo */}
-                    <Link
-                        to="/"
-                        className="flex items-center gap-2 transition-opacity hover:opacity-90"
-                    >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-purple-600 text-primary-foreground shadow-sm">
+                    <Link to="/" className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-primary-foreground">
                             <Smartphone className="h-5 w-5" />
                         </div>
-                        <span className="text-lg font-bold hidden min-[360px]:inline-block tracking-tight">
+                        <span className="text-lg font-bold hidden min-[360px]:inline-block">
                             BV Celular
                         </span>
                     </Link>
+                </div>
 
-                    {/* Links Desktop - Apenas para Clientes */}
+                {/* CENTRO: Barra de Pesquisa (Escondida se for Admin) */}
+                {!employeeProfile && (
+                    <form
+                        onSubmit={handleSearch}
+                        className="hidden md:flex flex-1 max-w-sm items-center relative mx-4"
+                    >
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            type="search"
+                            placeholder="Buscar produtos..."
+                            className="pl-9 w-full bg-muted/50 focus:bg-background transition-colors"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </form>
+                )}
+
+                {/* DIREITA: Links Desktop + Ações */}
+                <div className="flex items-center gap-1 md:gap-2">
+                    {/* Botão de Notificação */}
+                    <NotificationButton />
+
+                    {/* Botão de Tema */}
+                    <ModeToggle />
+
+                    {/* Links (Apenas Desktop e se NÃO for Admin) */}
                     {!employeeProfile && (
-                        <div className="hidden md:flex items-center gap-1 ml-4">
+                        <div className="hidden lg:flex items-center gap-1 mr-2">
                             {navLinks.map((link) => (
                                 <Button
                                     key={link.to}
@@ -227,89 +213,60 @@ export const Navbar = () => {
                                     }
                                     size="sm"
                                     asChild
-                                    className="text-sm font-medium"
                                 >
                                     <Link to={link.to}>{link.label}</Link>
                                 </Button>
                             ))}
                         </div>
                     )}
-                </div>
 
-                {/* --- BLOCO CENTRO: BUSCA (Apenas Clientes) --- */}
-                {!employeeProfile && (
-                    <div className="hidden md:flex flex-1 max-w-md mx-4">
-                        <form
-                            onSubmit={handleSearch}
-                            className="w-full relative"
+                    {/* Busca Mobile (Ícone) */}
+                    {!employeeProfile && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="md:hidden"
+                            onClick={() => navigate("/aparelhos")}
                         >
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                type="search"
-                                placeholder="O que você procura hoje?"
-                                className="w-full pl-9 bg-muted/40 focus:bg-background border-muted-foreground/20 rounded-full transition-all"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </form>
-                    </div>
-                )}
+                            <Search className="h-5 w-5" />
+                            <span className="sr-only">Buscar</span>
+                        </Button>
+                    )}
 
-                {/* --- BLOCO DIREITA: AÇÕES --- */}
-                <div className="flex items-center gap-1 sm:gap-2">
-                    {/* Botões Universais (Aparecem para todos) */}
-                    <NotificationButton />
-                    <ModeToggle />
+                    {/* Carrinho (Escondido se for Admin) */}
+                    {!employeeProfile && <CartDrawer />}
 
-                    {/* Se for ADMIN */}
-                    {employeeProfile ? (
-                        <div className="flex items-center gap-2 ml-2 border-l pl-4">
-                            <span className="text-sm font-medium hidden lg:inline-block truncate max-w-[100px]">
-                                {employeeProfile.name}
-                            </span>
+                    {/* Perfil / Login */}
+                    {!employeeProfile && <CustomerAuthPopover />}
+
+                    {/* Admin Actions */}
+                    {employeeProfile && (
+                        <div className="flex items-center">
                             <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
                                 asChild
-                                className="hidden sm:flex gap-2"
+                                className="hidden md:flex gap-2"
                             >
                                 <Link to="/admin">
                                     <ShieldCheck className="h-4 w-4" /> Painel
                                 </Link>
                             </Button>
+
                             <Button
                                 variant="ghost"
                                 size="icon"
                                 onClick={handleAdminLogout}
-                                title="Sair"
+                                className="text-destructive hidden md:flex"
                             >
-                                <LogOut className="h-5 w-5 text-destructive" />
+                                <LogOut className="h-4 w-4" />
                             </Button>
                         </div>
-                    ) : (
-                        // Se for CLIENTE (Visitante ou Logado)
-                        <>
-                            {/* Busca Mobile */}
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="md:hidden"
-                                onClick={() => navigate("/aparelhos")}
-                            >
-                                <Search className="h-5 w-5" />
-                            </Button>
-
-                            {/* Carrinho */}
-                            <CartDrawer />
-
-                            {/* Minha Conta / Login */}
-                            <div className="hidden sm:block ml-1">
-                                <CustomerAuthPopover />
-                            </div>
-                        </>
                     )}
                 </div>
             </div>
         </nav>
     );
 };
+
+export default Navbar; // <-- IMPORTANTE: ISSO CORRIGE O ERRO

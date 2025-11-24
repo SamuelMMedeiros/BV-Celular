@@ -5,150 +5,284 @@ import {
     useState,
     useEffect,
     ReactNode,
+    useMemo,
+    useCallback,
 } from "react";
-import { CartItem } from "@/types";
+import { CartItem, Coupon, ShippingQuote } from "@/types";
+import { fetchCoupon, checkCouponUsage, calculateFreight } from "@/lib/api";
+import { useCustomerAuth } from "./CustomerAuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { isBefore } from "date-fns";
 
 interface CartContextType {
     cartItems: CartItem[];
     addToCart: (item: CartItem) => void;
-    removeFromCart: (itemId: string) => void;
-    updateQuantity: (itemId: string, quantity: number) => void;
+    removeFromCart: (itemId: string, variantId?: string) => void;
+    updateQuantity: (
+        itemId: string,
+        quantity: number,
+        variantId?: string
+    ) => void;
     clearCart: () => void;
     itemCount: number;
+
+    // Campos Financeiros
+    subtotal: number;
+    discountAmount: number;
     totalPrice: number;
-    // Novos campos para o cupom
-    coupon: string | null;
-    discount: number;
-    applyCoupon: (code: string) => void;
+
+    // Cupom
+    coupon: Coupon | null;
+    applyCoupon: (code: string) => Promise<boolean>;
     removeCoupon: () => void;
+
+    // Frete
+    shippingQuote: ShippingQuote | null;
+    calculateShipping: (cep: string) => Promise<void>;
+    clearShipping: () => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+const LOCAL_STORAGE_KEY = "bvcelular_cart";
+
 export const CartProvider = ({ children }: { children: ReactNode }) => {
     const [cartItems, setCartItems] = useState<CartItem[]>(() => {
-        const savedCart = localStorage.getItem("cart");
-        return savedCart ? JSON.parse(savedCart) : [];
+        try {
+            const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+            return stored ? JSON.parse(stored) : [];
+        } catch (e) {
+            console.error("Failed to read cart from localStorage", e);
+            return [];
+        }
     });
 
-    // Estado para o cupom
-    const [coupon, setCoupon] = useState<string | null>(null);
-    const [discount, setDiscount] = useState(0);
+    const [coupon, setCoupon] = useState<Coupon | null>(null);
+    const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(
+        null
+    );
+
+    const { profile, isLoggedIn } = useCustomerAuth();
     const { toast } = useToast();
 
     useEffect(() => {
-        localStorage.setItem("cart", JSON.stringify(cartItems));
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cartItems));
     }, [cartItems]);
 
-    // Recalcula o desconto sempre que o carrinho ou o cupom mudam
-    useEffect(() => {
-        const subtotal = cartItems.reduce(
+    const itemCount = useMemo(
+        () => cartItems.reduce((count, item) => count + item.quantity, 0),
+        [cartItems]
+    );
+
+    const subtotal = useMemo(() => {
+        return cartItems.reduce(
             (total, item) => total + item.price * item.quantity,
             0
         );
+    }, [cartItems]);
 
-        if (coupon === "BV10") {
-            // Exemplo: Cupom fixo de 10%
-            setDiscount(subtotal * 0.1);
-        } else if (coupon === "PROMO20") {
-            // Exemplo: Cupom de R$ 20,00
-            setDiscount(20);
-        } else {
-            setDiscount(0);
+    const discountAmount = useMemo(() => {
+        if (!coupon) return 0;
+        // Calcula desconto percentual
+        return Math.round(subtotal * (coupon.discount_percent / 100));
+    }, [subtotal, coupon]);
+
+    const totalPrice = useMemo(() => {
+        let total = subtotal - discountAmount;
+        if (shippingQuote) {
+            total += shippingQuote.price;
         }
-    }, [cartItems, coupon]);
+        return total > 0 ? total : 0;
+    }, [subtotal, discountAmount, shippingQuote]);
 
-    const addToCart = (item: CartItem) => {
-        setCartItems((prev) => {
-            const existing = prev.find((i) => i.id === item.id);
-            if (existing) {
-                return prev.map((i) =>
-                    i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-                );
+    const addToCart = useCallback((newItem: CartItem) => {
+        setCartItems((prevItems) => {
+            const existingItemIndex = prevItems.findIndex(
+                (i) => i.id === newItem.id && i.variantId === newItem.variantId
+            );
+
+            if (existingItemIndex > -1) {
+                const updatedItems = [...prevItems];
+                const currentItem = updatedItems[existingItemIndex];
+                const newQuantity = Math.min(currentItem.quantity + 1, 10);
+                updatedItems[existingItemIndex] = {
+                    ...currentItem,
+                    quantity: newQuantity,
+                };
+                return updatedItems;
+            } else {
+                return [...prevItems, { ...newItem, quantity: 1 }];
             }
-            return [...prev, { ...item, quantity: 1 }];
         });
-        toast({ title: "Adicionado ao carrinho", description: item.name });
-    };
+    }, []);
 
-    const removeFromCart = (itemId: string) => {
-        setCartItems((prev) => prev.filter((i) => i.id !== itemId));
-    };
+    const removeFromCart = useCallback(
+        (productId: string, variantId?: string) => {
+            setCartItems((prevItems) =>
+                prevItems.filter(
+                    (item) =>
+                        !(item.id === productId && item.variantId === variantId)
+                )
+            );
+        },
+        []
+    );
 
-    const updateQuantity = (itemId: string, quantity: number) => {
-        if (quantity < 1) return;
-        setCartItems((prev) =>
-            prev.map((i) => (i.id === itemId ? { ...i, quantity } : i))
-        );
-    };
+    const updateQuantity = useCallback(
+        (productId: string, quantity: number, variantId?: string) => {
+            if (quantity < 1 || quantity > 10) return;
 
-    const clearCart = () => {
-        setCartItems([]);
-        setCoupon(null); // Limpa cupom ao esvaziar
-        setDiscount(0);
-    };
-
-    // Função para aplicar cupom
-    const applyCoupon = (code: string) => {
-        // Aqui você pode validar com uma API real no futuro
-        const validCoupons = ["BV10", "PROMO20"];
-
-        if (validCoupons.includes(code.toUpperCase())) {
-            setCoupon(code.toUpperCase());
-            toast({
-                title: "Cupom aplicado!",
-                description: `Desconto ativado com sucesso.`,
+            setCartItems((prevItems) => {
+                return prevItems.map((item) => {
+                    if (item.id === productId && item.variantId === variantId) {
+                        return { ...item, quantity: quantity };
+                    }
+                    return item;
+                });
             });
-        } else {
+        },
+        []
+    );
+
+    const clearCart = useCallback(() => {
+        setCartItems([]);
+        setCoupon(null);
+        setShippingQuote(null);
+    }, []);
+
+    const applyCoupon = async (code: string) => {
+        if (!code) return false;
+
+        if (!isLoggedIn || !profile) {
             toast({
                 variant: "destructive",
-                title: "Cupom inválido",
-                description: "Tente BV10 ou PROMO20",
+                title: "Login necessário",
+                description: "Faça login para usar cupons.",
             });
-            setCoupon(null);
+            return false;
+        }
+
+        const foundCoupon = await fetchCoupon(code);
+
+        if (foundCoupon) {
+            if (
+                foundCoupon.valid_until &&
+                isBefore(new Date(foundCoupon.valid_until), new Date())
+            ) {
+                toast({ variant: "destructive", title: "Cupom expirado" });
+                return false;
+            }
+
+            if (
+                foundCoupon.min_purchase_value &&
+                subtotal < foundCoupon.min_purchase_value * 100
+            ) {
+                toast({
+                    variant: "destructive",
+                    title: "Valor mínimo não atingido",
+                });
+                return false;
+            }
+
+            const alreadyUsed = await checkCouponUsage(
+                profile.id,
+                foundCoupon.id
+            );
+            if (alreadyUsed) {
+                toast({ variant: "destructive", title: "Cupom já utilizado" });
+                return false;
+            }
+
+            if (!foundCoupon.allow_with_promotion) {
+                const hasPromoItem = cartItems.some((item) => item.isPromotion);
+                if (hasPromoItem) {
+                    toast({
+                        variant: "destructive",
+                        title: "Não permitido",
+                        description:
+                            "Este cupom não acumula com itens em promoção.",
+                    });
+                    return false;
+                }
+            }
+
+            if (
+                foundCoupon.valid_for_categories &&
+                foundCoupon.valid_for_categories.length > 0
+            ) {
+                const allItemsValid = cartItems.every((item) =>
+                    foundCoupon.valid_for_categories?.includes(item.category)
+                );
+                if (!allItemsValid) {
+                    toast({
+                        variant: "destructive",
+                        title: "Categoria inválida",
+                        description: `Válido apenas para: ${foundCoupon.valid_for_categories.join(
+                            ", "
+                        )}`,
+                    });
+                    return false;
+                }
+            }
+
+            setCoupon(foundCoupon);
+            return true;
+        }
+
+        toast({ variant: "destructive", title: "Cupom inválido" });
+        return false;
+    };
+
+    const removeCoupon = () => setCoupon(null);
+
+    const calculateShipping = async (cep: string) => {
+        try {
+            const quote = await calculateFreight(cep);
+            setShippingQuote(quote);
+            toast({
+                title: "Frete calculado!",
+                description: `Prazo: ${quote.days} dias úteis.`,
+            });
+        } catch (error) {
+            console.error(error);
+            setShippingQuote(null);
+            toast({
+                variant: "destructive",
+                title: "Erro no frete",
+                description: "Verifique o CEP.",
+            });
         }
     };
 
-    const removeCoupon = () => {
-        setCoupon(null);
-        setDiscount(0);
+    const clearShipping = () => setShippingQuote(null);
+
+    const value = {
+        cartItems,
+        addToCart,
+        removeFromCart,
+        updateQuantity,
+        clearCart,
+        itemCount,
+        subtotal,
+        discountAmount,
+        totalPrice,
+        coupon,
+        applyCoupon,
+        removeCoupon,
+        shippingQuote,
+        calculateShipping,
+        clearShipping,
     };
 
-    const itemCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-
-    // Total = Subtotal - Desconto
-    const subtotal = cartItems.reduce(
-        (acc, item) => acc + item.price * item.quantity,
-        0
-    );
-    const totalPrice = Math.max(0, subtotal - discount); // Garante que não fique negativo
-
     return (
-        <CartContext.Provider
-            value={{
-                cartItems,
-                addToCart,
-                removeFromCart,
-                updateQuantity,
-                clearCart,
-                itemCount,
-                totalPrice,
-                coupon,
-                discount,
-                applyCoupon,
-                removeCoupon,
-            }}
-        >
-            {children}
-        </CartContext.Provider>
+        <CartContext.Provider value={value}>{children}</CartContext.Provider>
     );
 };
 
 export const useCart = () => {
     const context = useContext(CartContext);
     if (context === undefined) {
-        throw new Error("useCart must be used within a CartProvider");
+        throw new Error("useCart deve ser usado dentro de um CartProvider");
     }
     return context;
 };
