@@ -15,33 +15,29 @@ const responseSchema = {
         battery_capacity: {
             type: "string",
             nullable: true,
-            description:
-                "Capacidade da bateria (Ex: 5000 mAh). Null se for acessório.",
+            description: "Ex: 5000 mAh. Null se for acessório.",
         },
         camera_specs: {
             type: "string",
             nullable: true,
-            description:
-                "Configuração da câmera principal (Ex: 50MP Principal). Null se for acessório.",
+            description: "Ex: Principal 50MP. Null se for acessório.",
         },
         processor_model: {
             type: "string",
             nullable: true,
-            description:
-                "Nome do processador/chipset (Ex: Snapdragon 8 Gen 3). Null se for acessório.",
+            description: "Ex: Snapdragon 8 Gen 3. Null se for acessório.",
         },
         technical_specs: {
             type: "string",
             nullable: true,
             description:
-                "Especificações adicionais em Markdown (Ex: material, certificação). Usado primariamente para acessórios. Null se for celular.",
+                "Outras especificações em texto livre em Markdown. Null se for celular.",
         },
     },
     required: ["description"],
 };
 
 exports.handler = async (event) => {
-    // Acessa a chave do API de forma segura
     if (!GEMINI_API_KEY) {
         return {
             statusCode: 500,
@@ -67,13 +63,19 @@ exports.handler = async (event) => {
             };
         }
 
-        const prompt = `Você é um especialista em produtos de tecnologia para e-commerce. 
-                        Gere a descrição e as especificações técnicas no formato JSON para o produto: **${productName}**, que é da categoria **${category}**.
+        const prompt = `Você é um copywriter de e-commerce e especialista em produtos de tecnologia.
+                        Gere uma descrição de marketing **VISUALMENTE ATRATIVA** em formato Markdown para o produto: "${productName}", que é da categoria "${category}".
                         
-                        Diretrizes:
-                        1. Use formatação Markdown (títulos, negrito, listas) na 'description' e nas 'technical_specs'.
-                        2. Se a categoria for 'aparelho', preencha battery_capacity, camera_specs e processor_model. Deixe 'technical_specs' como null. 
-                        3. Se a categoria for 'acessorio', preencha 'technical_specs' com detalhes (Ex: material, conectividade, peso). Deixe os campos de hardware (battery, camera, processor) como null.`;
+                        DIRETRIZES DE FORMATAÇÃO (Obrigatórias):
+                        1. **ESTILO:** Use um tom entusiasta e de vendas.
+                        2. **EMOJIS:** Use 3 a 5 EMOJIS relevantes que condizem com o texto (Ex: 🚀, 🔋, 📸, ✨).
+                        3. **LISTAS:** Use quebras de linha (enter) antes e depois de títulos e listas. As listas devem ser claras e espaçadas.
+                        4. **ESTRUTURA SUGERIDA:**
+                            - Título de Marketing
+                            - Parágrafo de Abertura.
+                            - Título Secundário (## ou ###).
+                            - Lista de Características Principais (usando '-' ou '*' e Emojis).
+                            - Chamada final para Ação.`;
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -81,26 +83,25 @@ exports.handler = async (event) => {
             config: {
                 responseMimeType: "application/json",
                 responseSchema: responseSchema,
-                temperature: 0.7,
+                temperature: 0.8, // Aumenta a criatividade
             },
         });
 
-        // O response.text é a string JSON que o modelo retornou
+        // Retorna o JSON gerado pela IA
         return {
             statusCode: 200,
             body: response.text,
+            headers: { "Content-Type": "application/json" },
         };
     } catch (error) {
-        console.error(
-            "Erro na Netlify Function (Product Data):",
-            error.message
-        );
+        console.error("Erro na Edge Function:", error.message);
         return {
             statusCode: 500,
             body: JSON.stringify({
-                error: "Erro interno da IA ao gerar dados.",
+                message: "Erro interno da IA.",
                 details: error.message,
             }),
+            headers: { "Content-Type": "application/json" },
         };
     }
 };
