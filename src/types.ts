@@ -1,6 +1,9 @@
+//
+// === CÓDIGO COMPLETO PARA: src/types.ts ===
+//
 import { Database } from "@/integrations/supabase/types";
 
-// --- ENTIDADES ---
+// --- ENTIDADES PRINCIPAIS ---
 
 // Nova Entidade: Variação de Produto
 export type ProductVariant = {
@@ -11,6 +14,7 @@ export type ProductVariant = {
     price: number;
     original_price?: number;
     quantity: number;
+    sku?: string; // Adicionado SKU na variação
 };
 
 export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'colors' | 'images' | 'category'> & {
@@ -23,13 +27,16 @@ export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'col
   promotion_end_date?: string | null;
   quantity?: number; // Estoque geral (se não tiver variação)
   
-  // Novos Campos
-  has_variations?: boolean;
-  variants?: ProductVariant[]; // Lista de variações carregadas
+  // Novos Campos Financeiros e Logísticos
+  sku?: string | null;
+  cost_price?: number | null;
   
   wholesale_price?: number;
   installment_price?: number;
   max_installments?: number;
+  
+  has_variations?: boolean;
+  variants?: ProductVariant[]; // Lista de variações carregadas
 };
 
 export type Store = Database['public']['Tables']['Stores']['Row'] & {
@@ -93,7 +100,8 @@ export type Address = {
     state: string;
 };
 
-// Carrinho atualizado para suportar variação selecionada
+// --- CARRINHO E PEDIDOS ---
+
 export type CartItem = {
   id: string; 
   name: string;
@@ -103,9 +111,9 @@ export type CartItem = {
   category: 'aparelho' | 'acessorio'; 
   isPromotion?: boolean;
   
-  // Novos campos para Variação no Carrinho
-  variantId?: string;       // ID da variação escolhida
-  variantName?: string;     // Nome da variação (ex: "128GB - Azul")
+  // Campos para Variação no Carrinho
+  variantId?: string;       
+  variantName?: string;     
 };
 
 export type OrderCartItem = {
@@ -114,7 +122,7 @@ export type OrderCartItem = {
   price: number;
   quantity: number;
   category: 'aparelho' | 'acessorio';
-  variantName?: string; // Para salvar no histórico
+  variantName?: string; 
 };
 
 export type Order = {
@@ -138,6 +146,14 @@ export type Order = {
   Employees?: { name: string; } | null;
   Addresses?: Address | null;
 };
+
+export type ShippingQuote = {
+    price: number;
+    days: number;
+    type: string;
+};
+
+// --- MARKETING E UTILITÁRIOS ---
 
 export type Banner = {
     id: string;
@@ -179,12 +195,6 @@ export type Coupon = {
     allow_with_promotion?: boolean;  
 };
 
-export type ShippingQuote = {
-    price: number;
-    days: number;
-    type: string;
-};
-
 export type PublicLink = {
     id: string;
     title: string;
@@ -193,15 +203,28 @@ export type PublicLink = {
     active: boolean;
 };
 
-// --- PAYLOADS ---
+// Tipo auxiliar para Notificações (usado no api.ts e AdminNotifications)
+export type PushCampaign = {
+    id: string;
+    title: string;
+    body: string;
+    image_url?: string | null;
+    link_url?: string | null;
+    scheduled_for?: string | null;
+    status: 'draft' | 'sent' | 'scheduled';
+    sent_count: number;
+    created_at: string;
+};
 
-// Payload para Variação
+// --- PAYLOADS (Tipos para Inserção/Atualização na API) ---
+
 export type ProductVariantPayload = {
     name: string;
     attributes: Record<string, string>;
     price: number;
     original_price?: number;
     quantity: number;
+    sku?: string;
 };
 
 export type ProductInsertPayload = Database['public']['Tables']['Products']['Insert'] & {
@@ -210,13 +233,17 @@ export type ProductInsertPayload = Database['public']['Tables']['Products']['Ins
   brand?: string;
   promotion_end_date?: string | null;
   quantity?: number;
+  
+  sku?: string;
+  cost_price?: number;
+  
   wholesale_price?: number;
   installment_price?: number;
   max_installments?: number;
   subcategory?: string;
   
   has_variations?: boolean;
-  variants?: ProductVariantPayload[]; // Lista para salvar junto
+  variants?: ProductVariantPayload[]; 
 };
 
 export type ProductUpdatePayload = Omit<ProductInsertPayload, 'image_files'> & {
@@ -334,7 +361,6 @@ export type BannerInsertPayload = {
 
 export type BannerUpdatePayload = Partial<BannerInsertPayload> & {
     id: string;
-
 };
 
 export type PublicLinkInsertPayload = {
@@ -346,4 +372,13 @@ export type PublicLinkInsertPayload = {
 
 export type PublicLinkUpdatePayload = Partial<PublicLinkInsertPayload> & {
     id: string;
+};
+
+export type PushCampaignInsertPayload = {
+    title: string;
+    body: string;
+    image_url?: string | null;
+    link_url?: string | null;
+    scheduled_for?: string | null; // ISO String
+    status?: 'draft' | 'sent' | 'scheduled';
 };
