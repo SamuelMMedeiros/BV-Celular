@@ -87,7 +87,7 @@ const MainLayout = () => (
     <>
         <EmployeeTracker />
         <Outlet />
-        {/* NOVO: Adicionar o Widget de Chat */}
+        {/* NOVO: Adicionar o Widget de Chat em todas as páginas públicas */}
         <AIChatWidget />
     </>
 );

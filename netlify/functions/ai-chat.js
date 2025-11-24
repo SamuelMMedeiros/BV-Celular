@@ -1,4 +1,5 @@
 const { GoogleGenAI } = require("@google/genai");
+const { fetchSimplifiedProducts } = require("./utils/api-client.cjs"); // NOVO: Importa o módulo de API
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -28,15 +29,33 @@ exports.handler = async (event) => {
             };
         }
 
-        // 1. Mapear o histórico para o formato da API Gemini (roles 'user' e 'model')
+        // 1. BUSCA DE PRODUTOS REAIS
+        const productList = await fetchSimplifiedProducts();
+
+        const productsJsonString = JSON.stringify(productList, null, 2);
+
+        // 2. Definir o prompt do sistema para o contexto da conversa, INJETANDO OS DADOS
+        const systemInstruction = `
+            Você é o Assistente de Compras da BV Celular. 
+            Seu objetivo é ajudar o cliente a escolher o melhor produto. 
+            
+            DIRETRIZES ESSENCIAIS:
+            1. **Prioridade em Dados Internos:** SEMPRE use a lista de produtos fornecida abaixo para fazer recomendações.
+            2. **Não Mencione a Fonte:** Não diga que as informações vieram de uma lista, banco de dados ou inventário.
+            3. **Seja Consultivo:** Sugira produtos específicos com base nas perguntas do cliente (ex: "Qual celular para jogos?").
+            4. **Formatação Simples:** Mantenha as respostas amigáveis e não gere Markdown.
+            
+            ### PRODUTOS DISPONÍVEIS
+            ${productsJsonString}
+        `;
+
+        // 3. Mapear o histórico para o formato da API Gemini (roles 'user' e 'model')
         const contents = history.map((msg) => ({
             role: msg.sender === "user" ? "user" : "model",
             parts: [{ text: msg.text }],
         }));
 
-        // 2. Definir o prompt do sistema para o contexto da conversa
-        const systemInstruction = `Você é o Assistente de Compras da BV Celular. Seu objetivo é ajudar o cliente a escolher o melhor celular ou acessório. Seja amigável, conciso e útil. Mantenha o contexto de e-commerce de tecnologia.`;
-
+        // 4. Gera a resposta usando o histórico e as instruções do sistema
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: contents, // Envia o histórico
@@ -46,7 +65,7 @@ exports.handler = async (event) => {
             },
         });
 
-        // 3. Retorna a resposta (texto puro)
+        // Retorna a resposta (texto puro)
         return {
             statusCode: 200,
             body: JSON.stringify({ response: response.text }),
@@ -56,8 +75,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 500,
             body: JSON.stringify({
-                error: "Erro interno da IA do Chat.",
-                details: error.message,
+                error: "Erro interno da IA do Chat. Verifique se o SUPABASE_SERVICE_KEY está configurado.",
             }),
         };
     }
