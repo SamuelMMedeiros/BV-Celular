@@ -1,4 +1,11 @@
+/**
+ * @title src/lib/api.ts
+ * @collapsible
+ */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
+/* eslint-disable prefer-const */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
 import { 
@@ -504,6 +511,20 @@ export const deleteDriver = async (id: string) => {
     if (error) throw new Error(error.message);
 };
 
+// NOVO: Função para o driver mobile enviar localização
+export const updateDriverLocation = async (
+    driverId: string,
+    latitude: number,
+    longitude: number
+): Promise<void> => {
+    const { error } = await supabase
+        .from('Drivers')
+        .update({ latitude, longitude, last_updated: new Date().toISOString() })
+        .eq('id', driverId);
+    
+    if (error) throw new Error(`Falha ao atualizar localização do driver: ${error.message}`);
+};
+
 // ==================================================================
 // CLIENTES & ATACADO (OMITIDO POR LIMITE)
 // ==================================================================
@@ -845,7 +866,6 @@ export const fetchAllWarranties = async () => {
     const { data } = await supabase.from('Warranties').select(`*, Clients(id, name, phone, email), Stores(*)`);
     return data as any as Warranty[];
 };
-// CORRIGIDO: Função fetchClientWarranties exportada
 export const fetchClientWarranties = async (cid: string) => { 
     // @ts-ignore
     const { data } = await supabase.from('Warranties').select(`*, Stores(name, address, city)`).eq('client_id', cid); return data as any as Warranty[]; 
