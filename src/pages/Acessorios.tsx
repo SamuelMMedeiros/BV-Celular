@@ -1,111 +1,145 @@
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+/**
+ * @title src/pages/Acessorios.tsx
+ * @collapsible
+ */
 import { Navbar } from "@/components/Navbar";
-import { ProductCard } from "@/components/ProductCard";
-import { fetchProducts } from "@/lib/api";
-import { Product } from "@/types";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/Footer";
-import { SEO } from "@/components/SEO";
+import { ProductCard } from "@/components/ProductCard";
 import { ProductFilters } from "@/components/ProductFilters";
 import { EmptyState } from "@/components/EmptyState";
-import { Filter, SearchX } from "lucide-react";
+// Importa o tipo e a função com filtros (agora contida no api.ts)
+import { fetchProducts, ProductFilters as FiltersType } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { Filter, Headphones } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useState, useMemo, useCallback } from "react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { SEO } from "@/components/SEO";
 
 const Acessorios = () => {
-    const [searchParams] = useSearchParams();
-    const queryFromUrl = searchParams.get("q") || "";
+    // Define os filtros padrão para a categoria Acessório
+    const defaultFilters: FiltersType = useMemo(
+        () => ({
+            category: "acessorio", // Chave principal de diferenciação
+            q: "",
+            brands: [],
+            // Os campos de specs de aparelho (ram, storage, etc.) são omitidos aqui,
+            // mas são limpos para garantir que a consulta API não os use.
+            ram: [],
+            storage: [],
+            battery_capacity: [],
+            processor_model: [],
+        }),
+        []
+    );
 
-    const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+    const [filters, setFilters] = useState<FiltersType>(defaultFilters);
+    const [isSheetOpen, setIsSheetOpen] = useState(false);
 
-    const { data: allProducts, isLoading } = useQuery<Product[]>({
-        queryKey: ["products", "acessorio", queryFromUrl],
-        queryFn: () =>
-            fetchProducts({ category: "acessorio", q: queryFromUrl }),
+    // Calcula a chave de query baseada nos filtros para refetch dinâmico
+    const queryKey = ["acessorios", filters];
+
+    const { data: products, isLoading } = useQuery({
+        queryKey: queryKey,
+        queryFn: () => fetchProducts(filters),
     });
 
-    const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+    const productsCount = products?.length || 0;
 
-    useEffect(() => {
-        if (allProducts) setFilteredProducts(allProducts);
-    }, [allProducts]);
+    // Função que aplica os filtros e fecha o modal no mobile
+    const handleSetFilters = useCallback(
+        (newFilters: FiltersType) => {
+            setFilters(newFilters);
+            if (isSheetOpen) {
+                setIsSheetOpen(false);
+            }
+        },
+        [isSheetOpen]
+    );
+
+    const renderProductList = () => {
+        if (isLoading) {
+            return Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-80 w-full" />
+            ));
+        }
+
+        if (productsCount === 0) {
+            return (
+                <div className="lg:col-span-3">
+                    <EmptyState
+                        icon={Headphones}
+                        title="Nenhum Acessório Encontrado"
+                        description="Tente ajustar os filtros ou pesquisar por outro termo."
+                    />
+                </div>
+            );
+        }
+
+        return products?.map((product) => (
+            <ProductCard key={product.id} product={product} />
+        ));
+    };
 
     return (
-        <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
+        <div className="min-h-screen bg-background flex flex-col">
             <SEO
-                title="Acessórios"
-                description="Capas, películas, carregadores e muito mais."
+                title="Acessórios - BV Celular"
+                description="Encontre acessórios essenciais como cases, películas, fones e carregadores."
             />
             <Navbar />
+            <main className="container py-8 flex-1">
+                <div className="flex items-center justify-between mb-8">
+                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+                        <Headphones className="h-7 w-7 text-primary" />{" "}
+                        Acessórios
+                    </h1>
+                    <span className="text-lg font-medium text-muted-foreground">
+                        {productsCount} resultado
+                        {productsCount !== 1 ? "s" : ""}
+                    </span>
+                </div>
 
-            <main className="flex-1 container py-8">
-                <div className="flex flex-col md:flex-row items-start gap-8 animate-fade-in">
-                    {!isLoading && allProducts && (
-                        <aside className="w-full md:w-64 flex-shrink-0 animate-slide-up">
-                            <ProductFilters
-                                products={allProducts}
-                                onFilterChange={setFilteredProducts}
-                                isMobileOpen={isMobileFiltersOpen}
-                                onMobileClose={() =>
-                                    setIsMobileFiltersOpen(false)
-                                }
-                            />
-                        </aside>
-                    )}
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                    {/* Filtros para Desktop */}
+                    <aside className="hidden lg:block lg:col-span-1">
+                        <ProductFilters
+                            currentFilters={filters}
+                            setFilters={handleSetFilters}
+                            category="acessorio" // Passa a categoria correta para o filtro
+                        />
+                    </aside>
 
-                    <div className="flex-1 w-full">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                            <div>
-                                <h1 className="text-3xl font-bold tracking-tight">
-                                    Acessórios
-                                </h1>
-                                <p className="text-muted-foreground mt-1">
-                                    {queryFromUrl
-                                        ? `Resultados para "${queryFromUrl}"`
-                                        : `${filteredProducts.length} produtos encontrados`}
-                                </p>
-                            </div>
-
-                            <Button
-                                variant="outline"
-                                className="md:hidden w-full sm:w-auto"
-                                onClick={() => setIsMobileFiltersOpen(true)}
-                            >
-                                <Filter className="mr-2 h-4 w-4" /> Filtros
-                            </Button>
-                        </div>
-
-                        {isLoading ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {[...Array(6)].map((_, i) => (
-                                    <div key={i} className="space-y-4">
-                                        <Skeleton className="h-64 w-full rounded-xl" />
-                                        <Skeleton className="h-4 w-3/4" />
-                                        <Skeleton className="h-4 w-1/2" />
-                                    </div>
-                                ))}
-                            </div>
-                        ) : filteredProducts.length === 0 ? (
-                            <EmptyState
-                                icon={SearchX}
-                                title="Nenhum acessório encontrado"
-                                description="Tente ajustar seus filtros ou buscar por outro termo."
-                                actionLabel="Limpar Filtros"
-                                actionLink="/acessorios"
-                            />
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-up">
-                                {filteredProducts.map((product) => (
-                                    <ProductCard
-                                        key={product.id}
-                                        product={product}
-                                    />
-                                ))}
-                            </div>
-                        )}
+                    {/* Produtos */}
+                    <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {renderProductList()}
                     </div>
                 </div>
+
+                {/* Filtros para Mobile */}
+                <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+                    <SheetTrigger
+                        asChild
+                        className="fixed bottom-4 right-4 z-40 lg:hidden"
+                    >
+                        <Button className="h-14 w-14 rounded-full shadow-lg">
+                            <Filter className="h-6 w-6 mr-1" />
+                        </Button>
+                    </SheetTrigger>
+                    <SheetContent
+                        side="left"
+                        className="w-[80%] sm:max-w-sm p-0"
+                    >
+                        <ProductFilters
+                            currentFilters={filters}
+                            setFilters={handleSetFilters}
+                            isMobile={true}
+                            setOpen={setIsSheetOpen}
+                            category="acessorio" // Passa a categoria correta para o filtro
+                        />
+                    </SheetContent>
+                </Sheet>
             </main>
             <Footer />
         </div>

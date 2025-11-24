@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-/* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
 import { 
@@ -12,7 +11,6 @@ import {
 } from "@/types";
 import { Database } from "@/integrations/supabase/types";
 import { v4 as uuidv4 } from 'uuid'; 
-
 
 // ==================================================================
 // FUNÇÕES DE API (INTELIGÊNCIA ARTIFICIAL)
@@ -38,7 +36,7 @@ type AIChatMessage = {
     sender: "user" | "ai";
 }
 
-// NOVO: Função que chama o ENDPOINT SEGURO para preenchimento de produto
+// Função que chama o ENDPOINT SEGURO para preenchimento de produto (Netlify Function)
 export const generateProductData = async (
     productName: string,
     category: 'aparelho' | 'acessorio'
@@ -63,7 +61,7 @@ export const generateProductData = async (
     return response.json() as Promise<AIDataResponse>;
 };
 
-// NOVO: Função que chama o ENDPOINT SEGURO para o chatbot
+// Função que chama o ENDPOINT SEGURO para o chatbot (Netlify Function)
 export const generateAIChatResponse = async (
     history: AIChatMessage[]
 ): Promise<AIChatResponse> => {
@@ -128,7 +126,21 @@ const getFileNameFromUrl = (url: string): string => {
 // FUNÇÕES DE API (PRODUTOS)
 // ==================================================================
 
-export const fetchProducts = async (params: { q?: string; category?: 'aparelho' | 'acessorio', isPromotion?: boolean } = {}): Promise<Product[]> => {
+// Definição do tipo para os filtros do frontend
+export type ProductFilters = {
+  q?: string;
+  category?: 'aparelho' | 'acessorio';
+  isPromotion?: boolean;
+  
+  // Novos Filtros de Especificações
+  brands?: string[];
+  ram?: string[];
+  storage?: string[];
+  battery_capacity?: string[];
+  processor_model?: string[];
+};
+
+export const fetchProducts = async (params: ProductFilters = {}): Promise<Product[]> => {
   let query = supabase
     .from('Products')
     .select(`
@@ -141,9 +153,33 @@ export const fetchProducts = async (params: { q?: string; category?: 'aparelho' 
       ProductVariants (*)
     `);
 
+  // FILTROS BÁSICOS
   if (params.category) query = query.eq('category', params.category);
   if (params.isPromotion !== undefined) query = query.eq('isPromotion', params.isPromotion);
   if (params.q) query = query.ilike('name', `%${params.q}%`);
+  
+  // NOVOS FILTROS POR ARRAY (Faceted Search)
+  if (params.brands && params.brands.length > 0) {
+      query = query.in('brand', params.brands);
+  }
+
+  if (params.ram && params.ram.length > 0) {
+      query = query.in('ram', params.ram);
+  }
+  
+  if (params.storage && params.storage.length > 0) {
+      query = query.in('storage', params.storage);
+  }
+
+  if (params.battery_capacity && params.battery_capacity.length > 0) {
+      const batteryFilter = params.battery_capacity.map(b => `battery_capacity.ilike.%${b}%`).join(',');
+      query = query.or(batteryFilter);
+  }
+
+  if (params.processor_model && params.processor_model.length > 0) {
+      const processorFilter = params.processor_model.map(p => `processor_model.ilike.%${p}%`).join(',');
+      query = query.or(processorFilter);
+  }
   
   const { data: rawProducts, error } = await query;
   if (error) throw new Error(error.message);
@@ -216,7 +252,7 @@ export const fetchRelatedProducts = async (category: string, currentProductId: s
   })) as Product[];
 };
 
-// --- FUNÇÃO CREATE PRODUCT BLINDADA ---
+// --- FUNÇÃO CREATE PRODUCT BLINDADA (Inclui campos de especificações) ---
 export const createProduct = async (payload: ProductInsertPayload): Promise<void> => {
   // 1. Upload Imagens
   const imageUrls: string[] = [];
@@ -251,6 +287,11 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
     sku: payload.sku,
     cost_price: payload.cost_price,
     images: imageUrls,
+    // NOVO: Incluir campos de especificações técnicas
+    battery_capacity: payload.battery_capacity,
+    camera_specs: payload.camera_specs,
+    processor_model: payload.processor_model,
+    technical_specs: payload.technical_specs,
   };
 
   // 2. Insere Produto Pai
@@ -292,7 +333,7 @@ export const createProduct = async (payload: ProductInsertPayload): Promise<void
   }
 };
 
-// --- FUNÇÃO UPDATE PRODUCT BLINDADA ---
+// --- FUNÇÃO UPDATE PRODUCT BLINDADA (Inclui campos de especificações) ---
 export const updateProduct = async (payload: ProductUpdatePayload): Promise<void> => {
   // Deleta imagens antigas
   if (payload.images_to_delete?.length) {
@@ -339,6 +380,11 @@ export const updateProduct = async (payload: ProductUpdatePayload): Promise<void
     sku: payload.sku,
     cost_price: payload.cost_price,
     images: finalImageUrls,
+    // NOVO: Incluir campos de especificações técnicas
+    battery_capacity: payload.battery_capacity,
+    camera_specs: payload.camera_specs,
+    processor_model: payload.processor_model,
+    technical_specs: payload.technical_specs,
   };
 
   const { error: productError } = await supabase.from('Products').update(productData as any).eq('id', payload.id);
@@ -384,7 +430,7 @@ export const deleteProduct = async (product: Product): Promise<void> => {
 };
 
 // ==================================================================
-// LOJAS
+// LOJAS (OMITIDO POR LIMITE)
 // ==================================================================
 export const fetchStores = async (): Promise<Store[]> => {
   const { data, error } = await supabase.from('Stores').select('*').order('name');
@@ -407,7 +453,7 @@ export const deleteStore = async (id: string) => {
 };
 
 // ==================================================================
-// FUNCIONÁRIOS & ADMIN
+// FUNCIONÁRIOS & ADMIN (OMITIDO POR LIMITE)
 // ==================================================================
 export const fetchEmployees = async (): Promise<Employee[]> => {
   const { data, error } = await supabase.from('Employees').select(`*, Stores(id, name)`).order('name');
@@ -435,10 +481,11 @@ export const deleteEmployee = async (id: string) => {
 };
 
 // ==================================================================
-// DRIVERS (ENTREGADORES)
+// DRIVERS (ENTREGADORES) - ATUALIZADO COM LOCALIZAÇÃO
 // ==================================================================
 export const fetchDrivers = async (): Promise<Driver[]> => {
-    const { data, error } = await supabase.from('Drivers').select('*').order('name');
+    // SELECIONA os novos campos de localização
+    const { data, error } = await supabase.from('Drivers').select(`*, latitude, longitude, last_updated`).order('name');
     if (error) throw new Error(error.message);
     return data as Driver[];
 };
@@ -458,7 +505,7 @@ export const deleteDriver = async (id: string) => {
 };
 
 // ==================================================================
-// CLIENTES & ATACADO
+// CLIENTES & ATACADO (OMITIDO POR LIMITE)
 // ==================================================================
 export const fetchClients = async (searchQuery?: string): Promise<CustomerProfile[]> => {
   let query = supabase.from('Clients').select(`id, name, phone, email`).order('created_at', { ascending: false });
@@ -523,7 +570,7 @@ export const fetchWholesaleProfile = async (): Promise<WholesaleClient | null> =
 };
 
 // ==================================================================
-// ENDEREÇOS & FRETE
+// ENDEREÇOS & FRETE (OMITIDO POR LIMITE)
 // ==================================================================
 export const fetchAddressByCEP = async (cep: string): Promise<Partial<Address> | null> => {
     try {
@@ -551,7 +598,7 @@ export const deleteAddress = async (id: string) => {
 };
 
 // ==================================================================
-// PEDIDOS
+// PEDIDOS - ATUALIZADO COM DRIVER
 // ==================================================================
 export const createOrder = async (payload: OrderInsertPayload): Promise<Database['public']['Tables']['Orders']['Row']> => {
     const orderData = {
@@ -566,7 +613,8 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
         delivery_fee: payload.delivery_fee || 0,
         payment_method: payload.payment_method,
         change_for: payload.change_for,
-        stripe_payment_id: payload.stripe_payment_id
+        stripe_payment_id: payload.stripe_payment_id,
+        driver_id: payload.driver_id, // NOVO
     };
     // @ts-ignore
     const { data, error } = await supabase.from('Orders').insert(orderData as any).select().single();
@@ -582,7 +630,8 @@ export const createOrder = async (payload: OrderInsertPayload): Promise<Database
 export const fetchAllOrders = async (): Promise<Order[]> => {
     const { data, error } = await supabase
         .from('Orders')
-        .select(`*, Clients(name,phone,email), Stores(name,city,address,cnpj), Employees(name), Addresses(*)`)
+        // Seleciona a nova relação com Drivers
+        .select(`*, Clients(name,phone,email), Stores(name,city,address,cnpj), Employees(name), Addresses(*), Drivers(*)`)
         .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -592,8 +641,42 @@ export const fetchAllOrders = async (): Promise<Order[]> => {
         Clients: order.Clients || { name: 'Cliente Removido', phone: '', email: '' },
         Stores: order.Stores || { name: 'Loja Indefinida' },
         Employees: order.Employees,
-        Addresses: order.Addresses
+        Addresses: order.Addresses,
+        Drivers: order.Drivers,
     })) as unknown as Order[];
+};
+
+// NOVO: Função para buscar dados de logística (Pedidos em Rota)
+export const fetchLogisticsData = async (): Promise<{ orders: Order[], drivers: Driver[] }> => {
+    // Filtra pedidos em status de entrega/rota e com entregador atribuído
+    const { data: rawOrders, error: orderError } = await supabase
+        .from('Orders')
+        .select(`
+            id, driver_id, status, total_price,
+            Clients(name, phone),
+            Addresses(*),
+            Drivers(*),
+            Stores(name, address)
+        `)
+        .in('status', ['on_the_way', 'out_for_delivery', 'delivery_attempted'])
+        .not('driver_id', 'is', null)
+        .order('created_at', { ascending: false });
+
+    if (orderError) throw new Error(`Erro ao buscar pedidos para logística: ${orderError.message}`);
+
+    const orders = (rawOrders || []).map((order: any) => ({
+        ...order,
+        Clients: order.Clients || {},
+        Addresses: order.Addresses,
+        Drivers: order.Drivers,
+        Stores: order.Stores,
+    })) as unknown as Order[];
+
+    // Busca motoristas ativos com dados de localização (reutiliza fetchDrivers)
+    const allDrivers = await fetchDrivers();
+    const activeDrivers = allDrivers.filter(d => d.active && d.latitude && d.longitude);
+
+    return { orders, drivers: activeDrivers };
 };
 
 export const fetchClientOrders = async (clientId: string): Promise<Order[]> => {
@@ -609,9 +692,13 @@ export const updateOrderStatus = async (orderId: string, status: string) => {
     const { error } = await supabase.from('Orders').update({ status }).eq('id', orderId);
     if (error) throw new Error(error.message);
 };
+export const assignDriverToOrder = async (orderId: string, driverId: string) => {
+    const { error } = await supabase.from('Orders').update({ driver_id: driverId, status: 'on_the_way' }).eq('id', orderId);
+    if (error) throw new Error(error.message);
+};
 
 // ==================================================================
-// OUTROS
+// OUTROS (OMITIDO POR LIMITE)
 // ==================================================================
 export const checkIsFavorite = async (clientId: string, productId: string) => {
     const { data, error } = await supabase.from('Favorites').select('id').eq('client_id', clientId).eq('product_id', productId).maybeSingle();
@@ -707,4 +794,3 @@ export const fetchClientWarranties = async (cid: string) => {
     // @ts-ignore
     const { data } = await supabase.from('Warranties').select(`*, Stores(name, address, city)`).eq('client_id', cid); return data as any as Warranty[]; 
 };
-

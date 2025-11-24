@@ -35,7 +35,7 @@ export type Product = Omit<Database['public']['Tables']['Products']['Row'], 'col
   has_variations?: boolean;
   variants?: ProductVariant[]; // Lista de variações carregadas
 
-  // NOVO: Campos de Especificações Técnicas
+  // Campos de Especificações Técnicas
   battery_capacity?: string | null;
   camera_specs?: string | null;
   processor_model?: string | null;
@@ -67,6 +67,10 @@ export type Driver = {
     phone: string;
     active: boolean;
     created_at?: string;
+    // NOVO: Adicionado para geolocalização em tempo real
+    latitude?: number | null; 
+    longitude?: number | null; 
+    last_updated?: string | null;
 };
 
 export type WholesaleClient = {
@@ -148,6 +152,8 @@ export type Order = {
   Stores?: { name: string; city: string | null; address?: string | null; cnpj?: string | null; } | null;
   Employees?: { name: string; } | null;
   Addresses?: Address | null;
+  Drivers?: Driver | null; // NOVO: Adiciona o entregador
+  driver_id?: string | null; // NOVO: ID do entregador
 };
 
 export type ShippingQuote = {
@@ -248,7 +254,7 @@ export type ProductInsertPayload = Database['public']['Tables']['Products']['Ins
   has_variations?: boolean;
   variants?: ProductVariantPayload[]; 
 
-  // NOVO: Campos de Especificações Técnicas
+  // Campos de Especificações Técnicas
   battery_capacity?: string;
   camera_specs?: string;
   processor_model?: string;
@@ -327,6 +333,7 @@ export type OrderInsertPayload = {
   payment_method?: string;
   change_for?: number;
   stripe_payment_id?: string | null;
+  driver_id?: string | null; // NOVO: ID do entregador para criação de pedido
 };
 
 export type AddressInsertPayload = Omit<Address, 'id' | 'created_at'>;
