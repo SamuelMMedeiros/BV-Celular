@@ -4,7 +4,7 @@
  */
 import { Textarea } from "@/components/ui/textarea";
 import { type TextareaProps } from "@/components/ui/textarea";
-import { Markdown } from "lucide-react";
+import { EditIcon } from "lucide-react";
 import {
     Tooltip,
     TooltipContent,
@@ -23,7 +23,7 @@ const MarkdownEditor = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <Markdown className="absolute top-3 right-3 h-4 w-4 text-primary/50 z-10 cursor-help" />
+                            <EditIcon className="absolute top-3 right-3 h-4 w-4 text-primary/50 z-10 cursor-help" />
                         </TooltipTrigger>
                         <TooltipContent>
                             Campo com suporte a formatação Markdown.
