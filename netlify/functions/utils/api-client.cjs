@@ -41,14 +41,24 @@ async function fetchSimplifiedProducts() {
         return [];
     }
 
-    // Formata o array de cores e retorna
+    // Formata o array de cores e o preço para um formato numérico simples
     return rawProducts.map((p) => ({
-        ...p,
+        // Inclui o nome completo para identificação
+        name: p.name,
+        // Adiciona um URL simulado para que o modelo possa "referenciar" a página
+        url: `/produto/${p.id}`,
+        // Simplifica a descrição para os primeiros 100 caracteres
+        description: p.description
+            ? p.description.substring(0, 100) + "..."
+            : "",
+        // Formata o preço para R$ (número simples)
+        price_reais: p.price / 100,
+        category: p.category,
+        brand: p.brand,
+        storage: p.storage,
+        ram: p.ram,
+        // Converte o array de cores para string
         colors: p.colors && Array.isArray(p.colors) ? p.colors.join(", ") : "",
-        price: (p.price / 100).toLocaleString("pt-BR", {
-            style: "currency",
-            currency: "BRL",
-        }),
     }));
 }
 

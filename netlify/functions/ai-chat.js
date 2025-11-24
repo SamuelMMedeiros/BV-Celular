@@ -1,10 +1,15 @@
+/**
+ * @title netlify/functions/ai-chat.js (CORRIGIDO)
+ * @collapsible
+ */
 const { GoogleGenAI } = require("@google/genai");
-const { fetchSimplifiedProducts } = require("./utils/api-client.cjs"); // NOVO: Importa o módulo de API
+const { fetchSimplifiedProducts } = require("./utils/api-client.cjs");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 exports.handler = async (event) => {
+    // Acessa a chave do API de forma segura
     if (!GEMINI_API_KEY) {
         return {
             statusCode: 500,
@@ -29,43 +34,43 @@ exports.handler = async (event) => {
             };
         }
 
-        // 1. BUSCA DE PRODUTOS REAIS
+        // 1. BUSCA DE PRODUTOS REAIS (E SIMPLIFICADOS)
         const productList = await fetchSimplifiedProducts();
 
         const productsJsonString = JSON.stringify(productList, null, 2);
 
-        // 2. Definir o prompt do sistema para o contexto da conversa, INJETANDO OS DADOS
+        // 2. Definir o prompt do sistema com INSTRUÇÕES RÍGIDAS
         const systemInstruction = `
             Você é o Assistente de Compras da BV Celular. 
-            Seu objetivo é ajudar o cliente a escolher o melhor produto. 
+            Sua única fonte de conhecimento sobre produtos é o catálogo JSON fornecido abaixo.
             
             DIRETRIZES ESSENCIAIS:
-            1. **Prioridade em Dados Internos:** SEMPRE use a lista de produtos fornecida abaixo para fazer recomendações.
-            2. **Não Mencione a Fonte:** Não diga que as informações vieram de uma lista, banco de dados ou inventário.
-            3. **Seja Consultivo:** Sugira produtos específicos com base nas perguntas do cliente (ex: "Qual celular para jogos?").
-            4. **Formatação Simples:** Mantenha as respostas amigáveis e não gere Markdown.
-            
-            ### PRODUTOS DISPONÍVEIS
+            1. **PRIORIDADE MÁXIMA:** Se a pergunta do cliente for sobre recomendação, especificações, preço, ou disponibilidade, você **DEVE** usar o 'PRODUCTS_CATALOG' para responder. Nunca invente dados.
+            2. **Foco:** Responda apenas com opções do catálogo se houverem correspondências claras.
+            3. **Apresentação:** Apresente as recomendações de forma clara, mencionando 'name', 'brand', 'price_reais' (como R$ X.XX), e as especificações relevantes (RAM, Storage, etc.).
+            4. **Link:** Inclua a URL do produto na recomendação, como: [NOME DO PRODUTO](/produto/ID).
+            5. **Não Mencione o JSON:** Nunca diga que você está lendo uma lista JSON ou que está lendo um banco de dados.
+
+            ### PRODUCTS_CATALOG (Catálogo de Produtos Disponíveis)
             ${productsJsonString}
         `;
 
-        // 3. Mapear o histórico para o formato da API Gemini (roles 'user' e 'model')
+        // 3. Mapear o histórico e gerar a resposta
         const contents = history.map((msg) => ({
             role: msg.sender === "user" ? "user" : "model",
             parts: [{ text: msg.text }],
         }));
 
-        // 4. Gera a resposta usando o histórico e as instruções do sistema
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: contents, // Envia o histórico
+            contents: contents,
             config: {
                 systemInstruction: systemInstruction,
                 temperature: 0.5,
             },
         });
 
-        // Retorna a resposta (texto puro)
+        // 4. Retorna a resposta (texto puro)
         return {
             statusCode: 200,
             body: JSON.stringify({ response: response.text }),
@@ -75,7 +80,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 500,
             body: JSON.stringify({
-                error: "Erro interno da IA do Chat. Verifique se o SUPABASE_SERVICE_KEY está configurado.",
+                error: "Erro interno da IA do Chat. Verifique o log.",
             }),
         };
     }
