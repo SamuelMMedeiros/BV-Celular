@@ -622,6 +622,30 @@ export const deleteAddress = async (id: string) => {
 // PEDIDOS - ATUALIZADO COM DRIVER E NOTIFICAÇÕES
 // ==================================================================
 
+
+export const fetchDriverOrders = async (driverId: string): Promise<Order[]> => {
+    const { data, error } = await supabase
+        .from('Orders')
+        .select(`
+            *, 
+            Clients(name, phone), 
+            Addresses(*), 
+            Stores(name, city)
+        `)
+        .eq('driver_id', driverId)
+        .in('status', ['on_the_way', 'out_for_delivery'])
+        .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    
+    // Mapeia para o tipo Order (necessário devido ao select complexo)
+    return (data || []).map((order: any) => ({
+        ...order,
+        Clients: order.Clients || {},
+        Addresses: order.Addresses || {},
+        Stores: order.Stores || {},
+    })) as unknown as Order[];
+};
 // Helper para definir a mensagem de notificação com base no status
 const getNotificationDetails = (status: string, orderId: string): { message: string, status_key: string } | null => {
     const shortId = orderId.substring(0, 6).toUpperCase();
